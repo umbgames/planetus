@@ -1,4 +1,4 @@
-name: Deploy
+name: Deploy site
 
 on:
   push:
@@ -32,5 +32,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
 
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
-      - uses: actions/deploy-pages@v4
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
