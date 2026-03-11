@@ -1,0 +1,5 @@
+{
+  "name": "Planet:us",
+  "description": "A 3D planet visualization of real social media posts using Three.js.",
+  "requestFramePermissions": []
+}
