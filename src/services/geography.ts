@@ -12,54 +12,81 @@ export interface Region {
 }
 
 const REGION_COLORS = [
-  '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-  '#ec4899', '#f97316', '#84cc16', '#06b6d4', '#d946ef', '#eab308',
+  '#10b981', // emerald-500
+  '#f59e0b', // amber-500
+  '#ef4444', // red-500
+  '#8b5cf6', // violet-500
+  '#ec4899', // pink-500
+  '#f97316', // orange-500
+  '#84cc16', // lime-500
+  '#06b6d4', // cyan-500
+  '#d946ef', // fuchsia-500
+  '#eab308', // yellow-500
 ];
 
 class GeographyManager {
   regions: Region[] = [];
   noiseScale = 1.5;
-  landThreshold = 0.2;
+  landThreshold = 0.2; // Adjusted to fine-tune land/water balance
   texture: THREE.CanvasTexture | null = null;
-  displacementMap: THREE.CanvasTexture | null = null;
   onTextureUpdate: ((texture: THREE.CanvasTexture, displacementMap: THREE.CanvasTexture) => void) | null = null;
 
-  canvas: HTMLCanvasElement | null = null;
-  ctx: CanvasRenderingContext2D | null = null;
-  imgData: ImageData | null = null;
-
-  dispCanvas: HTMLCanvasElement | null = null;
-  dispCtx: CanvasRenderingContext2D | null = null;
-  dispImgData: ImageData | null = null;
-
-  /** Terrain noise calculations */
   getTerrain(x: number, y: number, z: number) {
     const len = Math.sqrt(x*x + y*y + z*z);
-    const nx = x/len, ny = y/len, nz = z/len;
-
+    const nx = x/len;
+    const ny = y/len;
+    const nz = z/len;
+    
+    // Base continent shape
     let n = noise3D(nx * this.noiseScale, ny * this.noiseScale, nz * this.noiseScale);
+    
+    // Medium details (hills)
     n += 0.5 * noise3D(nx * this.noiseScale * 2, ny * this.noiseScale * 2, nz * this.noiseScale * 2);
-    const ridge = noise3D(nx * this.noiseScale * 3, ny * this.noiseScale * 3, nz * this.noiseScale * 3);
-    n += 0.3 * (1.0 - Math.abs(ridge));
+    
+    // Ridged noise for mountain ranges and valleys
+    let ridge = noise3D(nx * this.noiseScale * 3, ny * this.noiseScale * 3, nz * this.noiseScale * 3);
+    n += 0.3 * (1.0 - Math.abs(ridge)); // Creates sharp ridges
+    
+    // Fine details (rocky terrain)
     n += 0.25 * noise3D(nx * this.noiseScale * 4, ny * this.noiseScale * 4, nz * this.noiseScale * 4);
+    
+    // Extra fine details (surface roughness)
     n += 0.125 * noise3D(nx * this.noiseScale * 8, ny * this.noiseScale * 8, nz * this.noiseScale * 8);
+    
+    // Micro details
     n += 0.0625 * noise3D(nx * this.noiseScale * 16, ny * this.noiseScale * 16, nz * this.noiseScale * 16);
+    
+    // Nano details for high-res texture
     n += 0.03125 * noise3D(nx * this.noiseScale * 32, ny * this.noiseScale * 32, nz * this.noiseScale * 32);
+    
     return n;
   }
 
   getElevation(x: number, y: number, z: number) {
     const t = this.getTerrain(x, y, z);
-    if (t <= this.landThreshold) return 0;
+    if (t <= this.landThreshold) return 0; // Water level
+    
+    // Map terrain value above threshold to elevation
+    // t ranges roughly from landThreshold to ~1.75
     let elevation = Math.max(0, t - this.landThreshold);
-    return Math.pow(elevation, 1.5);
+    
+    // Non-linear elevation for flatter plains and steeper mountains
+    elevation = Math.pow(elevation, 1.5);
+    
+    return elevation;
+  }
+
+  getHeightAtPoint(x: number, y: number, z: number, radius: number, displacementScale: number): number {
+    if (!this.isLand(x, y, z)) return radius;
+    const elevation = this.getElevation(x, y, z);
+    const dispValueNormalized = Math.min(1, elevation * 170 / 255);
+    return radius + dispValueNormalized * displacementScale;
   }
 
   isLand(x: number, y: number, z: number) {
     return this.getTerrain(x, y, z) > this.landThreshold;
   }
 
-  /** Initialize topic regions */
   initializeTopicRegions() {
     if (this.regions.length > 0) return;
 
@@ -75,50 +102,119 @@ class GeographyManager {
     const newRegions: Region[] = [];
 
     for (const topic of TOPICS) {
-      let center = new THREE.Vector3(1,0,0);
-      for (let i=0;i<500;i++){
-        const u=Math.random(), v=Math.random();
-        const theta=2*Math.PI*u;
-        const phi=Math.acos(2*v-1);
-        const x=Math.sin(phi)*Math.cos(theta);
-        const y=Math.cos(phi);
-        const z=Math.sin(phi)*Math.sin(theta);
-        if(this.isLand(x,y,z)){
-          let tooClose=false;
-          const pt = new THREE.Vector3(x,y,z);
-          for(const r of newRegions){
-            if(pt.distanceToSquared(r.center)<0.4){tooClose=true;break;}
+      let center = new THREE.Vector3(1, 0, 0);
+      for (let i = 0; i < 500; i++) {
+        const u = Math.random();
+        const v = Math.random();
+        const theta = 2 * Math.PI * u;
+        const phi = Math.acos(2 * v - 1);
+        const x = Math.sin(phi) * Math.cos(theta);
+        const y = Math.cos(phi);
+        const z = Math.sin(phi) * Math.sin(theta);
+
+        if (this.isLand(x, y, z)) {
+          let tooClose = false;
+          const pt = new THREE.Vector3(x, y, z);
+          for (const r of newRegions) {
+            if (pt.distanceToSquared(r.center) < 0.4) {
+              tooClose = true;
+              break;
+            }
           }
-          if(!tooClose){center=pt;break;}
+          if (!tooClose) {
+            center = pt;
+            break;
+          }
         }
       }
+
       newRegions.push({
         id: topic.name,
         hashtag: topic.name,
         center,
         color: new THREE.Color(topic.color),
-        resourceZone: topic.zone
+        resourceZone: topic.zone,
       });
     }
 
     this.regions = newRegions;
-
-    console.log("Regions initialized:", this.regions.map(r=>r.id));
-    this.generateTexture(); // generate after callback
+    this.generateTexture();
   }
 
-  /** Generate terrain texture */
-  generateTexture(width = 4096, height = 2048) {
-    console.log("Generating texture with size:", width, "x", height);
+  getRegionForPoint(x: number, y: number, z: number): Region | null {
+    if (!this.isLand(x, y, z)) return null;
+    if (this.regions.length === 0) return null;
 
-    // Create canvases if needed
-    if(!this.canvas){
+    let minDist = Infinity;
+    let closestRegion: Region | null = null;
+    const pt = new THREE.Vector3(x, y, z).normalize();
+
+    for (const region of this.regions) {
+      const dist = pt.distanceToSquared(region.center);
+      if (dist < minDist) {
+        minDist = dist;
+        closestRegion = region;
+      }
+    }
+    return closestRegion;
+  }
+
+  getRandomPointForTopic(topic: string, radius: number): [number, number, number] {
+    // Rejection sampling
+    for (let i = 0; i < 500; i++) {
+      const u = Math.random();
+      const v = Math.random();
+      const theta = 2 * Math.PI * u;
+      const phi = Math.acos(2 * v - 1);
+      const x = Math.sin(phi) * Math.cos(theta);
+      const y = Math.cos(phi);
+      const z = Math.sin(phi) * Math.sin(theta);
+
+      const region = this.getRegionForPoint(x, y, z);
+      if (region && region.id === topic) {
+        return [x * radius, y * radius, z * radius];
+      }
+    }
+    
+    // Fallback: just return a random land point
+    for (let i = 0; i < 500; i++) {
+      const u = Math.random();
+      const v = Math.random();
+      const theta = 2 * Math.PI * u;
+      const phi = Math.acos(2 * v - 1);
+      const x = Math.sin(phi) * Math.cos(theta);
+      const y = Math.cos(phi);
+      const z = Math.sin(phi) * Math.sin(theta);
+
+      if (this.isLand(x, y, z)) {
+        return [x * radius, y * radius, z * radius];
+      }
+    }
+    
+    // Ultimate fallback
+    return [radius, 0, 0];
+  }
+
+  canvas: HTMLCanvasElement | null = null;
+  ctx: CanvasRenderingContext2D | null = null;
+  imgData: ImageData | null = null;
+  
+  dispCanvas: HTMLCanvasElement | null = null;
+  dispCtx: CanvasRenderingContext2D | null = null;
+  dispImgData: ImageData | null = null;
+  displacementMap: THREE.CanvasTexture | null = null;
+
+  generateTexture() {
+    const width = 4096; // Increased resolution
+    const height = 2048; // Increased resolution
+    
+    if (!this.canvas) {
       this.canvas = document.createElement('canvas');
       this.canvas.width = width;
       this.canvas.height = height;
       this.ctx = this.canvas.getContext('2d')!;
       this.imgData = this.ctx.createImageData(width, height);
-
+      
       this.dispCanvas = document.createElement('canvas');
       this.dispCanvas.width = width;
       this.dispCanvas.height = height;
@@ -129,65 +225,128 @@ class GeographyManager {
     const data = this.imgData!.data;
     const dispData = this.dispImgData!.data;
 
-    const waterColor = new THREE.Color('#2c1e16');
-    const defaultLandColor = new THREE.Color('#8b4513');
+    const waterColor = new THREE.Color('#2c1e16'); // dark brown
+    const borderColor = new THREE.Color('#1a110c'); // darker brown
+    const defaultLandColor = new THREE.Color('#8b4513'); // medium brown
 
-    let pixelsWritten = 0;
+    for (let y = 0; y < height; y++) {
+      const phi = (y / height) * Math.PI; // 0 to PI
+      for (let x = 0; x < width; x++) {
+        const theta = (x / width) * Math.PI * 2; // 0 to 2PI
 
-    for(let y=0;y<height;y++){
-      const phi = (y/height)*Math.PI;
-      for(let x=0;x<width;x++){
-        const theta=(x/width)*2*Math.PI;
-        const px = Math.sin(phi)*Math.cos(theta);
+        // Note: in Three.js spherical coords, y is up
+        const px = Math.sin(phi) * Math.cos(theta);
         const py = Math.cos(phi);
-        const pz = Math.sin(phi)*Math.sin(theta);
-        const pt = new THREE.Vector3(px,py,pz);
-        const idx = (y*width+x)*4;
+        const pz = Math.sin(phi) * Math.sin(theta);
 
-        if(!this.isLand(px,py,pz)){
+        const pt = new THREE.Vector3(px, py, pz);
+        const idx = (y * width + x) * 4;
+
+        if (!this.isLand(px, py, pz)) {
           // Water
-          data[idx] = waterColor.r*255;
-          data[idx+1] = waterColor.g*255;
-          data[idx+2] = waterColor.b*255;
+          const waterNoise = noise3D(px * 10, py * 10, pz * 10) * 0.05;
+          data[idx] = Math.max(0, Math.min(255, waterColor.r * 255 * (1 + waterNoise)));
+          data[idx+1] = Math.max(0, Math.min(255, waterColor.g * 255 * (1 + waterNoise)));
+          data[idx+2] = Math.max(0, Math.min(255, waterColor.b * 255 * (1 + waterNoise)));
           data[idx+3] = 255;
-
-          dispData[idx]=0; dispData[idx+1]=0; dispData[idx+2]=0; dispData[idx+3]=255;
+          
+          // Flat displacement for water
+          dispData[idx] = 0;
+          dispData[idx+1] = 0;
+          dispData[idx+2] = 0;
+          dispData[idx+3] = 255;
         } else {
-          const elevation = this.getElevation(px,py,pz);
-          const dispValue = Math.min(255, Math.floor(elevation*170));
-          dispData[idx]=dispValue; dispData[idx+1]=dispValue; dispData[idx+2]=dispValue; dispData[idx+3]=255;
+          // Land
+          const elevation = this.getElevation(px, py, pz);
+          
+          // Displacement map (grayscale based on elevation)
+          // Map elevation (0 to ~1.5) to 0-255
+          const dispValue = Math.min(255, Math.floor(elevation * 170));
+          dispData[idx] = dispValue;
+          dispData[idx+1] = dispValue;
+          dispData[idx+2] = dispValue;
+          dispData[idx+3] = 255;
+          
+          if (this.regions.length === 0) {
+            // Apply elevation shading to default land
+            const shade = 1 + elevation * 0.5;
+            data[idx] = Math.min(255, defaultLandColor.r * 255 * shade);
+            data[idx+1] = Math.min(255, defaultLandColor.g * 255 * shade);
+            data[idx+2] = Math.min(255, defaultLandColor.b * 255 * shade);
+            data[idx+3] = 255;
+            continue;
+          }
 
-          const shade = 1+elevation*0.5;
-          data[idx] = Math.max(0, Math.min(255, defaultLandColor.r*255*shade));
-          data[idx+1] = Math.max(0, Math.min(255, defaultLandColor.g*255*shade));
-          data[idx+2] = Math.max(0, Math.min(255, defaultLandColor.b*255*shade));
-          data[idx+3] = 255;
-          pixelsWritten++;
+          // Find closest and second closest
+          let minDist = Infinity;
+          let min2Dist = Infinity;
+          let closestRegion: Region | null = null;
+          let secondClosestRegion: Region | null = null;
+
+          for (const region of this.regions) {
+            const dist = pt.distanceTo(region.center); // Use actual distance for uniform border thickness
+            if (dist < minDist) {
+              min2Dist = minDist;
+              secondClosestRegion = closestRegion;
+              minDist = dist;
+              closestRegion = region;
+            } else if (dist < min2Dist) {
+              min2Dist = dist;
+              secondClosestRegion = region;
+            }
+          }
+
+          // Border detection - thin white line
+          // Only draw border if the two regions are geographically close (centers are within a certain distance)
+          const areRegionsClose = secondClosestRegion && closestRegion!.center.distanceTo(secondClosestRegion.center) < 1.2;
+          
+          // Apply elevation shading
+          const shade = 1 + elevation * 0.8; // Darker valleys, lighter peaks
+          
+          // Add some high frequency noise for surface detail
+          const surfaceDetail = noise3D(px * 50, py * 50, pz * 50) * 0.1;
+          const finalShade = shade + surfaceDetail;
+          
+          if (min2Dist - minDist < 0.015 && areRegionsClose) {
+            data[idx] = borderColor.r * 255;
+            data[idx+1] = borderColor.g * 255;
+            data[idx+2] = borderColor.b * 255;
+            data[idx+3] = 255;
+          } else {
+            // Add resource zone indicators (subtle color tint)
+            let r = closestRegion!.color.r;
+            let g = closestRegion!.color.g;
+            let b = closestRegion!.color.b;
+            
+            if (closestRegion!.resourceZone === 'high') {
+              r = Math.min(1, r * 1.2); // More red/warm
+            } else if (closestRegion!.resourceZone === 'low') {
+              b = Math.min(1, b * 1.2); // More blue/cool
+            }
+            
+            data[idx] = Math.max(0, Math.min(255, r * 255 * finalShade));
+            data[idx+1] = Math.max(0, Math.min(255, g * 255 * finalShade));
+            data[idx+2] = Math.max(0, Math.min(255, b * 255 * finalShade));
+            data[idx+3] = 255;
+          }
         }
       }
     }
-
-    console.log("Pixels written:", pixelsWritten, "/", width*height);
-
-    this.ctx!.putImageData(this.imgData!,0,0);
-    this.dispCtx!.putImageData(this.dispImgData!,0,0);
-
-    if(!this.texture){
+    this.ctx!.putImageData(this.imgData!, 0, 0);
+    this.dispCtx!.putImageData(this.dispImgData!, 0, 0);
+    
+    if (!this.texture) {
       this.texture = new THREE.CanvasTexture(this.canvas);
       this.texture.colorSpace = THREE.SRGBColorSpace;
+      
       this.displacementMap = new THREE.CanvasTexture(this.dispCanvas);
-    } else {
-      this.texture.image = this.canvas;
-      this.texture.needsUpdate = true;
-      this.displacementMap!.image = this.dispCanvas;
-      this.displacementMap!.needsUpdate = true;
     }
+    
+    this.texture.needsUpdate = true;
+    this.displacementMap.needsUpdate = true;
 
-    console.log("Texture generated:", this.texture?.image.width, "x", this.texture?.image.height);
-
-    if(this.onTextureUpdate){
-      console.log("Calling onTextureUpdate callback");
-      this.onTextureUpdate(this.texture, this.displacementMap!);
+    if (this.onTextureUpdate) {
+      this.onTextureUpdate(this.texture, this.displacementMap);
     }
   }
 }
