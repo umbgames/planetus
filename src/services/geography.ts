@@ -205,8 +205,8 @@ class GeographyManager {
   displacementMap: THREE.CanvasTexture | null = null;
 
   generateTexture() {
-    const width = 4096; // Increased resolution
-    const height = 2048; // Increased resolution
+    const width = 1024; // Increased resolution
+    const height = 512; // Increased resolution
     
     if (!this.canvas) {
       this.canvas = document.createElement('canvas');
