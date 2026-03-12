@@ -1,0 +1,52 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A player account.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The user's unique ID." },
+        "displayName": { "type": "string", "description": "The user's display name." },
+        "commonResources": { "type": "number", "description": "Amount of common resources." },
+        "rareResources": { "type": "number", "description": "Amount of rare resources." },
+        "hasSatellite": { "type": "boolean", "description": "Whether the user has launched a satellite." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the account was created." }
+      },
+      "required": ["uid", "displayName", "commonResources", "rareResources", "hasSatellite", "createdAt"]
+    },
+    "Base": {
+      "title": "Base",
+      "description": "A player's base on the planet.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The base's unique ID." },
+        "ownerId": { "type": "string", "description": "The ID of the user who owns this base. Can be 'npc' for initial bases." },
+        "position": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "z": { "type": "number" }
+          },
+          "required": ["x", "y", "z"]
+        },
+        "zone": { "type": "string", "enum": ["high", "mid", "low"], "description": "The resource zone the base is in." },
+        "level": { "type": "number", "description": "The level of the base." },
+        "health": { "type": "number", "description": "The health of the base." },
+        "lastMinedAt": { "type": "string", "format": "date-time", "description": "When the base last generated resources." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the base was built." }
+      },
+      "required": ["id", "ownerId", "position", "zone", "level", "health", "lastMinedAt", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles and resources."
+    },
+    "bases/{baseId}": {
+      "schema": { "$ref": "#/entities/Base" },
+      "description": "Stores all bases on the planet."
+    }
+  }
+}

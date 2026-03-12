@@ -1,15 +1,20 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Html, PerspectiveCamera, Trail } from '@react-three/drei';
-import { Rocket, X, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 import * as THREE from 'three';
+import { geographyManager } from '../services/geography';
+import { BaseData, UserData, gameManager } from '../services/gameManager';
+import { useShipStore } from '../services/shipStore';
 
 interface ShipProps {
   planetRadius: number;
   onExit: () => void;
+  bases?: BaseData[];
+  userData?: UserData | null;
+  satellites?: any[];
 }
 
-export function Ship({ planetRadius, onExit }: ShipProps) {
+export function Ship({ planetRadius, onExit, bases = [], userData = null, satellites = [] }: ShipProps) {
   const { camera, gl } = useThree();
   const shipRef = useRef<THREE.Group>(null);
   const [keys, setKeys] = useState<Record<string, boolean>>({});
@@ -19,8 +24,7 @@ export function Ship({ planetRadius, onExit }: ShipProps) {
   
   // Mobile controls state
   const [isMobile, setIsMobile] = useState(false);
-  const [mobileKeys, setMobileKeys] = useState({ w: false, a: false, s: false, d: false });
-  const [isBoosting, setIsBoosting] = useState(false);
+  const { mobileKeys, setMobileKeys, isBoosting, setIsBoosting, lockedTarget, setLockedTarget } = useShipStore();
   
   const touchLook = useRef({ x: 0, y: 0 });
   const rightTouchId = useRef<number | null>(null);
@@ -34,6 +38,13 @@ export function Ship({ planetRadius, onExit }: ShipProps) {
   const rotation = useRef(new THREE.Euler(0, 0, 0, 'YXZ'));
   const position = useRef(new THREE.Vector3(0, 0, planetRadius + 5));
   const launchProgress = useRef(0);
+
+  // Combat state
+  const lastFired = useRef(0);
+  const lastMissile = useRef(0);
+  const [projectiles, setProjectiles] = useState<{ id: string; pos: THREE.Vector3; dir: THREE.Vector3; type: 'mg' | 'missile'; target?: any; createdAt: number }[]>([]);
+  const [explosions, setExplosions] = useState<{ id: string; pos: THREE.Vector3; createdAt: number; size: number }[]>([]);
+  const [muzzleFlashes, setMuzzleFlashes] = useState<{ id: string; pos: THREE.Vector3; createdAt: number }[]>([]);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -97,9 +108,33 @@ export function Ship({ planetRadius, onExit }: ShipProps) {
       }
     };
 
+    const handleMouseDown = (e: MouseEvent) => {
+      if (document.pointerLockElement === gl.domElement) {
+        if (e.button === 0) {
+          setKeys(k => ({ ...k, MouseLeft: true }));
+        } else if (e.button === 2) {
+          setKeys(k => ({ ...k, MouseRight: true }));
+        }
+      } else {
+        gl.domElement.requestPointerLock();
+      }
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (document.pointerLockElement === gl.domElement) {
+        if (e.button === 0) {
+          setKeys(k => ({ ...k, MouseLeft: false }));
+        } else if (e.button === 2) {
+          setKeys(k => ({ ...k, MouseRight: false }));
+        }
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mouseup', handleMouseUp);
     document.addEventListener('pointerlockchange', handlePointerLockChange);
     
     const canvas = gl.domElement;
@@ -131,6 +166,8 @@ export function Ship({ planetRadius, onExit }: ShipProps) {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
       
       canvas.removeEventListener('touchstart', handleTouchStart);
@@ -166,10 +203,195 @@ export function Ship({ planetRadius, onExit }: ShipProps) {
     }
 
     // Exit ship mode
-    if (keys['Escape']) {
+    if (keys['KeyO']) {
       onExit();
       return;
     }
+
+    // Target Locking (Key T)
+    if (keys['KeyT'] || mobileKeys.lock) {
+      setKeys(k => ({ ...k, KeyT: false })); // Consume key press
+      setMobileKeys(k => ({ ...k, lock: false })); // Consume mobile key press
+      
+      // Find closest base or satellite in front of ship
+      let bestTarget: any | null = null;
+      let bestScore = -Infinity;
+      
+      const shipForward = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
+      
+      // Check bases
+      bases.forEach(base => {
+        const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
+        const toBase = basePos.clone().sub(position.current);
+        const dist = toBase.length();
+        
+        if (dist < 50) { // Max lock range
+          toBase.normalize();
+          const dot = shipForward.dot(toBase);
+          if (dot > 0.8) { // Must be somewhat in front
+            const score = dot - (dist / 100); // Prefer closer and more centered
+            if (score > bestScore) {
+              bestScore = score;
+              bestTarget = { ...base, type: 'base' };
+            }
+          }
+        }
+      });
+
+      // Check satellites
+      const time = state.clock.elapsedTime;
+      satellites.forEach(sat => {
+        const angle = time * sat.speed + sat.initialAngle;
+        const satPos = new THREE.Vector3(sat.orbitRadius, 0, 0);
+        satPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+        satPos.applyEuler(new THREE.Euler(sat.tiltX, sat.tiltY, sat.tiltZ));
+
+        const toSat = satPos.clone().sub(position.current);
+        const dist = toSat.length();
+
+        if (dist < 50) {
+          toSat.normalize();
+          const dot = shipForward.dot(toSat);
+          if (dot > 0.8) {
+            const score = dot - (dist / 100);
+            if (score > bestScore) {
+              bestScore = score;
+              bestTarget = { ...sat, position: satPos, type: 'satellite', health: 100 }; // Mock health for now
+            }
+          }
+        }
+      });
+      
+      if (bestTarget) {
+        setLockedTarget(bestTarget);
+      } else {
+        setLockedTarget(null);
+      }
+    }
+
+    // Update locked target position if it's a satellite
+    if (lockedTarget && lockedTarget.type === 'satellite') {
+      const time = state.clock.elapsedTime;
+      const angle = time * lockedTarget.speed + lockedTarget.initialAngle;
+      const satPos = new THREE.Vector3(lockedTarget.orbitRadius, 0, 0);
+      satPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+      satPos.applyEuler(new THREE.Euler(lockedTarget.tiltX, lockedTarget.tiltY, lockedTarget.tiltZ));
+      
+      setLockedTarget(prev => prev ? { ...prev, position: satPos } : null);
+    }
+
+    // Firing Weapons
+    const now = Date.now();
+    if ((keys['MouseLeft'] || mobileKeys.mg) && now - lastFired.current > 100) { // Machine gun: 100ms cooldown
+      if (!userData || userData.machineGunAmmo > 0) {
+        lastFired.current = now;
+        if (userData) gameManager.fireMachineGun();
+        
+        const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
+        if (lockedTarget) {
+          const targetPos = new THREE.Vector3(lockedTarget.position.x, lockedTarget.position.y, lockedTarget.position.z);
+          dir.copy(targetPos).sub(position.current).normalize();
+        }
+        
+        setProjectiles(prev => [...prev, {
+          id: Math.random().toString(),
+          pos: position.current.clone().add(dir.clone().multiplyScalar(0.5)),
+          dir,
+          type: 'mg',
+          target: lockedTarget || undefined,
+          createdAt: now
+        }]);
+        
+        // Add muzzle flash
+        const rightOffset = new THREE.Vector3(0.5, 0, 0).applyQuaternion(shipRef.current!.quaternion);
+        const leftOffset = new THREE.Vector3(-0.5, 0, 0).applyQuaternion(shipRef.current!.quaternion);
+        const forwardOffset = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
+        
+        setMuzzleFlashes(prev => [
+          ...prev, 
+          { id: Math.random().toString(), pos: position.current.clone().add(rightOffset).add(forwardOffset), createdAt: now },
+          { id: Math.random().toString(), pos: position.current.clone().add(leftOffset).add(forwardOffset), createdAt: now }
+        ]);
+      }
+    }
+
+    if ((keys['MouseRight'] || mobileKeys.missile) && now - lastMissile.current > 1000) { // Missile: 1000ms cooldown
+      if (!userData || userData.missileAmmo > 0) {
+        lastMissile.current = now;
+        if (userData) gameManager.fireMissile();
+        
+        const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
+        
+        setProjectiles(prev => [...prev, {
+          id: Math.random().toString(),
+          pos: position.current.clone().add(dir.clone().multiplyScalar(0.5)),
+          dir,
+          type: 'missile',
+          target: lockedTarget || undefined,
+          createdAt: now
+        }]);
+      }
+    }
+
+    // Update projectiles
+    setProjectiles(prev => {
+      const remaining: typeof prev = [];
+      prev.forEach(p => {
+        const speed = p.type === 'mg' ? 50 : 20;
+        
+        if (p.type === 'missile' && p.target) {
+          // Homing logic
+          const targetPos = new THREE.Vector3(p.target.position.x, p.target.position.y, p.target.position.z);
+          const toTarget = targetPos.clone().sub(p.pos).normalize();
+          p.dir.lerp(toTarget, 0.1).normalize();
+        }
+        
+        p.pos.addScaledVector(p.dir, speed * delta);
+        
+        // Check collision with bases
+        let hit = false;
+        bases.forEach(base => {
+          if (hit) return;
+          const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
+          if (p.pos.distanceTo(basePos) < 1.0) {
+            hit = true;
+            const damage = p.type === 'mg' ? 5 : 50;
+            gameManager.attackBase(base.id, damage).catch(console.error);
+            setExplosions(prev => [...prev, { id: Math.random().toString(), pos: p.pos.clone(), createdAt: now, size: p.type === 'mg' ? 1 : 3 }]);
+          }
+        });
+
+        // Check collision with satellites
+        if (!hit) {
+          satellites.forEach(sat => {
+            if (hit) return;
+            const time = state.clock.elapsedTime;
+            const angle = time * sat.speed + sat.initialAngle;
+            const satPos = new THREE.Vector3(sat.orbitRadius, 0, 0);
+            satPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+            satPos.applyEuler(new THREE.Euler(sat.tiltX, sat.tiltY, sat.tiltZ));
+
+            if (p.pos.distanceTo(satPos) < 1.0) {
+              hit = true;
+              if (sat.uid) {
+                gameManager.destroySatellite(sat.uid).catch(console.error);
+              }
+              setExplosions(prev => [...prev, { id: Math.random().toString(), pos: p.pos.clone(), createdAt: now, size: p.type === 'mg' ? 1 : 3 }]);
+            }
+          });
+        }
+        
+        // Remove if hit or too far
+        if (!hit && p.pos.distanceTo(position.current) < 100) {
+          remaining.push(p);
+        }
+      });
+      return remaining;
+    });
+
+    // Clean up old effects
+    setExplosions(prev => prev.filter(e => now - e.createdAt < 500));
+    setMuzzleFlashes(prev => prev.filter(m => now - m.createdAt < 100));
 
     const speed = (keys['ShiftLeft'] || isBoosting) ? 8 : 1.5; // Reduced overall speed
     const accel = (keys['ShiftLeft'] || isBoosting) ? 15 * delta : 5 * delta;
@@ -245,7 +467,11 @@ export function Ship({ planetRadius, onExit }: ShipProps) {
 
     // Collision with planet (keep it floating a few meters above surface)
     const dist = position.current.length();
-    const minHeight = planetRadius + 0.01; // Reduced from 0.05 to 0.01
+    const terrainHeight = geographyManager.getHeightAtPoint(
+      position.current.x, position.current.y, position.current.z,
+      planetRadius, 0.3
+    );
+    const minHeight = terrainHeight + 0.05; // Keep slightly above terrain
     if (dist < minHeight) {
       position.current.normalize().multiplyScalar(minHeight);
       // Don't kill all velocity, just the downward component
@@ -281,21 +507,6 @@ export function Ship({ planetRadius, onExit }: ShipProps) {
     }
   });
 
-  const btnStyle = {
-    background: 'rgba(0,0,0,0.5)',
-    border: '1px solid rgba(255,255,255,0.2)',
-    color: 'white',
-    width: 60,
-    height: 60,
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    pointerEvents: 'auto' as const,
-    userSelect: 'none' as const,
-    touchAction: 'none' as const
-  };
-
   return (
     <>
       <group ref={cameraRigRef}>
@@ -311,8 +522,8 @@ export function Ship({ planetRadius, onExit }: ShipProps) {
           <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
         </mesh>
         {/* Nose */}
-        <mesh position={[0, 0, -1.5]}>
-          <coneGeometry args={[0.3, 1, 4]} rotation={[-Math.PI / 2, 0, 0]} />
+        <mesh position={[0, 0, -1.5]} rotation={[-Math.PI / 2, 0, 0]}>
+          <coneGeometry args={[0.3, 1, 4]} />
           <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
         </mesh>
         {/* Cockpit */}
@@ -366,58 +577,72 @@ export function Ship({ planetRadius, onExit }: ShipProps) {
           </Trail>
         </group>
       </group>
-      
-      {isMobile && (
-        <Html fullscreen zIndexRange={[100, 0]} style={{ pointerEvents: 'none', userSelect: 'none' }}>
-          {/* Exit Button */}
-          <button 
-            style={{ pointerEvents: 'auto', position: 'absolute', top: 20, right: 20, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '10px', borderRadius: '50%' }}
-            onClick={(e) => { e.stopPropagation(); onExit(); }}
-          >
-            <X size={24} />
-          </button>
-          
-          {/* Boost Button */}
-          <button 
-            style={{ ...btnStyle, position: 'absolute', bottom: 40, right: 40, background: isBoosting ? 'rgba(255,68,68,0.8)' : 'rgba(0,0,0,0.5)' }}
-            onPointerDown={(e) => { e.stopPropagation(); setIsBoosting(true); }}
-            onPointerUp={(e) => { e.stopPropagation(); setIsBoosting(false); }}
-            onPointerLeave={(e) => { e.stopPropagation(); setIsBoosting(false); }}
-          >
-            <Rocket size={28} />
-          </button>
-          
-          {/* D-Pad */}
-          <div style={{ position: 'absolute', bottom: 40, left: 40, display: 'grid', gridTemplateColumns: 'repeat(3, 60px)', gap: '10px' }}>
-            <div />
-            <button
-              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys(k => ({...k, w: true})) }}
-              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys(k => ({...k, w: false})) }}
-              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys(k => ({...k, w: false})) }}
-              style={{ ...btnStyle, background: mobileKeys.w ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}><ArrowUp /></button>
-            <div />
-            <button
-              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys(k => ({...k, a: true})) }}
-              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys(k => ({...k, a: false})) }}
-              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys(k => ({...k, a: false})) }}
-              style={{ ...btnStyle, background: mobileKeys.a ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}><ArrowLeft /></button>
-            <button
-              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys(k => ({...k, s: true})) }}
-              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys(k => ({...k, s: false})) }}
-              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys(k => ({...k, s: false})) }}
-              style={{ ...btnStyle, background: mobileKeys.s ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}><ArrowDown /></button>
-            <button
-              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys(k => ({...k, d: true})) }}
-              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys(k => ({...k, d: false})) }}
-              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys(k => ({...k, d: false})) }}
-              style={{ ...btnStyle, background: mobileKeys.d ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}><ArrowRight /></button>
-          </div>
-          
-          {/* Instructions */}
-          <div style={{ position: 'absolute', top: 20, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.5)', fontSize: '12px', textAlign: 'center', pointerEvents: 'none' }}>
-            Right side: Look around
-          </div>
-        </Html>
+
+      {/* Projectiles */}
+      {projectiles.map(p => (
+        <group key={p.id} position={p.pos}>
+          {p.type === 'mg' ? (
+            <mesh>
+              <sphereGeometry args={[0.05]} />
+              <meshBasicMaterial color="#ffff00" />
+            </mesh>
+          ) : (
+            <group>
+              <mesh>
+                <cylinderGeometry args={[0.05, 0.05, 0.4]} />
+                <meshBasicMaterial color="#ff0000" />
+              </mesh>
+              <mesh position={[0, -0.2, 0]}>
+                <sphereGeometry args={[0.1]} />
+                <meshBasicMaterial color="#ff8800" transparent opacity={0.8} />
+              </mesh>
+              <Trail width={0.2} length={10} color={new THREE.Color('#ff8800')} attenuation={(t) => t * t}>
+                <mesh position={[0, -0.2, 0]}>
+                  <sphereGeometry args={[0.05]} />
+                  <meshBasicMaterial transparent opacity={0} />
+                </mesh>
+              </Trail>
+            </group>
+          )}
+          {/* Tracer effect for MG */}
+          {p.type === 'mg' && (
+            <mesh position={[0, 0, 0.5]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.02, 0.02, 1]} />
+              <meshBasicMaterial color="#ffaa00" transparent opacity={0.5} />
+            </mesh>
+          )}
+        </group>
+      ))}
+
+      {/* Explosions */}
+      {explosions.map(e => (
+        <mesh key={e.id} position={e.pos}>
+          <sphereGeometry args={[e.size]} />
+          <meshBasicMaterial color="#ff5500" transparent opacity={1 - (Date.now() - e.createdAt) / 500} />
+        </mesh>
+      ))}
+
+      {/* Muzzle Flashes */}
+      {muzzleFlashes.map(m => (
+        <mesh key={m.id} position={m.pos}>
+          <sphereGeometry args={[0.2]} />
+          <meshBasicMaterial color="#ffff00" transparent opacity={1 - (Date.now() - m.createdAt) / 100} />
+        </mesh>
+      ))}
+
+      {/* Target Lock UI */}
+      {lockedTarget && (
+        <mesh position={[lockedTarget.position.x, lockedTarget.position.y, lockedTarget.position.z]}>
+          <ringGeometry args={[2, 2.2, 32]} />
+          <meshBasicMaterial color="#ff0000" side={THREE.DoubleSide} transparent opacity={0.8} />
+          <Html center>
+            <div className="text-red-500 font-mono text-xs font-bold whitespace-nowrap bg-black/50 px-2 py-1 rounded border border-red-500/50">
+              LOCKED: {lockedTarget.name}
+              <br/>
+              HP: {lockedTarget.health}
+            </div>
+          </Html>
+        </mesh>
       )}
     </>
   );

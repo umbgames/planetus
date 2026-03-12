@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Sphere } from '@react-three/drei';
 import * as THREE from 'three';
+import { BaseManager } from './BaseManager';
 import { geographyManager } from '../services/geography';
 
 function Clouds({ radius }: { radius: number }) {
@@ -130,135 +131,7 @@ function Clouds({ radius }: { radius: number }) {
   );
 }
 
-function CityLOD({ radius }: { radius: number }) {
-  const meshRef = useRef<THREE.InstancedMesh>(null);
-  const roadsRef = useRef<THREE.InstancedMesh>(null);
-  const materialRef = useRef<THREE.MeshStandardMaterial>(null);
-  const roadMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
-  
-  useFrame((state) => {
-    const dist = state.camera.position.length() - radius;
-    // Fade in when altitude is less than 4
-    let opacity = 0;
-    if (dist < 4) {
-      opacity = 1 - (dist / 4);
-    }
-    opacity = Math.max(0, Math.min(1, opacity));
-    
-    if (materialRef.current) {
-      materialRef.current.opacity = opacity;
-      materialRef.current.transparent = opacity < 0.95;
-      materialRef.current.visible = opacity > 0;
-    }
-    if (roadMaterialRef.current) {
-      roadMaterialRef.current.opacity = opacity;
-      roadMaterialRef.current.transparent = opacity < 0.95;
-      roadMaterialRef.current.visible = opacity > 0;
-    }
-  });
 
-  useEffect(() => {
-    if (!meshRef.current || !roadsRef.current) return;
-    
-    const dummy = new THREE.Object3D();
-    const roadDummy = new THREE.Object3D();
-    let buildingIdx = 0;
-    let roadIdx = 0;
-    
-    // Generate 50 cities
-    for (let c = 0; c < 50; c++) {
-      let cx = 0, cy = 0, cz = 0;
-      let cityRegion = null;
-      for (let i = 0; i < 100; i++) {
-        const u = Math.random();
-        const v = Math.random();
-        const theta = 2 * Math.PI * u;
-        const phi = Math.acos(2 * v - 1);
-        cx = Math.sin(phi) * Math.cos(theta);
-        cy = Math.cos(phi);
-        cz = Math.sin(phi) * Math.sin(theta);
-        if (geographyManager.isLand(cx, cy, cz)) {
-          cityRegion = geographyManager.getRegionForPoint(cx, cy, cz);
-          break;
-        }
-      }
-      
-      const cityCenter = new THREE.Vector3(cx, cy, cz).normalize();
-      
-      // Generate buildings
-      const numBuildings = 400 + Math.random() * 400;
-      for (let b = 0; b < numBuildings; b++) {
-        if (buildingIdx >= 40000) break;
-        
-        const offset = new THREE.Vector3(
-          (Math.random() - 0.5) * 0.006,
-          (Math.random() - 0.5) * 0.006,
-          (Math.random() - 0.5) * 0.006
-        );
-        
-        const pos = cityCenter.clone().add(offset).normalize();
-        const region = geographyManager.getRegionForPoint(pos.x, pos.y, pos.z);
-        
-        // Ensure building stays on land and preferably in the same country
-        if (!region || (cityRegion && region.id !== cityRegion.id)) continue;
-        
-        pos.multiplyScalar(radius);
-        dummy.position.copy(pos);
-        dummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), pos.clone().normalize());
-        dummy.rotateY(Math.random() * Math.PI);
-        
-        const height = 0.5 + Math.random() * 3;
-        dummy.scale.set(1, height, 1); 
-        
-        // Move up by half height so it sits on surface
-        dummy.translateY((0.00015 * height) / 2);
-        
-        dummy.updateMatrix();
-        meshRef.current.setMatrixAt(buildingIdx++, dummy.matrix);
-      }
-      
-      // Generate roads
-      for (let r = 0; r < 120; r++) {
-        if (roadIdx >= 15000) break;
-        const offset = new THREE.Vector3(
-          (Math.random() - 0.5) * 0.006,
-          (Math.random() - 0.5) * 0.006,
-          (Math.random() - 0.5) * 0.006
-        );
-        const pos = cityCenter.clone().add(offset).normalize();
-        const region = geographyManager.getRegionForPoint(pos.x, pos.y, pos.z);
-        if (!region || (cityRegion && region.id !== cityRegion.id)) continue;
-        
-        pos.multiplyScalar(radius + 0.00005); 
-        roadDummy.position.copy(pos);
-        roadDummy.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), pos.clone().normalize());
-        roadDummy.rotateY(Math.random() * Math.PI);
-        roadDummy.scale.set(0.00015, 0.0001, 0.002 + Math.random() * 0.003);
-        roadDummy.updateMatrix();
-        roadsRef.current.setMatrixAt(roadIdx++, roadDummy.matrix);
-      }
-    }
-    
-    meshRef.current.count = buildingIdx;
-    meshRef.current.instanceMatrix.needsUpdate = true;
-    
-    roadsRef.current.count = roadIdx;
-    roadsRef.current.instanceMatrix.needsUpdate = true;
-  }, [radius]);
-  
-  return (
-    <group>
-      <instancedMesh ref={meshRef} args={[undefined, undefined, 40000]} frustumCulled={false} castShadow receiveShadow>
-        <boxGeometry args={[0.00015, 0.00015, 0.00015]} />
-        <meshStandardMaterial ref={materialRef} color="#e4e4e7" roughness={0.6} metalness={0.2} transparent />
-      </instancedMesh>
-      <instancedMesh ref={roadsRef} args={[undefined, undefined, 15000]} frustumCulled={false} receiveShadow>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial ref={roadMaterialRef} color="#27272a" roughness={0.9} transparent />
-      </instancedMesh>
-    </group>
-  );
-}
 
 interface PlanetProps {
   radius: number;
@@ -267,15 +140,18 @@ interface PlanetProps {
 export function Planet({ radius }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
+  const [displacementMap, setDisplacementMap] = useState<THREE.CanvasTexture | null>(null);
 
   useEffect(() => {
     // Initial texture generation
     geographyManager.initializeTopicRegions();
     setTexture(geographyManager.texture);
+    setDisplacementMap(geographyManager.displacementMap);
 
     // Listen for updates
-    geographyManager.onTextureUpdate = (newTexture) => {
+    geographyManager.onTextureUpdate = (newTexture, newDisplacementMap) => {
       setTexture(newTexture);
+      setDisplacementMap(newDisplacementMap);
     };
 
     return () => {
@@ -289,11 +165,15 @@ export function Planet({ radius }: PlanetProps) {
 
   return (
     <group>
-      <Sphere ref={planetRef} args={[radius, 64, 64]} castShadow receiveShadow>
+      <Sphere ref={planetRef} args={[radius, 512, 512]} castShadow receiveShadow>
         <meshStandardMaterial
           map={texture}
-          roughness={0.8}
-          metalness={0.1}
+          displacementMap={displacementMap}
+          displacementScale={0.8} // Emphasize terrain height
+          bumpMap={displacementMap}
+          bumpScale={0.2}
+          roughness={0.85}
+          metalness={0.05}
         />
         
         {/* Outer Atmosphere glow */}
@@ -311,7 +191,7 @@ export function Planet({ radius }: PlanetProps) {
       </Sphere>
       
       <Clouds radius={radius} />
-      <CityLOD radius={radius} />
+      <BaseManager planetRadius={radius} />
     </group>
   );
 }

@@ -4,15 +4,17 @@ import { OrbitControls, Stars, Environment } from '@react-three/drei';
 import * as THREE from 'three';
 import { Sun } from './components/Sun';
 import { Planet } from './components/Planet';
-import { CityManager } from './components/CityManager';
+import { BaseManager } from './components/BaseManager';
 import { Satellite } from './components/Satellite';
 import { CameraController } from './components/CameraController';
 import { Ship } from './components/Ship';
-import { Video } from './types';
-import { fetchTopVideoForHashtag } from './services/youtube';
-import { Play, Eye, ThumbsUp, Rocket, Loader2 } from 'lucide-react';
+import { ShipUI } from './components/ShipUI';
+import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { EffectComposer, Bloom } from '@react-three/postprocessing';
+import { gameManager, UserData, BaseData } from './services/gameManager';
+import { auth } from './firebase';
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { geographyManager } from './services/geography';
 
 function RotatingSystem({ children }: { children: React.ReactNode }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -40,42 +42,180 @@ function RotatingSystem({ children }: { children: React.ReactNode }) {
 
 const PLANET_RADIUS = 10;
 
-// Mock hashtags for satellites
-const MOCK_HASHTAGS = [
-  { text: '#Tech', count: 100 },
-  { text: '#Gaming', count: 80 },
-  { text: '#Music', count: 60 },
-  { text: '#News', count: 40 },
-  { text: '#Sports', count: 20 },
+// Mock players for satellites
+const MOCK_PLAYERS = [
+  { name: 'PlayerOne', bases: 12, info: 'Veteran explorer of the outer rim.' },
+  { name: 'SpaceNinja', bases: 8, info: 'Specializes in stealth outposts.' },
+  { name: 'AstroBob', bases: 5, info: 'Mining magnate and trader.' },
+  { name: 'StarLord', bases: 3, info: 'Just looking for a good time.' },
+  { name: 'NovaCorp', bases: 15, info: 'Corporate entity expanding its reach.' },
 ];
 
 export default function App() {
-  const [hoveredVideo, setHoveredVideo] = useState<Video | null>(null);
-  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
   const [trackedSatellite, setTrackedSatellite] = useState<any>(null);
-  const [satelliteVideo, setSatelliteVideo] = useState<Video | null>(null);
-  const [isLoadingSatellite, setIsLoadingSatellite] = useState(false);
-  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
   const [isShipMode, setIsShipMode] = useState(false);
   const [canSpawnShip, setCanSpawnShip] = useState(false);
   
-  // Planet Date System
-  const [currentDate, setCurrentDate] = useState(new Date().toISOString().split('T')[0]);
-  const planetName = `planet_${currentDate.replace(/-/g, '_')}`;
+  // Game State
+  const [userData, setUserData] = useState<UserData | null>(null);
+  const [bases, setBases] = useState<BaseData[]>([]);
+  const [nearbyBase, setNearbyBase] = useState<BaseData | null>(null);
+  const [currentZone, setCurrentZone] = useState<'high' | 'mid' | 'low' | null>(null);
+  const [shipPosition, setShipPosition] = useState<THREE.Vector3 | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [satelliteUsers, setSatelliteUsers] = useState<{ uid?: string; name: string; bases: number; info: string }[]>(MOCK_PLAYERS);
 
-  const handleSpawnShip = async () => {
-    setIsShipMode(true);
+  const prevTagsRef = useRef<Record<string, any>>({});
+
+  // Take top 10 players and assign random animation properties
+  const topSatellites = useMemo(() => {
+    const currentTags = satelliteUsers.sort((a, b) => b.bases - a.bases).slice(0, 10);
+    const newTagsRef: Record<string, any> = {};
+    
+    const result = currentTags.map((tag) => {
+      if (prevTagsRef.current[tag.name]) {
+        // Keep existing properties, just update bases
+        const existing = prevTagsRef.current[tag.name];
+        newTagsRef[tag.name] = { ...existing, bases: tag.bases, info: tag.info };
+        return newTagsRef[tag.name];
+      } else {
+        // Generate new properties
+        const newTag = {
+          ...tag,
+          speed: (Math.random() > 0.5 ? 1 : -1) * (0.15 + Math.random() * 0.2), // Slower, smoother speed
+          orbitRadius: PLANET_RADIUS * (1.2 + Math.random() * 0.8), // Varying distance from planet
+          initialAngle: Math.random() * Math.PI * 2,
+          tiltX: Math.random() * Math.PI, // Random orbital plane
+          tiltY: Math.random() * Math.PI,
+          tiltZ: Math.random() * Math.PI,
+        };
+        newTagsRef[tag.name] = newTag;
+        return newTag;
+      }
+    });
+    
+    prevTagsRef.current = newTagsRef;
+    return result;
+  }, [satelliteUsers]);
+
+  const showToast = (message: string) => {
+    setToastMessage(message);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  useEffect(() => {
+    gameManager.init();
+    
+    gameManager.onUserDataUpdate = (data) => setUserData(data);
+    gameManager.onBasesUpdate = (data) => setBases(data);
+    gameManager.onSatelliteUsersUpdate = (users) => {
+      // Combine with mock players for now to ensure there are always some satellites
+      setSatelliteUsers([...MOCK_PLAYERS, ...users]);
+    };
+    
+    return () => {
+      gameManager.onUserDataUpdate = null;
+      gameManager.onBasesUpdate = null;
+      gameManager.onSatelliteUsersUpdate = null;
+    };
+  }, []);
+
+  const handleLogin = async () => {
+    const provider = new GoogleAuthProvider();
     try {
-      if (document.documentElement.requestFullscreen) {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("Login failed", error);
+    }
+  };
+
+  const handleBuildBase = async () => {
+    if (!userData) {
+      handleLogin();
+      return;
+    }
+    if (shipPosition && currentZone) {
+      try {
+        await gameManager.createBase(shipPosition, currentZone);
+        showToast("Base constructed successfully!");
+      } catch (e: any) {
+        showToast(e.message);
+      }
+    }
+  };
+
+  const handleMine = async () => {
+    if (nearbyBase) {
+      try {
+        await gameManager.mineBase(nearbyBase.id);
+        showToast("Mining successful!");
+      } catch (e: any) {
+        showToast(e.message);
+      }
+    }
+  };
+
+  const handleUpgrade = async () => {
+    if (nearbyBase) {
+      try {
+        await gameManager.upgradeBase(nearbyBase.id);
+        showToast("Base upgraded!");
+      } catch (e: any) {
+        showToast(e.message);
+      }
+    }
+  };
+
+  const handleReload = async () => {
+    if (nearbyBase) {
+      try {
+        await gameManager.reloadAmmo(nearbyBase.id);
+        showToast("Ammo reloaded!");
+      } catch (e: any) {
+        showToast(e.message);
+      }
+    }
+  };
+
+  const handleAttack = async () => {
+    if (nearbyBase) {
+      try {
+        await gameManager.attackBase(nearbyBase.id, 10);
+        showToast("Attack initiated!");
+      } catch (e: any) {
+        showToast(e.message);
+      }
+    }
+  };
+
+  const handleLaunchSatellite = async () => {
+    try {
+      await gameManager.launchSatellite();
+      showToast("Satellite launched!");
+    } catch (e: any) {
+      showToast(e.message);
+    }
+  };
+
+  const handleSpawnShip = () => {
+    setIsShipMode(true);
+  };
+
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
         await document.documentElement.requestFullscreen();
-        setTimeout(() => {
-          if (screen.orientation && screen.orientation.lock) {
-            screen.orientation.lock('landscape').catch(e => console.warn("Orientation lock failed", e));
-          }
-        }, 100);
+        if (screen.orientation && (screen.orientation as any).lock) {
+          (screen.orientation as any).lock('landscape').catch((e: any) => console.warn("Orientation lock failed", e));
+        }
+      } else {
+        await document.exitFullscreen();
+        if (screen.orientation && screen.orientation.unlock) {
+          screen.orientation.unlock();
+        }
       }
     } catch (e) {
-      console.warn("Fullscreen failed", e);
+      console.warn("Fullscreen toggle failed", e);
     }
   };
 
@@ -93,34 +233,11 @@ export default function App() {
     }
   };
 
-  const handleHover = useCallback((video: Video | null, event: any) => {
-    setHoveredVideo(video);
-    if (video && event) {
-      setMousePos({ x: event.clientX, y: event.clientY });
-    } else {
-      setMousePos(null);
-    }
-  }, []);
-
-  const handleClick = useCallback((video: Video | null, event: any) => {
-    setSelectedVideo(video);
-  }, []);
-
-  const handleSatelliteClick = useCallback(async (tag: any) => {
+  const handleSatelliteClick = useCallback((tag: any) => {
     setTrackedSatellite(tag);
-    setSatelliteVideo(null);
-    setIsLoadingSatellite(true);
-    try {
-      const video = await fetchTopVideoForHashtag(tag.text, currentDate);
-      setSatelliteVideo(video);
-    } catch (error) {
-      console.error("Failed to fetch satellite video", error);
-    } finally {
-      setIsLoadingSatellite(false);
-    }
-  }, [currentDate]);
+  }, []);
 
-  // Track camera distance to show "Spawn Ship" button
+  // Track camera distance to show "Spawn Ship" button and handle game logic
   const CameraTracker = () => {
     const { camera } = useThree();
     useFrame(() => {
@@ -128,6 +245,37 @@ export default function App() {
         const dist = camera.position.length();
         const altitude = dist - PLANET_RADIUS;
         setCanSpawnShip(altitude < 4 && altitude > 0.5);
+      } else {
+        // In ship mode, check for nearby bases and zones
+        const dist = camera.position.length();
+        const altitude = dist - PLANET_RADIUS;
+        
+        if (altitude < 0.5) {
+          setShipPosition(camera.position.clone());
+          
+          // Check zone
+          const region = geographyManager.getRegionForPoint(camera.position.x, camera.position.y, camera.position.z);
+          if (region) {
+            setCurrentZone(region.resourceZone);
+          } else {
+            setCurrentZone(null);
+          }
+          
+          // Check nearby bases
+          let foundBase = null;
+          for (const base of bases) {
+            const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
+            if (camera.position.distanceTo(basePos) < 0.5) {
+              foundBase = base;
+              break;
+            }
+          }
+          setNearbyBase(foundBase);
+        } else {
+          setShipPosition(null);
+          setCurrentZone(null);
+          setNearbyBase(null);
+        }
       }
     });
     return null;
@@ -146,45 +294,145 @@ export default function App() {
 
         <RotatingSystem>
           <Planet radius={PLANET_RADIUS} />
-          <CityManager planetRadius={PLANET_RADIUS} onHover={handleHover} onClick={handleClick} date={currentDate} />
+          {/* BaseManager is now inside Planet */}
         </RotatingSystem>
         
-        <Satellite planetRadius={PLANET_RADIUS} hashtags={MOCK_HASHTAGS} onSatelliteClick={handleSatelliteClick} />
+        <Satellite satellites={topSatellites} onSatelliteClick={handleSatelliteClick} />
         
         {!isShipMode && (
           <CameraController trackedSatellite={trackedSatellite} onInteract={() => setTrackedSatellite(null)} />
         )}
 
         {isShipMode && (
-          <Ship planetRadius={PLANET_RADIUS} onExit={handleExitShip} />
+          <Ship planetRadius={PLANET_RADIUS} onExit={handleExitShip} bases={bases} userData={userData} satellites={topSatellites} />
         )}
 
         <Environment preset="city" />
-        
-        <EffectComposer disableNormalPass>
-          <Bloom luminanceThreshold={0.2} mipmapBlur intensity={1.5} />
-        </EffectComposer>
       </Canvas>
+
+      {/* Ship UI */}
+      {isShipMode && <ShipUI onExit={handleExitShip} userData={userData} />}
 
       {/* UI Overlay */}
       <div className="absolute top-0 left-0 w-full p-6 pointer-events-none flex justify-between items-start z-40">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-red-500 to-orange-400">
-            {planetName}
+          <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-cyan-400">
+            AstroColony
           </h1>
           <p className="text-xs font-semibold text-zinc-400 tracking-widest mt-1 mb-2">
-            YOUTUBE CITY GENERATOR
+            PLANETARY EXPLORATION & CONQUEST
           </p>
-          <div className="flex gap-2 pointer-events-auto">
-            <input 
-              type="date" 
-              value={currentDate} 
-              onChange={(e) => setCurrentDate(e.target.value)}
-              className="bg-zinc-900 border border-zinc-700 text-white text-sm rounded px-2 py-1"
-            />
-          </div>
+        </div>
+        
+        <div className="pointer-events-auto flex flex-col items-end gap-2">
+          {!userData ? (
+            <button 
+              onClick={handleLogin}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2"
+            >
+              <LogIn size={16} />
+              Login to Build
+            </button>
+          ) : (
+            <div className="bg-zinc-900/80 backdrop-blur border border-zinc-700 rounded-lg p-3 text-right">
+              <div className="text-sm font-bold text-white mb-1">{userData.displayName}</div>
+              <div className="flex gap-4 text-xs">
+                <div className="text-zinc-300">Common: <span className="text-white font-mono">{userData.commonResources}</span></div>
+                <div className="text-amber-400">Rare: <span className="text-white font-mono">{userData.rareResources}</span></div>
+              </div>
+              {!userData.hasSatellite && (
+                <button 
+                  onClick={handleLaunchSatellite}
+                  disabled={userData.commonResources < 500 || userData.rareResources < 100}
+                  className="mt-2 w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+                >
+                  <RadioTower size={12} />
+                  Launch Satellite (500C, 100R)
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Game Actions (Ship Mode) */}
+      <AnimatePresence>
+        {isShipMode && shipPosition && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="absolute bottom-10 left-1/2 transform -translate-x-1/2 z-40 pointer-events-auto flex gap-4"
+          >
+            {!nearbyBase && currentZone && (
+              <div className="flex flex-col items-center gap-2">
+                <div className="bg-black/60 backdrop-blur px-3 py-1 rounded text-xs text-white border border-white/10">
+                  Zone: <span className={currentZone === 'high' ? 'text-red-400' : currentZone === 'mid' ? 'text-amber-400' : 'text-blue-400'}>{currentZone.toUpperCase()}</span>
+                </div>
+                <button 
+                  onClick={handleBuildBase}
+                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-blue-500/50 flex items-center gap-2 transition-all"
+                >
+                  <Shield size={20} />
+                  Build Base
+                </button>
+              </div>
+            )}
+            
+            {nearbyBase && userData && nearbyBase.ownerId === userData.uid && (
+              <div className="flex gap-2">
+                <button 
+                  onClick={handleMine}
+                  className="bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-amber-500/50 flex items-center gap-2 transition-all"
+                >
+                  <Pickaxe size={20} />
+                  Mine
+                </button>
+                <button 
+                  onClick={handleUpgrade}
+                  disabled={userData.commonResources < nearbyBase.level * 50 || userData.rareResources < nearbyBase.level * 10}
+                  className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-emerald-500/50 flex items-center gap-2 transition-all"
+                >
+                  <ArrowUp size={20} />
+                  Upgrade (Lvl {nearbyBase.level + 1})
+                </button>
+                <button 
+                  onClick={handleReload}
+                  disabled={userData.commonResources < 50}
+                  className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-blue-500/50 flex items-center gap-2 transition-all"
+                >
+                  <Rocket size={20} />
+                  Reload (50C)
+                </button>
+              </div>
+            )}
+            
+            {nearbyBase && (!userData || nearbyBase.ownerId !== userData.uid) && (
+              <button 
+                onClick={handleAttack}
+                className="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-red-500/50 flex items-center gap-2 transition-all"
+              >
+                <Crosshair size={20} />
+                Attack Base (HP: {nearbyBase.health})
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="absolute top-24 left-1/2 transform -translate-x-1/2 z-50 bg-zinc-900/90 backdrop-blur border border-zinc-700 text-white px-4 py-2 rounded-lg shadow-lg pointer-events-auto"
+          >
+            {toastMessage}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Spawn Ship Button */}
       <AnimatePresence>
@@ -213,7 +461,7 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute bottom-6 left-6 bg-black/50 backdrop-blur p-4 rounded-xl border border-white/10 z-40 pointer-events-none"
+            className="absolute bottom-6 left-6 bg-black/50 backdrop-blur p-4 rounded-xl border border-white/10 z-40 pointer-events-auto"
           >
             <h3 className="font-bold text-red-400 mb-2">Ship Controls</h3>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-zinc-300">
@@ -223,69 +471,15 @@ export default function App() {
               <div><span className="font-mono text-white">Mouse</span> Pitch/Yaw</div>
               <div><span className="font-mono text-white">Q/E</span> Roll</div>
               <div><span className="font-mono text-white">Shift</span> Boost</div>
-              <div className="col-span-2 mt-2 text-red-400"><span className="font-mono text-white">ESC</span> Exit Ship</div>
+              <div className="col-span-2 mt-2 text-red-400"><span className="font-mono text-white">O</span> Exit Ship</div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Hover Info */}
-      {hoveredVideo && !selectedVideo && mousePos && (
-        <div 
-          className="absolute z-50 pointer-events-none bg-zinc-900/90 backdrop-blur-md border border-zinc-700 p-3 rounded-lg shadow-xl max-w-xs"
-          style={{ left: mousePos.x + 15, top: mousePos.y + 15 }}
-        >
-          <img src={hoveredVideo.thumbnail_url} alt="thumbnail" className="w-full h-24 object-cover rounded mb-2" />
-          <p className="font-bold text-sm line-clamp-2 leading-tight mb-1">{hoveredVideo.title}</p>
-          <p className="text-xs text-zinc-400 mb-2">{hoveredVideo.channel_name}</p>
-          <div className="flex gap-3 text-xs text-zinc-300">
-            <span className="flex items-center gap-1"><Eye size={12} /> {hoveredVideo.view_count.toLocaleString()}</span>
-            <span className="flex items-center gap-1"><ThumbsUp size={12} /> {hoveredVideo.like_count.toLocaleString()}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Selected Video Modal */}
-      <AnimatePresence>
-        {selectedVideo && (
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="absolute inset-0 z-50 flex items-center justify-center p-4 pointer-events-auto bg-black/60 backdrop-blur-sm"
-            onClick={() => setSelectedVideo(null)}
-          >
-            <div 
-              className="bg-zinc-900 border border-zinc-700 rounded-2xl overflow-hidden shadow-2xl max-w-2xl w-full"
-              onClick={e => e.stopPropagation()}
+            <button 
+              onClick={toggleFullscreen}
+              className="mt-4 w-full bg-zinc-800 hover:bg-zinc-700 text-white text-xs py-2 rounded border border-zinc-600 transition-colors flex items-center justify-center gap-2"
             >
-              <div className="relative">
-                <img src={selectedVideo.thumbnail_url} alt="thumbnail" className="w-full aspect-video object-cover" />
-                <div className="absolute inset-0 flex items-center justify-center bg-black/20 group hover:bg-black/40 transition-colors cursor-pointer">
-                  <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center text-white shadow-lg transform group-hover:scale-110 transition-transform">
-                    <Play size={32} className="ml-1" />
-                  </div>
-                </div>
-              </div>
-              
-              <div className="p-6">
-                <h2 className="text-xl font-bold mb-2">{selectedVideo.title}</h2>
-                <p className="text-zinc-400 mb-4">{selectedVideo.channel_name}</p>
-                
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {selectedVideo.hashtags.map((tag, i) => (
-                    <span key={i} className="text-xs font-medium text-blue-400 bg-blue-400/10 px-2 py-1 rounded-full">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-                
-                <div className="flex items-center gap-6 text-sm text-zinc-300 border-t border-zinc-800 pt-4">
-                  <span className="flex items-center gap-2"><Eye size={16} /> {selectedVideo.view_count.toLocaleString()} views</span>
-                  <span className="flex items-center gap-2"><ThumbsUp size={16} /> {selectedVideo.like_count.toLocaleString()} likes</span>
-                </div>
-              </div>
-            </div>
+              <Maximize size={14} />
+              Toggle Fullscreen
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -300,35 +494,21 @@ export default function App() {
             className="absolute top-24 right-6 w-80 bg-zinc-900/90 backdrop-blur-xl border border-zinc-700 rounded-2xl p-5 shadow-2xl z-40 pointer-events-auto"
           >
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-red-400 uppercase tracking-wider">Trending in {trackedSatellite.text}</span>
+              <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">Satellite Owner</span>
               <button onClick={() => setTrackedSatellite(null)} className="text-zinc-500 hover:text-white">&times;</button>
             </div>
             
-            {isLoadingSatellite ? (
-              <div className="flex flex-col items-center justify-center h-48 text-zinc-400">
-                <Loader2 className="animate-spin mb-2" size={24} />
-                <span className="text-xs">Fetching top video...</span>
+            <div className="mb-4">
+              <h2 className="text-xl font-bold text-white mb-1">{trackedSatellite.name}</h2>
+              <p className="text-sm text-zinc-300">{trackedSatellite.info}</p>
+            </div>
+            
+            <div className="bg-black/40 rounded-lg p-3 border border-white/5">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-zinc-400 uppercase tracking-wider">Total Bases</span>
+                <span className="font-mono text-lg font-bold text-blue-400">{trackedSatellite.bases}</span>
               </div>
-            ) : satelliteVideo ? (
-              <>
-                <div className="relative rounded overflow-hidden mb-3 group cursor-pointer" onClick={() => setSelectedVideo(satelliteVideo)}>
-                  <img src={satelliteVideo.thumbnail_url} alt="thumbnail" className="w-full h-32 object-cover" />
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Play size={24} className="text-white" />
-                  </div>
-                </div>
-                
-                <p className="font-bold text-sm leading-tight mb-1">{satelliteVideo.title}</p>
-                <p className="text-xs text-zinc-400 mb-3">{satelliteVideo.channel_name}</p>
-                
-                <div className="flex items-center gap-4 text-xs text-zinc-400">
-                  <span className="flex items-center gap-1.5"><Eye size={14} /> {satelliteVideo.view_count.toLocaleString()}</span>
-                  <span className="flex items-center gap-1.5"><ThumbsUp size={14} /> {satelliteVideo.like_count.toLocaleString()}</span>
-                </div>
-              </>
-            ) : (
-              <div className="text-xs text-red-400">Failed to load video</div>
-            )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

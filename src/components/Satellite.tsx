@@ -5,7 +5,7 @@ import * as THREE from 'three';
 
 interface SatelliteProps {
   planetRadius: number;
-  hashtags: { text: string; count: number }[];
+  players: { name: string; bases: number; info: string }[];
   onSatelliteClick?: (tag: any) => void;
 }
 
@@ -63,9 +63,9 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
 
   const trailColor = useMemo(() => {
     const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'];
-    const hash = tag.text.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0);
+    const hash = tag.name.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0);
     return colors[hash % colors.length];
-  }, [tag.text]);
+  }, [tag.name]);
 
   const baseColor = useMemo(() => new THREE.Color(trailColor), [trailColor]);
 
@@ -91,7 +91,7 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
     }
   });
 
-  const scale = Math.max(0.4, Math.min(1.2, tag.count / 10));
+  const scale = Math.max(0.4, Math.min(1.2, tag.bases / 10));
   
   // Orient the satellite based on its direction of travel
   const satRotationY = tag.speed > 0 ? Math.PI : 0;
@@ -157,7 +157,7 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
               </mesh>
             </group>
 
-            {/* Hashtag Text */}
+            {/* Player Name Text */}
             <Billboard position={[0, 0.6, 0]}>
               <Text
                 fontSize={0.8 * scale}
@@ -167,7 +167,7 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
                 outlineWidth={0.05}
                 outlineColor="#000000"
               >
-                {tag.text}
+                {tag.name}
               </Text>
             </Billboard>
           </group>
@@ -177,45 +177,12 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
   );
 }
 
-export function Satellite({ planetRadius, hashtags, onSatelliteClick }: SatelliteProps) {
-  const prevTagsRef = useRef<Record<string, any>>({});
-
-  // Take top 10 hashtags and assign random animation properties
-  const topHashtags = useMemo(() => {
-    const currentTags = hashtags.sort((a, b) => b.count - a.count).slice(0, 10);
-    const newTagsRef: Record<string, any> = {};
-    
-    const result = currentTags.map((tag) => {
-      if (prevTagsRef.current[tag.text]) {
-        // Keep existing properties, just update count
-        const existing = prevTagsRef.current[tag.text];
-        newTagsRef[tag.text] = { ...existing, count: tag.count };
-        return newTagsRef[tag.text];
-      } else {
-        // Generate new properties
-        const newTag = {
-          ...tag,
-          speed: (Math.random() > 0.5 ? 1 : -1) * (0.15 + Math.random() * 0.2), // Slower, smoother speed
-          orbitRadius: planetRadius * (1.2 + Math.random() * 0.8), // Varying distance from planet
-          initialAngle: Math.random() * Math.PI * 2,
-          tiltX: Math.random() * Math.PI, // Random orbital plane
-          tiltY: Math.random() * Math.PI,
-          tiltZ: Math.random() * Math.PI,
-        };
-        newTagsRef[tag.text] = newTag;
-        return newTag;
-      }
-    });
-    
-    prevTagsRef.current = newTagsRef;
-    return result;
-  }, [hashtags, planetRadius]);
-
+export function Satellite({ satellites, onSatelliteClick }: { satellites: any[], onSatelliteClick?: (tag: any) => void }) {
   return (
     <group>
-      {topHashtags.map((tag) => (
+      {satellites.map((tag) => (
         <SingleSatellite 
-          key={tag.text} 
+          key={tag.name} 
           tag={tag} 
           onClick={() => onSatelliteClick?.(tag)} 
         />

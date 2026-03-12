@@ -1,0 +1,114 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: userId
+    // Fields:
+    //   - uid: string (required) - The user's unique ID.
+    //   - displayName: string (required) - The user's display name.
+    //   - commonResources: number (required) - Amount of common resources.
+    //   - rareResources: number (required) - Amount of rare resources.
+    //   - hasSatellite: boolean (required) - Whether the user has launched a satellite.
+    //   - createdAt: string (required) - When the account was created.
+    //
+    // Collection: bases
+    // Document ID: baseId
+    // Fields:
+    //   - id: string (required) - The base's unique ID.
+    //   - ownerId: string (required) - The ID of the user who owns this base. Can be 'npc' for initial bases.
+    //   - position: map (required) - The position of the base.
+    //     - x: number
+    //     - y: number
+    //     - z: number
+    //   - zone: string (required) - The resource zone the base is in.
+    //   - level: number (required) - The level of the base.
+    //   - health: number (required) - The health of the base.
+    //   - lastMinedAt: string (required) - When the base last generated resources.
+    //   - createdAt: string (required) - When the base was built.
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.ownerId;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasAll(fields) && request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string;
+    }
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'displayName', 'commonResources', 'rareResources', 'hasSatellite', 'machineGunAmmo', 'missileAmmo', 'createdAt']) &&
+             data.uid is string && data.uid == request.auth.uid &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 50 &&
+             data.commonResources is number && data.commonResources >= 0 &&
+             data.rareResources is number && data.rareResources >= 0 &&
+             data.hasSatellite is bool &&
+             data.machineGunAmmo is number && data.machineGunAmmo >= 0 &&
+             data.missileAmmo is number && data.missileAmmo >= 0 &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidBase(data) {
+      return data.id is string &&
+             data.ownerId is string &&
+             data.zone in ['high', 'mid', 'low'] &&
+             data.level is number &&
+             data.health is number;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      // Anyone can read users (for satellite leaderboard).
+      allow read: if true;
+      // Users can create their own profile.
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.commonResources == 0 && request.resource.data.rareResources == 0 && request.resource.data.hasSatellite == false && request.resource.data.machineGunAmmo == 500 && request.resource.data.missileAmmo == 20;
+      // Users can update their own profile (mining, spending resources, launching satellite).
+      // Or other users can destroy their satellite.
+      allow update: if isAuthenticated() && (
+        (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.uid == resource.data.uid) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasSatellite']) && request.resource.data.hasSatellite == false)
+      );
+    }
+
+    match /bases/{baseId} {
+      // Anyone can read bases to render them on the planet.
+      allow read: if true;
+      // Users can create a base if they own it, or create NPC bases.
+      allow create: if isAuthenticated() && isValidBase(request.resource.data) && (request.resource.data.ownerId == request.auth.uid || request.resource.data.ownerId == 'npc') && request.resource.data.level == 1 && request.resource.data.health == 100;
+      // Users can update their own bases (mining, upgrading, repairing).
+      // Other users can update bases to attack them (reduce health, change owner if health is 0).
+      allow update: if isAuthenticated() && isValidBase(request.resource.data) && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.id == resource.data.id && request.resource.data.position == resource.data.position && request.resource.data.zone == resource.data.zone && (
+        (isDocOwner() && request.resource.data.ownerId == resource.data.ownerId) || // Owner upgrading/mining
+        (!isDocOwner() && request.resource.data.health < resource.data.health && request.resource.data.ownerId == resource.data.ownerId) || // Attacker damaging
+        (!isDocOwner() && request.resource.data.health == 100 && request.resource.data.ownerId == request.auth.uid && resource.data.health <= 20) // Attacker taking over
+      );
+    }
+  }
+}
