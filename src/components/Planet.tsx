@@ -143,53 +143,34 @@ export function Planet({ radius }: PlanetProps) {
   const [displacementMap, setDisplacementMap] = useState<THREE.CanvasTexture | null>(null);
 
   useEffect(() => {
-    // Initial texture generation
-    geographyManager.initializeTopicRegions();
-    setTexture(geographyManager.texture);
-    setDisplacementMap(geographyManager.displacementMap);
-
-    // Listen for updates
+    // 1️⃣ Assign callback first
     geographyManager.onTextureUpdate = (newTexture, newDisplacementMap) => {
       setTexture(newTexture);
       setDisplacementMap(newDisplacementMap);
     };
+
+    // 2️⃣ Generate regions & texture AFTER callback is set
+    geographyManager.initializeTopicRegions();
 
     return () => {
       geographyManager.onTextureUpdate = null;
     };
   }, []);
 
-  useFrame((state) => {
-    // Rotation is now handled by RotatingSystem in App.tsx
-  });
-
   return (
     <group>
       <Sphere ref={planetRef} args={[radius, 512, 512]} castShadow receiveShadow>
         <meshStandardMaterial
-          map={texture}
-          displacementMap={displacementMap}
-          displacementScale={0.8} // Emphasize terrain height
-          bumpMap={displacementMap}
+          map={texture ?? undefined}
+          displacementMap={displacementMap ?? undefined}
+          displacementScale={0.8}
+          bumpMap={displacementMap ?? undefined}
           bumpScale={0.2}
           roughness={0.85}
           metalness={0.05}
         />
-        
-        {/* Outer Atmosphere glow */}
-        <mesh>
-          <sphereGeometry args={[radius * 1.15, 32, 32]} />
-          <meshBasicMaterial
-            color="#4488ff"
-            transparent
-            opacity={0.05}
-            side={THREE.BackSide}
-            blending={THREE.AdditiveBlending}
-            depthWrite={false}
-          />
-        </mesh>
       </Sphere>
-      
+
       <Clouds radius={radius} />
       <BaseManager planetRadius={radius} />
     </group>
