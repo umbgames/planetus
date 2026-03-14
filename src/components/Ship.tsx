@@ -15,7 +15,8 @@ interface ShipProps {
 }
 
 export function Ship({ planetRadius, onExit, bases = [], userData = null, satellites = [] }: ShipProps) {
-  const { camera, gl } = useThree();
+  // 1️⃣ Updated useThree to access the scene
+  const { camera, gl, scene } = useThree();
   const shipRef = useRef<THREE.Group>(null);
   const [keys, setKeys] = useState<Record<string, boolean>>({});
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
@@ -32,6 +33,10 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
 
   const cameraRigRef = useRef<THREE.Group>(null);
   const shipModelRef = useRef<THREE.Group>(null);
+
+  // 2️⃣ Added atmosphere color refs
+  const spaceColor = useRef(new THREE.Color('#000000'));
+  const skyColor = useRef(new THREE.Color('#cda077'));
 
   // Ship state
   const velocity = useRef(new THREE.Vector3());
@@ -182,6 +187,46 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
 
   useFrame((state, delta) => {
     if (!isLocked && !isLaunching && !isMobile) return;
+
+    // 3️⃣ Inserted Dynamic Atmosphere
+    // ===== Dynamic Atmosphere System =====
+    const distForAtmosphere = position.current.length();
+    const R = planetRadius;
+    const altitude = distForAtmosphere - R;
+
+    let tiltFactor = 0;
+
+    if (altitude < 4) {
+      tiltFactor = 1 - altitude / 4;
+    }
+
+    tiltFactor = THREE.MathUtils.clamp(tiltFactor, 0, 1);
+    tiltFactor = tiltFactor * tiltFactor * (3 - 2 * tiltFactor); // smoothstep
+
+    // Dynamic sky
+    if (!scene.background) {
+      scene.background = new THREE.Color('#000000');
+    }
+
+    (scene.background as THREE.Color)
+      .copy(spaceColor.current)
+      .lerp(skyColor.current, tiltFactor);
+
+    // Dynamic fog
+    if (!scene.fog) {
+      scene.fog = new THREE.Fog('#cda077', 100, 200);
+    }
+
+    const fog = scene.fog as THREE.Fog;
+
+    fog.color.copy(skyColor.current);
+
+    const fogNear = THREE.MathUtils.lerp(100, 0.5, Math.pow(tiltFactor, 4));
+    const fogFar = THREE.MathUtils.lerp(200, 4.0, Math.pow(tiltFactor, 4));
+
+    fog.near = fogNear;
+    fog.far = fogFar;
+    // =====================================
 
     if (isLaunching) {
       launchProgress.current += delta;
@@ -339,8 +384,8 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     setProjectiles(prev => {
       const remaining: typeof prev = [];
       prev.forEach(p => {
-        // Significantly faster speeds for lasers
-        const speed = p.type === 'mg' ? 120 : 50; 
+        // 6️⃣ Slowed projectiles to match new ship speed
+        const speed = p.type === 'mg' ? 40 : 25; 
         
         if (p.type === 'missile' && p.target) {
           const targetPos = new THREE.Vector3(p.target.position.x, p.target.position.y, p.target.position.z);
@@ -404,9 +449,10 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     setExplosions(prev => prev.filter(e => now - e.createdAt < 500));
     setMuzzleFlashes(prev => prev.filter(m => now - m.createdAt < 100));
 
-    const speed = (keys['ShiftLeft'] || isBoosting) ? 8 : 1.5; 
-    const accel = (keys['ShiftLeft'] || isBoosting) ? 15 * delta : 5 * delta;
-    const friction = 0.9;
+    // 4️⃣ Reduced ship speed & acceleration for planetary scale
+    const speed = (keys['ShiftLeft'] || isBoosting) ? 2.5 : 0.6;
+    const accel = (keys['ShiftLeft'] || isBoosting) ? 2.5 * delta : 0.8 * delta;
+    const friction = 0.96;
 
     if (cameraRef.current) {
       const targetFov = (keys['ShiftLeft'] || isBoosting) ? 100 : 60;
@@ -419,8 +465,9 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
 
     const input = new THREE.Vector3();
     if (!isLaunching) {
+      // 5️⃣ Reduced reverse speed
       if (keys['KeyW'] || mobileKeys.w) input.z -= 1;
-      if (keys['KeyS'] || mobileKeys.s) input.z += 1;
+      if (keys['KeyS'] || mobileKeys.s) input.z += 0.35;
       if (keys['KeyA'] || mobileKeys.a) input.x -= 1;
       if (keys['KeyD'] || mobileKeys.d) input.x += 1;
       
