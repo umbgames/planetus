@@ -9,12 +9,16 @@ import { Satellite } from './components/Satellite';
 import { CameraController } from './components/CameraController';
 import { Ship } from './components/Ship';
 import { ShipUI } from './components/ShipUI';
-import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp } from 'lucide-react';
+import { MarketUI } from './components/MarketUI';
+import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp, ArrowRightLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { gameManager, UserData, BaseData } from './services/gameManager';
 import { auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { geographyManager } from './services/geography';
+import { useShipStore } from './services/shipStore';
+
+export const planetRotationRef = { current: 0 };
 
 function RotatingSystem({ children }: { children: React.ReactNode }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -35,6 +39,7 @@ function RotatingSystem({ children }: { children: React.ReactNode }) {
       
       const rotationSpeed = THREE.MathUtils.lerp(0.0005, 0, tiltFactor);
       groupRef.current.rotation.y += rotationSpeed;
+      planetRotationRef.current = groupRef.current.rotation.y;
     }
   });
   return <group ref={groupRef}>{children}</group>;
@@ -55,6 +60,7 @@ export default function App() {
   const [trackedSatellite, setTrackedSatellite] = useState<any>(null);
   const [isShipMode, setIsShipMode] = useState(false);
   const [canSpawnShip, setCanSpawnShip] = useState(false);
+  const [showMarket, setShowMarket] = useState(false);
   
   // Game State
   const [userData, setUserData] = useState<UserData | null>(null);
@@ -64,6 +70,20 @@ export default function App() {
   const [shipPosition, setShipPosition] = useState<THREE.Vector3 | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [satelliteUsers, setSatelliteUsers] = useState<{ uid?: string; name: string; bases: number; info: string }[]>(MOCK_PLAYERS);
+  const [isMobile, setIsMobile] = useState(false);
+  const [screenShake, setScreenShake] = useState(false);
+  const [hitEffect, setHitEffect] = useState(false);
+  const { lockedTarget } = useShipStore();
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      setIsMobile(window.innerWidth <= 768 || isMobileUserAgent || window.matchMedia("(pointer: coarse)").matches || 'ontouchstart' in window);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const prevTagsRef = useRef<Record<string, any>>({});
 
@@ -120,6 +140,41 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (isShipMode && isMobile) {
+      // Enter full screen
+      const el = document.documentElement;
+      if (el.requestFullscreen) {
+        el.requestFullscreen().catch(err => console.log("Error attempting to enable full-screen mode:", err.message));
+      }
+      
+      // Try to lock orientation to landscape
+      try {
+        const orientation = screen.orientation as any;
+        if (orientation && orientation.lock) {
+          orientation.lock('landscape').catch((err: any) => console.log("Error attempting to lock orientation:", err.message));
+        }
+      } catch (e) {
+        console.log("Screen orientation API not supported");
+      }
+    } else if (!isShipMode && isMobile) {
+      // Exit full screen
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(err => console.log("Error attempting to exit full-screen mode:", err.message));
+      }
+      
+      // Unlock orientation
+      try {
+        const orientation = screen.orientation as any;
+        if (orientation && orientation.unlock) {
+          orientation.unlock();
+        }
+      } catch (e) {
+        console.log("Screen orientation API not supported");
+      }
+    }
+  }, [isShipMode, isMobile]);
+
   const handleLogin = async () => {
     const provider = new GoogleAuthProvider();
     try {
@@ -155,6 +210,28 @@ export default function App() {
     }
   };
 
+  const handleBuyMiner = async () => {
+    if (nearbyBase) {
+      try {
+        await gameManager.buyMiner(nearbyBase.id);
+        showToast("Resource Miner purchased!");
+      } catch (e: any) {
+        showToast(e.message);
+      }
+    }
+  };
+
+  const handleClaimMinerResources = async () => {
+    if (nearbyBase) {
+      try {
+        const result = await gameManager.claimMinerResources(nearbyBase.id);
+        showToast(`Claimed ${result.common} Common, ${result.rare} Aetherium!`);
+      } catch (e: any) {
+        showToast(e.message);
+      }
+    }
+  };
+
   const handleUpgrade = async () => {
     if (nearbyBase) {
       try {
@@ -178,10 +255,28 @@ export default function App() {
   };
 
   const handleAttack = async () => {
-    if (nearbyBase) {
+    const targetBase = lockedTarget?.type === 'base' ? lockedTarget : nearbyBase;
+    if (targetBase && shipPosition) {
+      const targetPos = new THREE.Vector3(targetBase.position.x, targetBase.position.y, targetBase.position.z);
+      if (shipPosition.distanceTo(targetPos) > 50) {
+        showToast("Target out of range!");
+        return;
+      }
+      
       try {
-        await gameManager.attackBase(nearbyBase.id, 10);
-        showToast("Attack initiated!");
+        await gameManager.attackBase(targetBase.id, 10);
+        setScreenShake(true);
+        setHitEffect(true);
+        setTimeout(() => {
+          setScreenShake(false);
+          setHitEffect(false);
+        }, 200);
+        
+        if (targetBase.health <= 10) {
+          showToast("Base Captured!");
+        } else {
+          showToast("Hit confirmed!");
+        }
       } catch (e: any) {
         showToast(e.message);
       }
@@ -241,20 +336,21 @@ export default function App() {
   const CameraTracker = () => {
     const { camera } = useThree();
     useFrame(() => {
+      const worldPos = new THREE.Vector3();
+      camera.getWorldPosition(worldPos);
+      const dist = worldPos.length();
+      const altitude = dist - PLANET_RADIUS;
+
       if (!isShipMode) {
-        const dist = camera.position.length();
-        const altitude = dist - PLANET_RADIUS;
         setCanSpawnShip(altitude < 4 && altitude > 0.5);
       } else {
         // In ship mode, check for nearby bases and zones
-        const dist = camera.position.length();
-        const altitude = dist - PLANET_RADIUS;
-        
         if (altitude < 0.5) {
-          setShipPosition(camera.position.clone());
+          const localPos = worldPos.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -planetRotationRef.current);
+          setShipPosition(localPos.clone());
           
           // Check zone
-          const region = geographyManager.getRegionForPoint(camera.position.x, camera.position.y, camera.position.z);
+          const region = geographyManager.getRegionForPoint(localPos.x, localPos.y, localPos.z);
           if (region) {
             setCurrentZone(region.resourceZone);
           } else {
@@ -265,7 +361,7 @@ export default function App() {
           let foundBase = null;
           for (const base of bases) {
             const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
-            if (camera.position.distanceTo(basePos) < 0.5) {
+            if (localPos.distanceTo(basePos) < 0.5) {
               foundBase = base;
               break;
             }
@@ -282,18 +378,35 @@ export default function App() {
   };
 
   return (
-    <div className="w-full h-screen bg-black overflow-hidden relative font-sans text-white">
+    <motion.div 
+      className="w-full h-screen bg-black overflow-hidden relative font-sans text-white"
+      animate={screenShake ? { x: [-5, 5, -5, 5, 0], y: [-5, 5, -5, 5, 0] } : { x: 0, y: 0 }}
+      transition={{ duration: 0.2 }}
+    >
+      {/* Hit Flash Overlay */}
+      <AnimatePresence>
+        {hitEffect && (
+          <motion.div
+            initial={{ opacity: 0.8 }}
+            animate={{ opacity: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="absolute inset-0 bg-red-500 pointer-events-none z-50 mix-blend-overlay"
+          />
+        )}
+      </AnimatePresence>
+
       {/* 3D Canvas */}
-      <Canvas shadows camera={{ position: [0, 0, 25], fov: 45, near: 0.0001, far: 1000 }} dpr={[1, 2]} performance={{ min: 0.5 }}>
+      <Canvas shadows={!isMobile} camera={{ position: [0, 0, 25], fov: 45, near: 0.0001, far: 1000 }} dpr={isMobile ? [1, 1.5] : [1, 2]} performance={{ min: 0.5 }}>
         <ambientLight intensity={0.2} />
         <Sun radius={3} distance={40} speed={0.05} />
         
-        <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />
+        <Stars radius={100} depth={50} count={isMobile ? 1000 : 3000} factor={4} saturation={0} fade speed={1} />
         
-        {!isShipMode && <CameraTracker />}
+        <CameraTracker />
 
         <RotatingSystem>
-          <Planet radius={PLANET_RADIUS} />
+          <Planet radius={PLANET_RADIUS} isMobile={isMobile} />
           {/* BaseManager is now inside Planet */}
         </RotatingSystem>
         
@@ -317,10 +430,10 @@ export default function App() {
       <div className="absolute top-0 left-0 w-full p-6 pointer-events-none flex justify-between items-start z-40">
         <div>
           <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-cyan-400">
-            AstroColony
+            PLANET:US
           </h1>
           <p className="text-xs font-semibold text-zinc-400 tracking-widest mt-1 mb-2">
-            PLANETARY EXPLORATION & CONQUEST
+            EXPLORE, BUILD,TAKE..
           </p>
         </div>
         
@@ -338,7 +451,7 @@ export default function App() {
               <div className="text-sm font-bold text-white mb-1">{userData.displayName}</div>
               <div className="flex gap-4 text-xs">
                 <div className="text-zinc-300">Common: <span className="text-white font-mono">{userData.commonResources}</span></div>
-                <div className="text-amber-400">Rare: <span className="text-white font-mono">{userData.rareResources}</span></div>
+                <div className="text-fuchsia-400">Aetherium: <span className="text-white font-mono">{userData.rareResources}</span></div>
               </div>
               {!userData.hasSatellite && (
                 <button 
@@ -347,13 +460,22 @@ export default function App() {
                   className="mt-2 w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
                 >
                   <RadioTower size={12} />
-                  Launch Satellite (500C, 100R)
+                  Launch Satellite (500C, 100A)
                 </button>
               )}
+              <button 
+                onClick={() => setShowMarket(true)}
+                className="mt-2 w-full bg-cyan-600 hover:bg-cyan-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+              >
+                <ArrowRightLeft size={12} />
+                Galactic Market
+              </button>
             </div>
           )}
         </div>
       </div>
+
+      {showMarket && <MarketUI onClose={() => setShowMarket(false)} userData={userData} />}
 
       {/* Game Actions (Ship Mode) */}
       <AnimatePresence>
@@ -371,51 +493,107 @@ export default function App() {
                 </div>
                 <button 
                   onClick={handleBuildBase}
-                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-blue-500/50 flex items-center gap-2 transition-all"
+                  disabled={userData ? (userData.commonResources < 100 || userData.rareResources < 10) : false}
+                  className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-blue-500/50 flex flex-col items-center gap-1 transition-all"
                 >
-                  <Shield size={20} />
-                  Build Base
+                  <div className="flex items-center gap-2">
+                    <Shield size={20} />
+                    <span>Build Base</span>
+                  </div>
+                  <div className="text-[10px] font-mono opacity-80">100C / 10A</div>
                 </button>
               </div>
             )}
             
             {nearbyBase && userData && nearbyBase.ownerId === userData.uid && (
-              <div className="flex gap-2">
-                <button 
-                  onClick={handleMine}
-                  className="bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-amber-500/50 flex items-center gap-2 transition-all"
-                >
-                  <Pickaxe size={20} />
-                  Mine
-                </button>
-                <button 
-                  onClick={handleUpgrade}
-                  disabled={userData.commonResources < nearbyBase.level * 50 || userData.rareResources < nearbyBase.level * 10}
-                  className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-emerald-500/50 flex items-center gap-2 transition-all"
-                >
-                  <ArrowUp size={20} />
-                  Upgrade (Lvl {nearbyBase.level + 1})
-                </button>
-                <button 
-                  onClick={handleReload}
-                  disabled={userData.commonResources < 50}
-                  className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-blue-500/50 flex items-center gap-2 transition-all"
-                >
-                  <Rocket size={20} />
-                  Reload (50C)
-                </button>
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <button 
+                    onClick={handleMine}
+                    className="bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-amber-500/50 flex items-center gap-2 transition-all"
+                  >
+                    <Pickaxe size={20} />
+                    Mine
+                  </button>
+                  <button 
+                    onClick={handleUpgrade}
+                    disabled={userData.commonResources < nearbyBase.level * 50 || userData.rareResources < nearbyBase.level * 10}
+                    className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-emerald-500/50 flex items-center gap-2 transition-all"
+                  >
+                    <ArrowUp size={20} />
+                    Upgrade (Lvl {nearbyBase.level + 1})
+                  </button>
+                  <button 
+                    onClick={handleReload}
+                    disabled={userData.commonResources < 50}
+                    className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-blue-500/50 flex items-center gap-2 transition-all"
+                  >
+                    <Rocket size={20} />
+                    Reload (50C)
+                  </button>
+                </div>
+                <div className="flex gap-2 justify-center">
+                  {!nearbyBase.hasMiner ? (
+                    <button 
+                      onClick={handleBuyMiner}
+                      disabled={userData.commonResources < 200 || userData.rareResources < 50}
+                      className="bg-purple-600 hover:bg-purple-500 disabled:bg-zinc-700 text-white font-bold py-2 px-6 rounded-full shadow-lg shadow-purple-500/50 flex items-center gap-2 transition-all text-sm"
+                    >
+                      <Pickaxe size={16} />
+                      Buy Miner (200C / 50A)
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={handleClaimMinerResources}
+                      className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-6 rounded-full shadow-lg shadow-cyan-500/50 flex items-center gap-2 transition-all text-sm"
+                    >
+                      <ArrowUp size={16} />
+                      Claim Mined Resources
+                    </button>
+                  )}
+                </div>
               </div>
             )}
             
-            {nearbyBase && (!userData || nearbyBase.ownerId !== userData.uid) && (
-              <button 
-                onClick={handleAttack}
-                className="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-red-500/50 flex items-center gap-2 transition-all"
-              >
-                <Crosshair size={20} />
-                Attack Base (HP: {nearbyBase.health})
-              </button>
-            )}
+            {(() => {
+              const targetBase = lockedTarget?.type === 'base' ? lockedTarget : nearbyBase;
+              let inRange = false;
+              if (targetBase && shipPosition) {
+                const targetPos = new THREE.Vector3(targetBase.position.x, targetBase.position.y, targetBase.position.z);
+                inRange = shipPosition.distanceTo(targetPos) < 50;
+              }
+              
+              return targetBase && (!userData || targetBase.ownerId !== userData.uid) ? (
+                <div className="flex flex-col gap-2 items-center">
+                  <div className="bg-black/60 backdrop-blur px-4 py-2 rounded-lg border border-red-500/30 w-full min-w-[200px]">
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-red-400 font-bold">TARGET LOCKED</span>
+                      <span className="text-white">{targetBase.health} / 100 HP</span>
+                    </div>
+                    <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
+                      <motion.div 
+                        className="bg-red-500 h-full"
+                        initial={{ width: `${targetBase.health}%` }}
+                        animate={{ width: `${targetBase.health}%` }}
+                        transition={{ type: "spring", bounce: 0, duration: 0.5 }}
+                      />
+                    </div>
+                  </div>
+                  <button 
+                    onClick={handleAttack}
+                    disabled={!inRange}
+                    className={`font-bold py-3 px-6 rounded-full shadow-lg flex items-center gap-2 transition-all w-full justify-center ${
+                      inRange 
+                        ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-500/50' 
+                        : 'bg-zinc-700 text-zinc-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <Crosshair size={20} />
+                    {inRange ? 'FIRE WEAPON' : 'OUT OF RANGE'}
+                  </button>
+                </div>
+              ) : null;
+            })()}
           </motion.div>
         )}
       </AnimatePresence>
@@ -512,6 +690,6 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }

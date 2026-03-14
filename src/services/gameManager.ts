@@ -10,7 +10,8 @@ export interface BaseData {
   zone: 'high' | 'mid' | 'low';
   level: number;
   health: number;
-  lastMinedAt: string;
+  hasMiner?: boolean;
+  lastMinedAt?: string;
   createdAt: string;
 }
 
@@ -25,21 +26,51 @@ export interface UserData {
   createdAt: string;
 }
 
+export interface MarketOffer {
+  id: string;
+  sellerId: string;
+  sellerName: string;
+  offerType: 'sell_common' | 'sell_rare';
+  amountOffered: number;
+  amountRequested: number;
+  status: 'active' | 'fulfilled' | 'claimed';
+  buyerId?: string;
+  createdAt: string;
+}
+
+export interface ResourceNode {
+  id: string;
+  type: 'common' | 'rare';
+  position: { x: number; y: number; z: number };
+  active: boolean;
+  createdAt: string;
+}
+
 class GameManager {
   bases: BaseData[] = [];
   userData: UserData | null = null;
   satelliteUsers: { uid?: string; name: string; bases: number; info: string }[] = [];
+  marketOffers: MarketOffer[] = [];
+  resources: ResourceNode[] = [];
   onBasesUpdate: ((bases: BaseData[]) => void) | null = null;
   onUserDataUpdate: ((userData: UserData | null) => void) | null = null;
   onSatelliteUsersUpdate: ((users: { uid?: string; name: string; bases: number; info: string }[]) => void) | null = null;
+  onMarketOffersUpdate: ((offers: MarketOffer[]) => void) | null = null;
+  onResourcesUpdate: ((resources: ResourceNode[]) => void) | null = null;
   unsubscribeBases: (() => void) | null = null;
   unsubscribeUser: (() => void) | null = null;
   unsubscribeSatellites: (() => void) | null = null;
+  unsubscribeMarket: (() => void) | null = null;
+  unsubscribeResources: (() => void) | null = null;
   needsNPCBases: boolean = false;
+  needsResources: boolean = false;
 
   init() {
     this.listenToBases();
     this.listenToSatellites();
+    this.listenToMarket();
+    this.listenToResources();
+    this.startRespawnTimer();
     
     auth.onAuthStateChanged(async (user) => {
       if (user) {
@@ -48,6 +79,10 @@ class GameManager {
         if (this.needsNPCBases) {
           this.initializeNPCBases();
           this.needsNPCBases = false;
+        }
+        if (this.needsResources) {
+          this.initializeResources();
+          this.needsResources = false;
         }
       } else {
         this.userData = null;
@@ -118,6 +153,15 @@ class GameManager {
     });
   }
 
+  listenToMarket() {
+    if (this.unsubscribeMarket) this.unsubscribeMarket();
+    
+    this.unsubscribeMarket = onSnapshot(collection(db, 'market_offers'), (snapshot) => {
+      this.marketOffers = snapshot.docs.map(doc => doc.data() as MarketOffer);
+      if (this.onMarketOffersUpdate) this.onMarketOffersUpdate(this.marketOffers);
+    });
+  }
+
   listenToSatellites() {
     if (this.unsubscribeSatellites) this.unsubscribeSatellites();
     
@@ -140,8 +184,107 @@ class GameManager {
     });
   }
 
+  listenToResources() {
+    if (this.unsubscribeResources) this.unsubscribeResources();
+    
+    this.unsubscribeResources = onSnapshot(collection(db, 'resources'), (snapshot) => {
+      this.resources = snapshot.docs.map(doc => doc.data() as ResourceNode);
+      
+      if (snapshot.empty) {
+        if (auth.currentUser) {
+          this.initializeResources();
+        } else {
+          this.needsResources = true;
+        }
+      } else {
+        // We will handle respawning in a separate interval
+      }
+      
+      if (this.onResourcesUpdate) this.onResourcesUpdate(this.resources);
+    });
+  }
+
+  private respawnInterval: any = null;
+
+  startRespawnTimer() {
+    if (this.respawnInterval) return;
+    this.respawnInterval = setInterval(() => {
+      if (!auth.currentUser) return;
+      const inactiveResources = this.resources.filter(r => !r.active);
+      if (inactiveResources.length > 0) {
+        const resToRespawn = inactiveResources[Math.floor(Math.random() * inactiveResources.length)];
+        geographyManager.initializeTopicRegions();
+        
+        let validRegions = geographyManager.regions;
+        if (resToRespawn.type === 'rare') {
+          validRegions = validRegions.filter(r => r.resourceZone === 'high');
+        }
+        
+        if (validRegions.length > 0) {
+          const region = validRegions[Math.floor(Math.random() * validRegions.length)];
+          const planetRadius = 10;
+          const pos = geographyManager.getRandomPointForTopic(region.id, planetRadius);
+          const height = geographyManager.getHeightAtPoint(pos[0], pos[1], pos[2], planetRadius, 0.8);
+          const snappedPos = new THREE.Vector3(pos[0], pos[1], pos[2]).normalize().multiplyScalar(height);
+          
+          updateDoc(doc(db, 'resources', resToRespawn.id), {
+            active: true,
+            position: { x: snappedPos.x, y: snappedPos.y, z: snappedPos.z }
+          }).catch(console.error);
+        }
+      }
+    }, 10000); // Try to respawn one resource every 10 seconds
+  }
+
+  async initializeResources() {
+    if (!auth.currentUser) return;
+    geographyManager.initializeTopicRegions();
+    const planetRadius = 10;
+    const numCommon = 80;
+    const numRare = 20;
+    
+    const spawnResource = async (type: 'common' | 'rare', index: number) => {
+      let validRegions = geographyManager.regions;
+      if (type === 'rare') {
+        validRegions = validRegions.filter(r => r.resourceZone === 'high');
+      }
+      if (validRegions.length === 0) return;
+      
+      const region = validRegions[Math.floor(Math.random() * validRegions.length)];
+      
+      const pos = geographyManager.getRandomPointForTopic(region.id, planetRadius);
+      const height = geographyManager.getHeightAtPoint(pos[0], pos[1], pos[2], planetRadius, 0.8);
+      const snappedPos = new THREE.Vector3(pos[0], pos[1], pos[2]).normalize().multiplyScalar(height);
+      
+      const resourceId = `res_${type}_${index}_${Date.now()}`;
+      
+      try {
+        const resRef = doc(db, 'resources', resourceId);
+        const resData: ResourceNode = {
+          id: resourceId,
+          type,
+          position: { x: snappedPos.x, y: snappedPos.y, z: snappedPos.z },
+          active: true,
+          createdAt: new Date().toISOString()
+        };
+        
+        await setDoc(resRef, resData);
+      } catch (e) {
+        console.error("Failed to create resource", e);
+      }
+    };
+
+    for (let i = 0; i < numCommon; i++) {
+      await spawnResource('common', i);
+    }
+    for (let i = 0; i < numRare; i++) {
+      await spawnResource('rare', i);
+    }
+  }
+
   async initializeNPCBases() {
     if (!auth.currentUser) return;
+    geographyManager.initializeTopicRegions();
     const planetRadius = 10;
     const numBases = 50;
     
@@ -184,14 +327,35 @@ class GameManager {
   }
 
   async createBase(position: THREE.Vector3, zone: 'high' | 'mid' | 'low') {
-    if (!auth.currentUser) throw new Error("Must be logged in to create a base");
+    if (!auth.currentUser || !this.userData) throw new Error("Must be logged in to create a base");
     if (this.bases.length >= 500) throw new Error("Planet is at maximum base capacity (500)");
+    
+    // Check cost
+    const costCommon = 100;
+    const costRare = 10;
+    if (this.userData.commonResources < costCommon || this.userData.rareResources < costRare) {
+      throw new Error(`Not enough resources. Need ${costCommon} Common, ${costRare} Rare.`);
+    }
+
+    // Snap position to terrain height
+    const radius = 10;
+    const displacementScale = 0.8;
+    const height = geographyManager.getHeightAtPoint(position.x, position.y, position.z, radius, displacementScale);
+    const snappedPosition = position.clone().normalize().multiplyScalar(height);
+
+    // Check distance to other bases
+    for (const base of this.bases) {
+      const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
+      if (snappedPosition.distanceTo(basePos) < 1.5) {
+        throw new Error("Too close to another base.");
+      }
+    }
     
     const baseId = `base_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const baseData: BaseData = {
       id: baseId,
       ownerId: auth.currentUser.uid,
-      position: { x: position.x, y: position.y, z: position.z },
+      position: { x: snappedPosition.x, y: snappedPosition.y, z: snappedPosition.z },
       zone,
       level: 1,
       health: 100,
@@ -199,7 +363,31 @@ class GameManager {
       createdAt: new Date().toISOString()
     };
     
+    // Deduct resources
+    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+      commonResources: this.userData.commonResources - costCommon,
+      rareResources: this.userData.rareResources - costRare
+    });
+
     await setDoc(doc(db, 'bases', baseId), baseData);
+  }
+
+  async gatherResource(resourceId: string) {
+    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
+    const resource = this.resources.find(r => r.id === resourceId);
+    if (!resource || !resource.active) throw new Error("Resource not found or already gathered.");
+    
+    // Mark resource as inactive
+    await updateDoc(doc(db, 'resources', resourceId), {
+      active: false
+    });
+    
+    // Give resources to user
+    const amount = resource.type === 'common' ? 50 : 10;
+    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+      commonResources: this.userData.commonResources + (resource.type === 'common' ? amount : 0),
+      rareResources: this.userData.rareResources + (resource.type === 'rare' ? amount : 0)
+    });
   }
 
   async mineBase(baseId: string) {
@@ -261,6 +449,75 @@ class GameManager {
     } else {
       throw new Error(`Not enough resources. Need ${costCommon} Common and ${costRare} Rare.`);
     }
+  }
+
+  async buyMiner(baseId: string) {
+    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
+    const base = this.bases.find(b => b.id === baseId);
+    if (!base || base.ownerId !== auth.currentUser.uid) throw new Error("You don't own this base.");
+    if (base.hasMiner) throw new Error("Base already has a miner.");
+    
+    const costCommon = 200;
+    const costRare = 50;
+    
+    if (this.userData.commonResources >= costCommon && this.userData.rareResources >= costRare) {
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+        commonResources: this.userData.commonResources - costCommon,
+        rareResources: this.userData.rareResources - costRare
+      });
+      
+      await updateDoc(doc(db, 'bases', baseId), {
+        hasMiner: true,
+        lastMinedAt: new Date().toISOString()
+      });
+    } else {
+      throw new Error(`Not enough resources. Need ${costCommon} Common and ${costRare} Rare.`);
+    }
+  }
+
+  async claimMinerResources(baseId: string) {
+    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
+    const base = this.bases.find(b => b.id === baseId);
+    if (!base || base.ownerId !== auth.currentUser.uid) throw new Error("You don't own this base.");
+    if (!base.hasMiner || !base.lastMinedAt) throw new Error("Base does not have a miner.");
+    
+    const now = new Date();
+    const lastMined = new Date(base.lastMinedAt);
+    const hoursPassed = (now.getTime() - lastMined.getTime()) / (1000 * 60 * 60);
+    
+    if (hoursPassed < 0.01) throw new Error("Not enough time has passed to claim resources.");
+    
+    let commonRate = 0;
+    let rareRate = 0;
+    
+    if (base.zone === 'high') {
+      commonRate = 5;
+      rareRate = 2;
+    } else if (base.zone === 'mid') {
+      commonRate = 3;
+      rareRate = 1;
+    } else {
+      commonRate = 3;
+      rareRate = 0;
+    }
+    
+    const commonGained = Math.floor(commonRate * hoursPassed);
+    const rareGained = Math.floor(rareRate * hoursPassed);
+    
+    if (commonGained === 0 && rareGained === 0) {
+      throw new Error("No resources generated yet.");
+    }
+    
+    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+      commonResources: this.userData.commonResources + commonGained,
+      rareResources: this.userData.rareResources + rareGained
+    });
+    
+    await updateDoc(doc(db, 'bases', baseId), {
+      lastMinedAt: now.toISOString()
+    });
+    
+    return { common: commonGained, rare: rareGained };
   }
 
   async launchSatellite() {
@@ -384,6 +641,116 @@ class GameManager {
     await updateDoc(doc(db, 'users', userId), {
       hasSatellite: false
     });
+  }
+
+  async createMarketOffer(offerType: 'sell_common' | 'sell_rare', amountOffered: number, amountRequested: number) {
+    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
+    
+    if (amountOffered <= 0 || amountRequested <= 0) throw new Error("Amounts must be positive.");
+    
+    if (offerType === 'sell_common' && this.userData.commonResources < amountOffered) {
+      throw new Error("Not enough common resources.");
+    }
+    if (offerType === 'sell_rare' && this.userData.rareResources < amountOffered) {
+      throw new Error("Not enough rare resources.");
+    }
+
+    const offerId = Math.random().toString(36).substring(2, 15);
+    const offerRef = doc(db, 'market_offers', offerId);
+    
+    const offer: MarketOffer = {
+      id: offerId,
+      sellerId: auth.currentUser.uid,
+      sellerName: this.userData.displayName,
+      offerType,
+      amountOffered,
+      amountRequested,
+      status: 'active',
+      createdAt: new Date().toISOString()
+    };
+
+    // Deduct resources first
+    const updates: any = {};
+    if (offerType === 'sell_common') {
+      updates.commonResources = this.userData.commonResources - amountOffered;
+    } else {
+      updates.rareResources = this.userData.rareResources - amountOffered;
+    }
+
+    await updateDoc(doc(db, 'users', auth.currentUser.uid), updates);
+    await setDoc(offerRef, offer);
+  }
+
+  async cancelMarketOffer(offerId: string) {
+    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
+    
+    const offer = this.marketOffers.find(o => o.id === offerId);
+    if (!offer) throw new Error("Offer not found.");
+    if (offer.sellerId !== auth.currentUser.uid) throw new Error("You can only cancel your own offers.");
+    if (offer.status !== 'active') throw new Error("Offer is no longer active.");
+
+    // Refund resources
+    const updates: any = {};
+    if (offer.offerType === 'sell_common') {
+      updates.commonResources = this.userData.commonResources + offer.amountOffered;
+    } else {
+      updates.rareResources = this.userData.rareResources + offer.amountOffered;
+    }
+
+    await deleteDoc(doc(db, 'market_offers', offerId));
+    await updateDoc(doc(db, 'users', auth.currentUser.uid), updates);
+  }
+
+  async buyMarketOffer(offerId: string) {
+    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
+    
+    const offer = this.marketOffers.find(o => o.id === offerId);
+    if (!offer) throw new Error("Offer not found.");
+    if (offer.sellerId === auth.currentUser.uid) throw new Error("You cannot buy your own offer.");
+    if (offer.status !== 'active') throw new Error("Offer is no longer active.");
+
+    // Check if buyer has enough resources
+    if (offer.offerType === 'sell_common' && this.userData.rareResources < offer.amountRequested) {
+      throw new Error("Not enough rare resources to buy this offer.");
+    }
+    if (offer.offerType === 'sell_rare' && this.userData.commonResources < offer.amountRequested) {
+      throw new Error("Not enough common resources to buy this offer.");
+    }
+
+    // Update offer status
+    await updateDoc(doc(db, 'market_offers', offerId), { status: 'fulfilled', buyerId: auth.currentUser.uid });
+
+    // Deduct from buyer and add to buyer
+    const buyerUpdates: any = {};
+    if (offer.offerType === 'sell_common') {
+      buyerUpdates.rareResources = this.userData.rareResources - offer.amountRequested;
+      buyerUpdates.commonResources = this.userData.commonResources + offer.amountOffered;
+    } else {
+      buyerUpdates.commonResources = this.userData.commonResources - offer.amountRequested;
+      buyerUpdates.rareResources = this.userData.rareResources + offer.amountOffered;
+    }
+    await updateDoc(doc(db, 'users', auth.currentUser.uid), buyerUpdates);
+  }
+
+  async claimMarketOffer(offerId: string) {
+    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
+    
+    const offer = this.marketOffers.find(o => o.id === offerId);
+    if (!offer) throw new Error("Offer not found.");
+    if (offer.sellerId !== auth.currentUser.uid) throw new Error("You can only claim your own offers.");
+    if (offer.status !== 'fulfilled') throw new Error("Offer is not fulfilled.");
+
+    // Add to seller
+    const sellerUpdates: any = {};
+    if (offer.offerType === 'sell_common') {
+      sellerUpdates.rareResources = this.userData.rareResources + offer.amountRequested;
+    } else {
+      sellerUpdates.commonResources = this.userData.commonResources + offer.amountRequested;
+    }
+    
+    // Delete the offer after claiming
+    await deleteDoc(doc(db, 'market_offers', offerId));
+    await updateDoc(doc(db, 'users', auth.currentUser.uid), sellerUpdates);
   }
 }
 

@@ -8,13 +8,48 @@ interface ShipUIProps {
   userData?: UserData | null;
 }
 
+const WeaponCooldown = ({ lastFireTime, cooldownDuration, color }: { lastFireTime: number, cooldownDuration: number, color: string }) => {
+  const [progress, setProgress] = useState(100);
+
+  useEffect(() => {
+    let animationFrameId: number;
+    
+    const updateProgress = () => {
+      const now = Date.now();
+      const elapsed = now - lastFireTime;
+      if (elapsed < cooldownDuration) {
+        setProgress((elapsed / cooldownDuration) * 100);
+        animationFrameId = requestAnimationFrame(updateProgress);
+      } else {
+        setProgress(100);
+      }
+    };
+
+    updateProgress();
+
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+  }, [lastFireTime, cooldownDuration]);
+
+  return (
+    <div className="w-full h-1 bg-white/10 mt-1 rounded-full overflow-hidden">
+      <div 
+        className={`h-full ${color}`} 
+        style={{ width: `${progress}%` }}
+      />
+    </div>
+  );
+};
+
 export function ShipUI({ onExit, userData }: ShipUIProps) {
   const [isMobile, setIsMobile] = useState(false);
-  const { mobileKeys, setMobileKeys, isBoosting, setIsBoosting, lockedTarget } = useShipStore();
+  const { mobileKeys, setMobileKeys, isBoosting, setIsBoosting, lockedTarget, lastMgFire, lastMissileFire } = useShipStore();
 
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.matchMedia("(pointer: coarse)").matches || 'ontouchstart' in window);
+      const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      setIsMobile(window.innerWidth <= 768 || isMobileUserAgent || window.matchMedia("(pointer: coarse)").matches || 'ontouchstart' in window);
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
@@ -32,6 +67,49 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
     border: '1px solid rgba(255,255,255,0.2)',
     backdropFilter: 'blur(4px)',
     pointerEvents: 'auto' as const,
+    position: 'absolute' as const,
+    overflow: 'hidden' as const,
+  };
+
+  const MobileCooldownOverlay = ({ lastFireTime, cooldownDuration }: { lastFireTime: number, cooldownDuration: number }) => {
+    const [progress, setProgress] = useState(100);
+
+    useEffect(() => {
+      let animationFrameId: number;
+      
+      const updateProgress = () => {
+        const now = Date.now();
+        const elapsed = now - lastFireTime;
+        if (elapsed < cooldownDuration) {
+          setProgress((elapsed / cooldownDuration) * 100);
+          animationFrameId = requestAnimationFrame(updateProgress);
+        } else {
+          setProgress(100);
+        }
+      };
+
+      updateProgress();
+
+      return () => {
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      };
+    }, [lastFireTime, cooldownDuration]);
+
+    if (progress === 100) return null;
+
+    return (
+      <div 
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: `${100 - progress}%`,
+          backgroundColor: 'rgba(0,0,0,0.6)',
+          pointerEvents: 'none'
+        }}
+      />
+    );
   };
 
   return (
@@ -48,16 +126,41 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
               </div>
             </div>
             
-            <div className="bg-black/50 backdrop-blur-md p-4 rounded-xl border border-white/10 flex flex-col gap-2 text-right">
-              <div className="text-zinc-400 text-xs font-bold tracking-wider">WEAPONS</div>
-              <div className="flex items-center gap-2 justify-end">
-                <span className="text-yellow-500 font-mono text-sm">{userData ? userData.machineGunAmmo : '∞'}</span>
-                <span className="text-white text-xs">MG (L-Click)</span>
+            <div className="bg-black/50 backdrop-blur-md p-4 rounded-xl border border-white/10 flex flex-col gap-3 text-right w-48">
+              <div className="text-zinc-400 text-xs font-bold tracking-wider">RESOURCES</div>
+              
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 justify-end">
+                  <span className="text-zinc-300 font-mono text-sm">{userData ? userData.commonResources : 0}</span>
+                  <span className="text-white text-xs">Common</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 justify-end">
-                <span className="text-red-500 font-mono text-sm">{userData ? userData.missileAmmo : '∞'}</span>
-                <span className="text-white text-xs">MSL (R-Click)</span>
+
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 justify-end">
+                  <span className="text-fuchsia-400 font-mono text-sm">{userData ? userData.rareResources : 0}</span>
+                  <span className="text-white text-xs">Aetherium</span>
+                </div>
               </div>
+
+              <div className="text-zinc-400 text-xs font-bold tracking-wider mt-2">WEAPONS</div>
+              
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 justify-end">
+                  <span className="text-yellow-500 font-mono text-sm">{userData ? userData.machineGunAmmo : '∞'}</span>
+                  <span className="text-white text-xs">MG (L-Click)</span>
+                </div>
+                <WeaponCooldown lastFireTime={lastMgFire} cooldownDuration={100} color="bg-yellow-500" />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 justify-end">
+                  <span className="text-red-500 font-mono text-sm">{userData ? userData.missileAmmo : '∞'}</span>
+                  <span className="text-white text-xs">MSL (R-Click)</span>
+                </div>
+                <WeaponCooldown lastFireTime={lastMissileFire} cooldownDuration={1000} color="bg-red-500" />
+              </div>
+
               <div className="text-zinc-500 text-[10px] mt-1">Press T to Lock Target</div>
             </div>
           </div>
@@ -81,7 +184,7 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
           
           {/* Boost Button */}
           <button 
-            style={{ ...btnStyle, position: 'absolute', bottom: 40, right: 40, background: isBoosting ? 'rgba(255,68,68,0.8)' : 'rgba(0,0,0,0.5)' }}
+            style={{ ...btnStyle, bottom: 40, right: 40, background: isBoosting ? 'rgba(255,68,68,0.8)' : 'rgba(0,0,0,0.5)' }}
             onPointerDown={(e) => { e.stopPropagation(); setIsBoosting(true); }}
             onPointerUp={(e) => { e.stopPropagation(); setIsBoosting(false); }}
             onPointerLeave={(e) => { e.stopPropagation(); setIsBoosting(false); }}
@@ -91,23 +194,25 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
 
           {/* Machine Gun Button */}
           <button 
-            style={{ ...btnStyle, position: 'absolute', bottom: 110, right: 40, background: mobileKeys.mg ? 'rgba(255,170,0,0.8)' : 'rgba(0,0,0,0.5)' }}
+            style={{ ...btnStyle, bottom: 110, right: 40, background: mobileKeys.mg ? 'rgba(255,170,0,0.8)' : 'rgba(0,0,0,0.5)' }}
             onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, mg: true})); }}
             onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, mg: false})); }}
             onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, mg: false})); }}
           >
             <Zap size={24} color={!userData || userData.machineGunAmmo ? '#fff' : '#555'} />
+            <MobileCooldownOverlay lastFireTime={lastMgFire} cooldownDuration={100} />
             <span style={{ position: 'absolute', bottom: -20, fontSize: '10px', color: '#ffaa00', fontWeight: 'bold' }}>{userData ? userData.machineGunAmmo : '∞'}</span>
           </button>
 
           {/* Missile Button */}
           <button 
-            style={{ ...btnStyle, position: 'absolute', bottom: 40, right: 110, background: mobileKeys.missile ? 'rgba(255,0,0,0.8)' : 'rgba(0,0,0,0.5)' }}
+            style={{ ...btnStyle, bottom: 40, right: 110, background: mobileKeys.missile ? 'rgba(255,0,0,0.8)' : 'rgba(0,0,0,0.5)' }}
             onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, missile: true})); }}
             onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, missile: false})); }}
             onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, missile: false})); }}
           >
             <Flame size={24} color={!userData || userData.missileAmmo ? '#fff' : '#555'} />
+            <MobileCooldownOverlay lastFireTime={lastMissileFire} cooldownDuration={1000} />
             <span style={{ position: 'absolute', bottom: -20, fontSize: '10px', color: '#ff0000', fontWeight: 'bold' }}>{userData ? userData.missileAmmo : '∞'}</span>
           </button>
 

@@ -24,7 +24,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
   
   // Mobile controls state
   const [isMobile, setIsMobile] = useState(false);
-  const { mobileKeys, setMobileKeys, isBoosting, setIsBoosting, lockedTarget, setLockedTarget } = useShipStore();
+  const { mobileKeys, setMobileKeys, isBoosting, setIsBoosting, lockedTarget, setLockedTarget, setLastMgFire, setLastMissileFire } = useShipStore();
   
   const touchLook = useRef({ x: 0, y: 0 });
   const rightTouchId = useRef<number | null>(null);
@@ -48,7 +48,8 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
 
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.matchMedia("(pointer: coarse)").matches || 'ontouchstart' in window);
+      const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      setIsMobile(window.innerWidth <= 768 || isMobileUserAgent || window.matchMedia("(pointer: coarse)").matches || 'ontouchstart' in window);
     };
     checkMobile();
 
@@ -278,6 +279,12 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
       satPos.applyEuler(new THREE.Euler(lockedTarget.tiltX, lockedTarget.tiltY, lockedTarget.tiltZ));
       
       setLockedTarget(prev => prev ? { ...prev, position: satPos } : null);
+    } else if (lockedTarget && lockedTarget.type === 'base') {
+      // Sync base health
+      const updatedBase = bases.find(b => b.id === lockedTarget.id);
+      if (updatedBase && updatedBase.health !== lockedTarget.health) {
+        setLockedTarget(prev => prev ? { ...prev, health: updatedBase.health } : null);
+      }
     }
 
     // Firing Weapons
@@ -285,6 +292,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     if ((keys['MouseLeft'] || mobileKeys.mg) && now - lastFired.current > 100) { // Machine gun: 100ms cooldown
       if (!userData || userData.machineGunAmmo > 0) {
         lastFired.current = now;
+        setLastMgFire(now);
         if (userData) gameManager.fireMachineGun();
         
         const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
@@ -318,6 +326,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     if ((keys['MouseRight'] || mobileKeys.missile) && now - lastMissile.current > 1000) { // Missile: 1000ms cooldown
       if (!userData || userData.missileAmmo > 0) {
         lastMissile.current = now;
+        setLastMissileFire(now);
         if (userData) gameManager.fireMissile();
         
         const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
@@ -377,6 +386,19 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
                 gameManager.destroySatellite(sat.uid).catch(console.error);
               }
               setExplosions(prev => [...prev, { id: Math.random().toString(), pos: p.pos.clone(), createdAt: now, size: p.type === 'mg' ? 1 : 3 }]);
+            }
+          });
+        }
+
+        // Check collision with resources
+        if (!hit) {
+          gameManager.resources.forEach(res => {
+            if (hit || !res.active) return;
+            const resPos = new THREE.Vector3(res.position.x, res.position.y, res.position.z);
+            if (p.pos.distanceTo(resPos) < 0.8) {
+              hit = true;
+              gameManager.gatherResource(res.id).catch(console.error);
+              setExplosions(prev => [...prev, { id: Math.random().toString(), pos: p.pos.clone(), createdAt: now, size: p.type === 'mg' ? 0.5 : 1 }]);
             }
           });
         }
@@ -553,28 +575,33 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
 
           {/* Trails */}
           {/* Main Engine Trail */}
-          <Trail width={0.08} length={4} color={new THREE.Color('#00ffff')} attenuation={(t) => t * t}>
+          <Trail width={0.08} length={isMobile ? 2 : 4} color={new THREE.Color('#00ffff')} attenuation={(t) => t * t}>
             <mesh position={[0, 0, 1.3]}>
               <sphereGeometry args={[0.1]} />
               <meshBasicMaterial transparent opacity={0} />
             </mesh>
           </Trail>
           
-          {/* Left Wingtip Trail */}
-          <Trail width={0.01} length={8} color={new THREE.Color('#ffffff')} attenuation={(t) => t * t}>
-            <mesh position={[-1.75, 0, 0.7]}>
-              <sphereGeometry args={[0.05]} />
-              <meshBasicMaterial transparent opacity={0} />
-            </mesh>
-          </Trail>
-          
-          {/* Right Wingtip Trail */}
-          <Trail width={0.01} length={8} color={new THREE.Color('#ffffff')} attenuation={(t) => t * t}>
-            <mesh position={[1.75, 0, 0.7]}>
-              <sphereGeometry args={[0.05]} />
-              <meshBasicMaterial transparent opacity={0} />
-            </mesh>
-          </Trail>
+          {/* Wingtip Trails (Disable on mobile) */}
+          {!isMobile && (
+            <>
+              {/* Left Wingtip Trail */}
+              <Trail width={0.01} length={8} color={new THREE.Color('#ffffff')} attenuation={(t) => t * t}>
+                <mesh position={[-1.75, 0, 0.7]}>
+                  <sphereGeometry args={[0.05]} />
+                  <meshBasicMaterial transparent opacity={0} />
+                </mesh>
+              </Trail>
+              
+              {/* Right Wingtip Trail */}
+              <Trail width={0.01} length={8} color={new THREE.Color('#ffffff')} attenuation={(t) => t * t}>
+                <mesh position={[1.75, 0, 0.7]}>
+                  <sphereGeometry args={[0.05]} />
+                  <meshBasicMaterial transparent opacity={0} />
+                </mesh>
+              </Trail>
+            </>
+          )}
         </group>
       </group>
 
@@ -631,19 +658,26 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
       ))}
 
       {/* Target Lock UI */}
-      {lockedTarget && (
-        <mesh position={[lockedTarget.position.x, lockedTarget.position.y, lockedTarget.position.z]}>
-          <ringGeometry args={[2, 2.2, 32]} />
-          <meshBasicMaterial color="#ff0000" side={THREE.DoubleSide} transparent opacity={0.8} />
-          <Html center>
-            <div className="text-red-500 font-mono text-xs font-bold whitespace-nowrap bg-black/50 px-2 py-1 rounded border border-red-500/50">
-              LOCKED: {lockedTarget.name}
-              <br/>
-              HP: {lockedTarget.health}
-            </div>
-          </Html>
-        </mesh>
-      )}
+      {(() => {
+        if (!lockedTarget) return null;
+        const isOwnBase = lockedTarget.type === 'base' && userData && lockedTarget.ownerId === userData.uid;
+        const color = isOwnBase ? '#3b82f6' : '#ff0000';
+        const colorClass = isOwnBase ? 'text-blue-500 border-blue-500/50' : 'text-red-500 border-red-500/50';
+        
+        return (
+          <mesh position={[lockedTarget.position.x, lockedTarget.position.y, lockedTarget.position.z]}>
+            <ringGeometry args={[2, 2.2, 32]} />
+            <meshBasicMaterial color={color} side={THREE.DoubleSide} transparent opacity={0.8} />
+            <Html center>
+              <div className={`${colorClass} font-mono text-xs font-bold whitespace-nowrap bg-black/50 px-2 py-1 rounded border`}>
+                {isOwnBase ? 'SELECTED: ' : 'LOCKED: '} {lockedTarget.name || 'Base'}
+                <br/>
+                HP: {lockedTarget.health}
+              </div>
+            </Html>
+          </mesh>
+        );
+      })()}
     </>
   );
 }

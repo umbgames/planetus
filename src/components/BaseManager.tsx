@@ -1,11 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
+import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { geographyManager } from '../services/geography';
 import { gameManager, BaseData } from '../services/gameManager';
+import { useShipStore } from '../services/shipStore';
 
 interface BaseManagerProps {
   planetRadius: number;
+  isMobile?: boolean;
 }
 
 // Make buildings much smaller for scale
@@ -15,16 +18,24 @@ const CUBE_DEPTH = 0.06;
 
 const baseGeometry = new THREE.BoxGeometry(1, 1, 1);
 
-function Base({ data }: { data: BaseData }) {
+function Base({ data, isMobile }: { data: BaseData, isMobile: boolean }) {
   const groupRef = useRef<THREE.Group>(null);
   const highDetailRef = useRef<THREE.Group>(null);
   const lowDetailRef = useRef<THREE.Mesh>(null);
+  const minerRef = useRef<THREE.Group>(null);
   const { camera } = useThree();
+  const { lockedTarget, setLockedTarget } = useShipStore();
   
   // Determine color based on owner/zone
   const isNPC = data.ownerId === 'npc';
   const color = isNPC ? '#888888' : (data.zone === 'high' ? '#ef4444' : data.zone === 'mid' ? '#f59e0b' : '#3b82f6');
   const height = data.level * 2;
+  const isSelected = lockedTarget?.id === data.id;
+  
+  const handleBaseClick = (e: any) => {
+    e.stopPropagation();
+    setLockedTarget({ ...data, type: 'base' });
+  };
   
   useEffect(() => {
     if (groupRef.current) {
@@ -40,15 +51,20 @@ function Base({ data }: { data: BaseData }) {
     }
   }, [data.position, data.id]);
 
-  useFrame(() => {
+  useFrame((state) => {
     if (!groupRef.current || !highDetailRef.current || !lowDetailRef.current) return;
+    
+    // Rotate miner if it exists
+    if (minerRef.current) {
+      minerRef.current.rotation.y = state.clock.elapsedTime * 2;
+    }
     
     // Calculate distance to camera for LOD
     const dist = camera.position.distanceTo(groupRef.current.position);
     
     // Planet radius is 10. Max altitude before hiding is around 2-3.
-    const maxDist = 13; // Hide completely at this distance
-    const fadeDist = 11; // Start scaling down at this distance
+    const maxDist = isMobile ? 12 : 13; // Hide completely at this distance
+    const fadeDist = isMobile ? 10 : 11; // Start scaling down at this distance
     
     if (dist > maxDist) {
       // Hide completely at great distance (Occlusion/Distance Culling)
@@ -65,7 +81,7 @@ function Base({ data }: { data: BaseData }) {
       groupRef.current.scale.setScalar(scale);
 
       // Detail LOD
-      if (dist > 8) {
+      if (dist > (isMobile ? 6 : 8)) {
         // Simplify at medium distance
         highDetailRef.current.visible = false;
         lowDetailRef.current.visible = true;
@@ -80,7 +96,20 @@ function Base({ data }: { data: BaseData }) {
   const totalHeight = height * CUBE_HEIGHT;
 
   return (
-    <group ref={groupRef}>
+    <group 
+      ref={groupRef} 
+      onClick={handleBaseClick}
+      onPointerOver={() => document.body.style.cursor = 'pointer'}
+      onPointerOut={() => document.body.style.cursor = 'default'}
+    >
+      {/* Selection Highlight */}
+      {isSelected && (
+        <mesh position={[0, totalHeight / 2, 0]}>
+          <cylinderGeometry args={[CUBE_WIDTH * 2, CUBE_WIDTH * 2, totalHeight + 0.05, 16]} />
+          <meshBasicMaterial color="#ff0000" transparent opacity={0.3} side={THREE.BackSide} />
+        </mesh>
+      )}
+
       {/* High Detail Version */}
       <group ref={highDetailRef}>
         {Array.from({ length: height }).map((_, index) => {
@@ -123,6 +152,20 @@ function Base({ data }: { data: BaseData }) {
             </mesh>
           );
         })}
+
+        {/* Miner Visual Indicator */}
+        {data.hasMiner && (
+          <group ref={minerRef} position={[0, totalHeight + CUBE_HEIGHT, 0]}>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[CUBE_WIDTH * 0.8, 0.005, 8, 24]} />
+              <meshStandardMaterial color="#a855f7" emissive="#a855f7" emissiveIntensity={1} />
+            </mesh>
+            <mesh position={[0, 0.02, 0]}>
+              <cylinderGeometry args={[0.005, 0.005, 0.04, 8]} />
+              <meshStandardMaterial color="#22d3ee" emissive="#22d3ee" emissiveIntensity={1} />
+            </mesh>
+          </group>
+        )}
       </group>
       
       {/* Low Detail Version (Single Box) */}
@@ -141,11 +184,25 @@ function Base({ data }: { data: BaseData }) {
           metalness={0.4}
         />
       </mesh>
+
+      {/* Health Bar */}
+      {data.health < 100 && (
+        <Html position={[0, totalHeight + 0.1, 0]} center distanceFactor={10} zIndexRange={[100, 0]}>
+          <div className="bg-black/80 border border-zinc-700 p-1 rounded w-16 flex flex-col items-center pointer-events-none">
+            <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
+              <div 
+                className="bg-red-500 h-full transition-all duration-300"
+                style={{ width: `${data.health}%` }}
+              />
+            </div>
+          </div>
+        </Html>
+      )}
     </group>
   );
 }
 
-export function BaseManager({ planetRadius }: BaseManagerProps) {
+export function BaseManager({ planetRadius, isMobile = false }: BaseManagerProps) {
   const [bases, setBases] = useState<BaseData[]>([]);
 
   useEffect(() => {
@@ -168,7 +225,7 @@ export function BaseManager({ planetRadius }: BaseManagerProps) {
   return (
     <group>
       {bases.map(base => (
-        <Base key={base.id} data={base} />
+        <Base key={base.id} data={base} isMobile={isMobile} />
       ))}
     </group>
   );

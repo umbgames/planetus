@@ -37,6 +37,44 @@
         "createdAt": { "type": "string", "format": "date-time", "description": "When the base was built." }
       },
       "required": ["id", "ownerId", "position", "zone", "level", "health", "lastMinedAt", "createdAt"]
+    },
+    "MarketOffer": {
+      "title": "MarketOffer",
+      "description": "A player's offer to trade resources.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The offer's unique ID." },
+        "sellerId": { "type": "string", "description": "The ID of the user who created this offer." },
+        "sellerName": { "type": "string", "description": "The display name of the seller." },
+        "offerType": { "type": "string", "enum": ["sell_common", "sell_rare"], "description": "The type of offer." },
+        "amountOffered": { "type": "number", "description": "The amount of resources offered." },
+        "amountRequested": { "type": "number", "description": "The amount of resources requested in exchange." },
+        "status": { "type": "string", "enum": ["active", "fulfilled"], "description": "The status of the offer." },
+        "buyerId": { "type": "string", "description": "The ID of the user who bought this offer." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the offer was created." }
+      },
+      "required": ["id", "sellerId", "sellerName", "offerType", "amountOffered", "amountRequested", "status", "createdAt"]
+    },
+    "ResourceNode": {
+      "title": "ResourceNode",
+      "description": "A gatherable resource on the planet.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["common", "rare"] },
+        "position": {
+          "type": "object",
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "z": { "type": "number" }
+          },
+          "required": ["x", "y", "z"]
+        },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "type", "position", "active", "createdAt"]
     }
   },
   "firestore": {
@@ -47,6 +85,14 @@
     "bases/{baseId}": {
       "schema": { "$ref": "#/entities/Base" },
       "description": "Stores all bases on the planet."
+    },
+    "market_offers/{offerId}": {
+      "schema": { "$ref": "#/entities/MarketOffer" },
+      "description": "Stores all active market offers."
+    },
+    "resources/{resourceId}": {
+      "schema": { "$ref": "#/entities/ResourceNode" },
+      "description": "Stores gatherable resources."
     }
   }
 }

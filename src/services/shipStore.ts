@@ -7,6 +7,10 @@ interface ShipState {
   setIsBoosting: (val: boolean) => void;
   lockedTarget: any | null;
   setLockedTarget: (updater: any) => void;
+  lastMgFire: number;
+  setLastMgFire: (time: number) => void;
+  lastMissileFire: number;
+  setLastMissileFire: (time: number) => void;
 }
 
 export const useShipStore = create<ShipState>((set) => ({
@@ -20,4 +24,8 @@ export const useShipStore = create<ShipState>((set) => ({
   setLockedTarget: (updater) => set((state) => ({ 
     lockedTarget: typeof updater === 'function' ? updater(state.lockedTarget) : updater 
   })),
+  lastMgFire: 0,
+  setLastMgFire: (time) => set({ lastMgFire: time }),
+  lastMissileFire: 0,
+  setLastMissileFire: (time) => set({ lastMissileFire: time }),
 }));

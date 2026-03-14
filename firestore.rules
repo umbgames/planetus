@@ -31,6 +31,28 @@ service cloud.firestore {
     //   - lastMinedAt: string (required) - When the base last generated resources.
     //   - createdAt: string (required) - When the base was built.
     //
+    // Collection: market_offers
+    // Document ID: offerId
+    // Fields:
+    //   - id: string (required) - The offer's unique ID.
+    //   - sellerId: string (required) - The ID of the user who created this offer.
+    //   - sellerName: string (required) - The display name of the seller.
+    //   - offerType: string (required) - 'sell_common' | 'sell_rare'
+    //   - amountOffered: number (required) - The amount of resources offered.
+    //   - amountRequested: number (required) - The amount of resources requested in exchange.
+    //   - status: string (required) - 'active' | 'fulfilled' | 'claimed'
+    //   - buyerId: string (optional) - The ID of the user who bought this offer.
+    //   - createdAt: string (required) - When the offer was created.
+    //
+    // Collection: resources
+    // Document ID: resourceId
+    // Fields:
+    //   - id: string (required)
+    //   - type: string (required) - 'common' | 'rare'
+    //   - position: map (required)
+    //   - active: boolean (required)
+    //   - createdAt: string (required)
+    //
     // ===============================================================
 
     // ===============================================================
@@ -77,7 +99,34 @@ service cloud.firestore {
              data.ownerId is string &&
              data.zone in ['high', 'mid', 'low'] &&
              data.level is number &&
-             data.health is number;
+             data.health is number &&
+             (!('hasMiner' in data) || data.hasMiner is bool) &&
+             (!('lastMinedAt' in data) || isValidDateString(data.lastMinedAt));
+    }
+
+    function isValidMarketOffer(data) {
+      return (hasOnlyAllowedFields(['id', 'sellerId', 'sellerName', 'offerType', 'amountOffered', 'amountRequested', 'status', 'createdAt']) ||
+              hasOnlyAllowedFields(['id', 'sellerId', 'sellerName', 'offerType', 'amountOffered', 'amountRequested', 'status', 'buyerId', 'createdAt'])) &&
+             data.id is string &&
+             data.sellerId is string &&
+             data.sellerName is string && data.sellerName.size() > 0 && data.sellerName.size() < 50 &&
+             data.offerType in ['sell_common', 'sell_rare'] &&
+             data.amountOffered is number && data.amountOffered > 0 &&
+             data.amountRequested is number && data.amountRequested > 0 &&
+             data.status in ['active', 'fulfilled'] &&
+             (!('buyerId' in data) || data.buyerId is string) &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidResource(data) {
+      return hasOnlyAllowedFields(['id', 'type', 'position', 'active', 'createdAt']) &&
+             data.id is string &&
+             data.type in ['common', 'rare'] &&
+             data.position is map &&
+             data.position.keys().hasAll(['x', 'y', 'z']) &&
+             data.position.x is number && data.position.y is number && data.position.z is number &&
+             data.active is bool &&
+             isValidDateString(data.createdAt);
     }
 
     // ===============================================================
@@ -109,6 +158,32 @@ service cloud.firestore {
         (!isDocOwner() && request.resource.data.health < resource.data.health && request.resource.data.ownerId == resource.data.ownerId) || // Attacker damaging
         (!isDocOwner() && request.resource.data.health == 100 && request.resource.data.ownerId == request.auth.uid && resource.data.health <= 20) // Attacker taking over
       );
+    }
+
+    match /market_offers/{offerId} {
+      // Anyone can read market offers
+      allow read: if true;
+      // Users can create offers if they are the seller
+      allow create: if isAuthenticated() && isValidMarketOffer(request.resource.data) && request.resource.data.sellerId == request.auth.uid && request.resource.data.id == offerId && request.resource.data.status == 'active';
+      // Sellers can cancel (delete) their own offers
+      allow delete: if isAuthenticated() && resource.data.sellerId == request.auth.uid;
+      // Buyers can fulfill an offer by updating its status to 'fulfilled' and setting buyerId
+      allow update: if isAuthenticated() && (
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'buyerId']) &&
+         resource.data.status == 'active' &&
+         request.resource.data.status == 'fulfilled' &&
+         request.resource.data.buyerId == request.auth.uid)
+      );
+    }
+
+    match /resources/{resourceId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidResource(request.resource.data) && request.resource.data.active == true;
+      allow update: if isAuthenticated() && isValidResource(request.resource.data) && request.resource.data.id == resource.data.id && request.resource.data.type == resource.data.type && request.resource.data.createdAt == resource.data.createdAt && (
+        (request.resource.data.active == false && resource.data.active == true && request.resource.data.position == resource.data.position) ||
+        (request.resource.data.active == true && resource.data.active == false)
+      );
+      allow delete: if isAuthenticated();
     }
   }
 }
