@@ -126,7 +126,7 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
               </div>
             </div>
             
-            <div className="bg-black/50 backdrop-blur-md p-4 rounded-xl border border-white/10 flex flex-col gap-3 text-right w-48">
+            {/* <div className="bg-black/50 backdrop-blur-md p-4 rounded-xl border border-white/10 flex flex-col gap-3 text-right w-48">
               <div className="text-zinc-400 text-xs font-bold tracking-wider">RESOURCES</div>
               
               <div className="flex flex-col gap-1">
@@ -163,7 +163,7 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
 
               <div className="text-zinc-500 text-[10px] mt-1">Press T to Lock Target</div>
             </div>
-          </div>
+          </div> */}
           
           {/* Crosshair */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
