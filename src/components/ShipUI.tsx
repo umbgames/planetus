@@ -136,33 +136,33 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
                 </div>
               </div> */}
 
-              <div className="flex flex-col gap-1">
+              {/* <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2 justify-end">
                   <span className="text-fuchsia-400 font-mono text-sm">{userData ? userData.rareResources : 0}</span>
                   <span className="text-white text-xs">Aetherium</span>
                 </div>
-              </div>
+              </div> */}
 
-              <div className="text-zinc-400 text-xs font-bold tracking-wider mt-2">WEAPONS</div>
+              {/* <div className="text-zinc-400 text-xs font-bold tracking-wider mt-2">WEAPONS</div> */}
               
-              <div className="flex flex-col gap-1">
+              {/* <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2 justify-end">
                   <span className="text-yellow-500 font-mono text-sm">{userData ? userData.machineGunAmmo : '∞'}</span>
                   <span className="text-white text-xs">MG (L-Click)</span>
                 </div>
                 <WeaponCooldown lastFireTime={lastMgFire} cooldownDuration={100} color="bg-yellow-500" />
-              </div>
+              </div> */}
 
-              <div className="flex flex-col gap-1">
+              {/* <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2 justify-end">
                   <span className="text-red-500 font-mono text-sm">{userData ? userData.missileAmmo : '∞'}</span>
                   <span className="text-white text-xs">MSL (R-Click)</span>
                 </div>
                 <WeaponCooldown lastFireTime={lastMissileFire} cooldownDuration={1000} color="bg-red-500" />
-              </div>
+              </div> */}
 
-              <div className="text-zinc-500 text-[10px] mt-1">Press T to Lock Target</div>
-            </div>
+              {/* <div className="text-zinc-500 text-[10px] mt-1">Press T to Lock Target</div>
+            </div> */}
           </div>
           
           {/* Crosshair */}
