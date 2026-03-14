@@ -126,10 +126,10 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
               </div>
             </div>
             
-            {/* <div className="bg-black/50 backdrop-blur-md p-4 rounded-xl border border-white/10 flex flex-col gap-3 text-right w-48">
-              <div className="text-zinc-400 text-xs font-bold tracking-wider">RESOURCES</div>
+           <div className="bg-black/50 backdrop-blur-md p-4 rounded-xl border border-white/10 flex flex-col gap-3 text-right w-48">
+              {/* <div className="text-zinc-400 text-xs font-bold tracking-wider">RESOURCES</div> */}
               
-              <div className="flex flex-col gap-1">
+              {/* <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2 justify-end">
                   <span className="text-zinc-300 font-mono text-sm">{userData ? userData.commonResources : 0}</span>
                   <span className="text-white text-xs">Common</span>
