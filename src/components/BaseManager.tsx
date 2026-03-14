@@ -1,180 +1,226 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
-import { Html } from '@react-three/drei';
-import * as THREE from 'three';
-import { gameManager, BaseData } from '../services/gameManager';
-import { useShipStore } from '../services/shipStore';
+import React, { useEffect, useRef, useState } from 'react'
+import { useFrame, useThree } from '@react-three/fiber'
+import { Html } from '@react-three/drei'
+import * as THREE from 'three'
+import { gameManager, BaseData } from '../services/gameManager'
+import { useShipStore } from '../services/shipStore'
 
 interface BaseManagerProps {
-  planetRadius: number;
-  isMobile?: boolean;
+  planetRadius: number
+  isMobile?: boolean
 }
 
-const CUBE_WIDTH = 0.06;
-const CUBE_HEIGHT = 0.02;
-const CUBE_DEPTH = 0.06;
+const CUBE_WIDTH = 0.06
+const CUBE_HEIGHT = 0.02
+const CUBE_DEPTH = 0.06
 
-const baseGeometry = new THREE.BoxGeometry(1, 1, 1);
+const baseGeometry = new THREE.BoxGeometry(1,1,1)
 
-function Base({ data, isMobile }: { data: BaseData; isMobile: boolean }) {
-  const groupRef = useRef<THREE.Group>(null);
-  const highDetailRef = useRef<THREE.Group>(null);
-  const lowDetailRef = useRef<THREE.Mesh>(null);
-  const minerRef = useRef<THREE.Group>(null);
+function Base({ data, isMobile }: { data: BaseData, isMobile:boolean }) {
 
-  const landingLights = useRef<THREE.Group>(null);
+  const groupRef = useRef<THREE.Group>(null)
+  const highDetailRef = useRef<THREE.Group>(null)
+  const lowDetailRef = useRef<THREE.Mesh>(null)
 
-  const { camera } = useThree();
-  const { lockedTarget, setLockedTarget } = useShipStore();
+  const minerRef = useRef<THREE.Group>(null)
+  const radarRef = useRef<THREE.Group>(null)
+  const levitationRef = useRef<THREE.Mesh>(null)
+  const landingLights = useRef<THREE.Group>(null)
 
-  const isNPC = data.ownerId === 'npc';
+  const { camera } = useThree()
+  const { lockedTarget, setLockedTarget } = useShipStore()
+
+  const isNPC = data.ownerId === 'npc'
 
   const color =
-    isNPC
-      ? '#888888'
-      : data.zone === 'high'
-      ? '#ef4444'
-      : data.zone === 'mid'
-      ? '#f59e0b'
-      : '#3b82f6';
+    isNPC ? '#888888'
+    : data.zone === 'high' ? '#ef4444'
+    : data.zone === 'mid' ? '#f59e0b'
+    : '#3b82f6'
 
-  const height = data.level * 2;
-  const totalHeight = height * CUBE_HEIGHT;
+  const height = data.level * 2
+  const totalHeight = height * CUBE_HEIGHT
 
-  const isSelected = lockedTarget?.id === data.id;
+  const isSelected = lockedTarget?.id === data.id
 
-  const handleBaseClick = (e: any) => {
-    e.stopPropagation();
-    setLockedTarget({ ...data, type: 'base' });
-  };
+  const basePos = useRef(new THREE.Vector3())
 
-  useEffect(() => {
-    if (!groupRef.current) return;
+  const handleBaseClick = (e:any) => {
+    e.stopPropagation()
+    setLockedTarget({ ...data, type:'base' })
+  }
+
+  useEffect(()=>{
+
+    if(!groupRef.current) return
 
     const pos = new THREE.Vector3(
       data.position.x,
       data.position.y,
       data.position.z
-    );
+    )
 
-    const normal = pos.clone().normalize();
+    basePos.current.copy(pos)
 
-    groupRef.current.position.copy(pos);
+    const normal = pos.clone().normalize()
+
+    groupRef.current.position.copy(pos)
 
     groupRef.current.quaternion.setFromUnitVectors(
-      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(0,1,0),
       normal
-    );
+    )
 
-    const hash = data.id
-      .split('')
-      .reduce((a, b) => ((a << 5) - a + b.charCodeAt(0)) | 0, 0);
+  },[data.position])
 
-    groupRef.current.rotateY((hash % 360) * (Math.PI / 180));
-  }, [data.position, data.id]);
+  useFrame((state)=>{
 
-  useFrame((state) => {
-    if (!groupRef.current || !highDetailRef.current || !lowDetailRef.current)
-      return;
+    if(!groupRef.current || !highDetailRef.current || !lowDetailRef.current) return
 
-    if (minerRef.current) {
-      minerRef.current.rotation.y = state.clock.elapsedTime * 2;
+    const time = state.clock.elapsedTime
+
+    /** FLOATING MOTION **/
+
+    const hover = Math.sin(time*1.2) * 0.03
+
+    const normal = basePos.current.clone().normalize()
+
+    const offset = normal.multiplyScalar(hover)
+
+    groupRef.current.position.copy(basePos.current.clone().add(offset))
+
+    /** RADAR ROTATION **/
+
+    if(radarRef.current){
+      radarRef.current.rotation.y = time*1.2
     }
 
-    if (landingLights.current) {
-      landingLights.current.children.forEach((m: any, i) => {
-        const mat = m.material;
-        mat.emissiveIntensity = 1 + Math.sin(state.clock.elapsedTime * 4 + i) * 0.6;
-      });
+    /** MINER SPIN **/
+
+    if(minerRef.current){
+      minerRef.current.rotation.y = time*2
     }
 
-    const dist = camera.position.distanceTo(groupRef.current.position);
+    /** LEVITATION FIELD PULSE **/
 
-    const maxDist = isMobile ? 12 : 13;
-    const fadeDist = isMobile ? 10 : 11;
-
-    if (dist > maxDist) {
-      groupRef.current.visible = false;
-      return;
+    if(levitationRef.current){
+      const mat:any = levitationRef.current.material
+      mat.emissiveIntensity = 1 + Math.sin(time*3)*0.6
     }
 
-    groupRef.current.visible = true;
+    /** LANDING LIGHTS **/
 
-    let scale = 1;
+    if(landingLights.current){
 
-    if (dist > fadeDist) {
-      scale = 1 - (dist - fadeDist) / (maxDist - fadeDist);
-      scale = scale * scale;
+      landingLights.current.children.forEach((m:any,i)=>{
+
+        const mat:any = m.material
+        mat.emissiveIntensity = 1 + Math.sin(time*4 + i)*0.5
+
+      })
+
     }
 
-    groupRef.current.scale.setScalar(scale);
+    /** LOD **/
 
-    if (dist > (isMobile ? 6 : 8)) {
-      highDetailRef.current.visible = false;
-      lowDetailRef.current.visible = true;
+    const dist = camera.position.distanceTo(groupRef.current.position)
+
+    const maxDist = isMobile ? 12 : 13
+    const fadeDist = isMobile ? 10 : 11
+
+    if(dist > maxDist){
+      groupRef.current.visible = false
+      return
+    }
+
+    groupRef.current.visible = true
+
+    let scale = 1
+
+    if(dist > fadeDist){
+      scale = 1 - (dist - fadeDist)/(maxDist - fadeDist)
+      scale = scale*scale
+    }
+
+    groupRef.current.scale.setScalar(scale)
+
+    if(dist > (isMobile?6:8)){
+      highDetailRef.current.visible = false
+      lowDetailRef.current.visible = true
     } else {
-      highDetailRef.current.visible = true;
-      lowDetailRef.current.visible = false;
+      highDetailRef.current.visible = true
+      lowDetailRef.current.visible = false
     }
-  });
 
-  return (
+  })
+
+  return(
+
     <group
       ref={groupRef}
       onClick={handleBaseClick}
-      onPointerOver={() => (document.body.style.cursor = 'pointer')}
-      onPointerOut={() => (document.body.style.cursor = 'default')}
+      onPointerOver={()=>document.body.style.cursor='pointer'}
+      onPointerOut={()=>document.body.style.cursor='default'}
     >
 
-      {/* Selection Highlight */}
+      {/* LEVITATION FIELD */}
+
+      <mesh
+        ref={levitationRef}
+        rotation={[Math.PI/2,0,0]}
+        position={[0,-0.02,0]}
+      >
+        <torusGeometry args={[CUBE_WIDTH*2.5,0.015,16,60]} />
+        <meshStandardMaterial
+          color="#22d3ee"
+          emissive="#22d3ee"
+          emissiveIntensity={1}
+          transparent
+          opacity={0.9}
+        />
+      </mesh>
+
+
+      {/* SELECTION */}
 
       {isSelected && (
-        <mesh position={[0, totalHeight / 2, 0]}>
-          <cylinderGeometry args={[CUBE_WIDTH * 2.5, CUBE_WIDTH * 2.5, totalHeight + 0.1, 24]} />
-          <meshBasicMaterial
-            color="#ff0000"
-            transparent
-            opacity={0.25}
-            side={THREE.BackSide}
-          />
+        <mesh position={[0,totalHeight/2,0]}>
+          <cylinderGeometry args={[CUBE_WIDTH*2.6,CUBE_WIDTH*2.6,totalHeight+0.1,24]} />
+          <meshBasicMaterial color="#ff0000" transparent opacity={0.25} side={THREE.BackSide}/>
         </mesh>
       )}
 
-      {/* HIGH DETAIL BASE */}
+      {/* HIGH DETAIL */}
 
       <group ref={highDetailRef}>
 
-        {/* Landing Platform */}
+        {/* PLATFORM */}
 
-        <mesh position={[0, CUBE_HEIGHT * 0.6, 0]} receiveShadow>
-          <cylinderGeometry args={[CUBE_WIDTH * 2.4, CUBE_WIDTH * 2.6, CUBE_HEIGHT * 1.4, 24]} />
-          <meshStandardMaterial
-            color={color}
-            metalness={0.8}
-            roughness={0.45}
-          />
+        <mesh position={[0,0.02,0]}>
+          <cylinderGeometry args={[CUBE_WIDTH*2.2,CUBE_WIDTH*2.4,0.02,24]} />
+          <meshStandardMaterial color={color} metalness={0.8} roughness={0.45}/>
         </mesh>
 
-        {/* Command Tower */}
+        {/* COMMAND TOWER */}
 
-        <mesh position={[0, totalHeight * 0.5 + CUBE_HEIGHT, 0]} castShadow>
-          <cylinderGeometry args={[CUBE_WIDTH * 0.7, CUBE_WIDTH * 0.9, totalHeight, 16]} />
+        <mesh position={[0,totalHeight*0.5+0.04,0]}>
+          <cylinderGeometry args={[0.04,0.05,totalHeight,16]}/>
           <meshStandardMaterial
             color={color}
             emissive={color}
             emissiveIntensity={0.2}
             metalness={0.85}
-            roughness={0.35}
+            roughness={0.3}
           />
         </mesh>
 
-        {/* Energy Ring */}
+        {/* ENERGY RING */}
 
         <mesh
-          position={[0, totalHeight * 0.7 + CUBE_HEIGHT, 0]}
-          rotation={[Math.PI / 2, 0, 0]}
+          rotation={[Math.PI/2,0,0]}
+          position={[0,totalHeight*0.7+0.05,0]}
         >
-          <torusGeometry args={[CUBE_WIDTH * 1.5, 0.01, 10, 32]} />
+          <torusGeometry args={[0.09,0.008,12,40]} />
           <meshStandardMaterial
             color="#22d3ee"
             emissive="#22d3ee"
@@ -182,10 +228,10 @@ function Base({ data, isMobile }: { data: BaseData; isMobile: boolean }) {
           />
         </mesh>
 
-        {/* Reactor Core */}
+        {/* REACTOR CORE */}
 
-        <mesh position={[0, totalHeight + CUBE_HEIGHT * 1.2, 0]}>
-          <sphereGeometry args={[CUBE_WIDTH * 0.45, 16, 16]} />
+        <mesh position={[0,totalHeight+0.06,0]}>
+          <sphereGeometry args={[0.025,16,16]}/>
           <meshStandardMaterial
             color="#a855f7"
             emissive="#a855f7"
@@ -193,76 +239,77 @@ function Base({ data, isMobile }: { data: BaseData; isMobile: boolean }) {
           />
         </mesh>
 
-        {/* Side Modules */}
+        {/* RADAR DISH */}
 
-        {[0, Math.PI / 2, Math.PI, Math.PI * 1.5].map((rot, i) => {
-          const x = Math.cos(rot) * CUBE_WIDTH * 1.9;
-          const z = Math.sin(rot) * CUBE_WIDTH * 1.9;
+        <group
+          ref={radarRef}
+          position={[0.08,totalHeight+0.03,0]}
+        >
 
-          return (
-            <group key={i} position={[x, CUBE_HEIGHT * 1.2, z]}>
-              <mesh castShadow>
-                <boxGeometry args={[CUBE_WIDTH * 0.8, CUBE_HEIGHT * 1.6, CUBE_DEPTH * 0.8]} />
-                <meshStandardMaterial
-                  color={color}
-                  metalness={0.7}
-                  roughness={0.4}
-                />
-              </mesh>
+          <mesh position={[0,-0.02,0]}>
+            <cylinderGeometry args={[0.004,0.004,0.04,8]}/>
+            <meshStandardMaterial color="#9ca3af"/>
+          </mesh>
 
-              {/* Antenna */}
+          <mesh position={[0,0.01,0]}>
+            <boxGeometry args={[0.04,0.004,0.01]}/>
+            <meshStandardMaterial color="#9ca3af"/>
+          </mesh>
 
-              <mesh position={[0, CUBE_HEIGHT, 0]}>
-                <cylinderGeometry args={[0.003, 0.003, 0.04, 8]} />
-                <meshStandardMaterial
-                  color="#22d3ee"
-                  emissive="#22d3ee"
-                  emissiveIntensity={1}
-                />
-              </mesh>
-            </group>
-          );
-        })}
+          <mesh position={[0.025,0.01,0]} rotation={[0,0,Math.PI/2]}>
+            <coneGeometry args={[0.02,0.01,12,1,true]}/>
+            <meshStandardMaterial
+              color="#e5e7eb"
+              emissive="#22d3ee"
+              emissiveIntensity={0.3}
+              metalness={0.85}
+              roughness={0.2}
+            />
+          </mesh>
+
+        </group>
 
         {/* LANDING LIGHTS */}
 
         <group ref={landingLights}>
-          {[0, Math.PI / 2, Math.PI, Math.PI * 1.5].map((rot, i) => {
-            const x = Math.cos(rot) * CUBE_WIDTH * 2.2;
-            const z = Math.sin(rot) * CUBE_WIDTH * 2.2;
 
-            return (
-              <mesh key={i} position={[x, CUBE_HEIGHT * 0.7, z]}>
-                <sphereGeometry args={[0.01, 8, 8]} />
+          {[0,Math.PI/2,Math.PI,Math.PI*1.5].map((rot,i)=>{
+
+            const x = Math.cos(rot)*0.12
+            const z = Math.sin(rot)*0.12
+
+            return(
+
+              <mesh key={i} position={[x,0.02,z]}>
+                <sphereGeometry args={[0.01,8,8]}/>
                 <meshStandardMaterial
                   color="#22d3ee"
                   emissive="#22d3ee"
                   emissiveIntensity={1}
                 />
               </mesh>
-            );
+
+            )
+
           })}
+
         </group>
 
         {/* FACTION DECAL */}
 
         {!isNPC && (
-          <mesh position={[0, totalHeight * 0.5, CUBE_WIDTH * 1]}>
-            <planeGeometry args={[0.05, 0.05]} />
-            <meshBasicMaterial
-              color={color}
-              transparent
-              opacity={0.9}
-            />
+          <mesh position={[0,totalHeight*0.5,0.07]}>
+            <planeGeometry args={[0.05,0.05]}/>
+            <meshBasicMaterial color={color} transparent opacity={0.9}/>
           </mesh>
         )}
 
-        {/* Miner Indicator */}
+        {/* MINER */}
 
         {data.hasMiner && (
-          <group ref={minerRef} position={[0, totalHeight + CUBE_HEIGHT * 1.8, 0]}>
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
-              <torusGeometry args={[CUBE_WIDTH * 0.8, 0.006, 8, 24]} />
+          <group ref={minerRef} position={[0,totalHeight+0.1,0]}>
+            <mesh rotation={[Math.PI/2,0,0]}>
+              <torusGeometry args={[0.05,0.004,8,24]}/>
               <meshStandardMaterial
                 color="#a855f7"
                 emissive="#a855f7"
@@ -279,21 +326,17 @@ function Base({ data, isMobile }: { data: BaseData; isMobile: boolean }) {
       <mesh
         ref={lowDetailRef}
         geometry={baseGeometry}
-        position={[0, totalHeight / 2, 0]}
-        scale={[CUBE_WIDTH * 1.2, totalHeight, CUBE_DEPTH * 1.2]}
+        position={[0,totalHeight/2,0]}
+        scale={[CUBE_WIDTH*1.2,totalHeight,CUBE_DEPTH*1.2]}
         visible={false}
       >
-        <meshStandardMaterial
-          color={color}
-          roughness={0.6}
-          metalness={0.4}
-        />
+        <meshStandardMaterial color={color}/>
       </mesh>
 
       {/* HEALTH BAR */}
 
       {data.health < 100 && (
-        <Html position={[0, totalHeight + 0.1, 0]} center distanceFactor={10}>
+        <Html position={[0,totalHeight+0.1,0]} center distanceFactor={10}>
           <div className="bg-black/80 border border-zinc-700 p-1 rounded w-16 flex flex-col items-center pointer-events-none">
             <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden">
               <div
@@ -304,34 +347,40 @@ function Base({ data, isMobile }: { data: BaseData; isMobile: boolean }) {
           </div>
         </Html>
       )}
+
     </group>
-  );
+  )
+
 }
 
-export function BaseManager({ planetRadius, isMobile = false }: BaseManagerProps) {
-  const [bases, setBases] = useState<BaseData[]>([]);
+export function BaseManager({ planetRadius, isMobile=false }: BaseManagerProps){
 
-  useEffect(() => {
-    gameManager.onBasesUpdate = (newBases) => {
-      setBases(newBases);
-    };
+  const [bases,setBases] = useState<BaseData[]>([])
 
-    if (gameManager.bases.length === 0) {
-      gameManager.init();
-    } else {
-      setBases(gameManager.bases);
+  useEffect(()=>{
+
+    gameManager.onBasesUpdate = (newBases)=>{
+      setBases(newBases)
     }
 
-    return () => {
-      gameManager.onBasesUpdate = null;
-    };
-  }, []);
+    if(gameManager.bases.length===0){
+      gameManager.init()
+    } else {
+      setBases(gameManager.bases)
+    }
 
-  return (
+    return ()=>{
+      gameManager.onBasesUpdate = null
+    }
+
+  },[])
+
+  return(
     <group>
-      {bases.map((base) => (
-        <Base key={base.id} data={base} isMobile={isMobile} />
+      {bases.map(base=>(
+        <Base key={base.id} data={base} isMobile={isMobile}/>
       ))}
     </group>
-  );
+  )
+
 }
