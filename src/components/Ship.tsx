@@ -38,6 +38,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
   const rotation = useRef(new THREE.Euler(0, 0, 0, 'YXZ'));
   const position = useRef(new THREE.Vector3(0, 0, planetRadius + 5));
   const launchProgress = useRef(0);
+  const recoilZ = useRef(0); // Tracks the heavy laser recoil kickback
 
   // Combat state
   const lastFired = useRef(0);
@@ -144,13 +145,8 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     canvas.addEventListener('touchend', handleTouchEnd);
     canvas.addEventListener('touchcancel', handleTouchEnd);
 
-    // Initial position based on camera
     position.current.copy(camera.position);
-    
-    // Set initial velocity to shoot outwards
     velocity.current.copy(camera.position).normalize().multiplyScalar(20);
-    
-    // Initial rotation looking down at planet
     setMouse({ x: 0, y: -Math.PI / 2 });
     rotation.current.set(-Math.PI / 2, 0, 0);
     
@@ -158,7 +154,6 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
       cameraRigRef.current.position.copy(camera.position);
     }
     
-    // Request pointer lock only if not mobile
     if (!window.matchMedia("(pointer: coarse)").matches && !('ontouchstart' in window)) {
       gl.domElement.requestPointerLock();
     }
@@ -195,15 +190,11 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
         setIsLaunching(false);
       }
       
-      // Apply launch velocity
       position.current.addScaledVector(velocity.current, delta);
-      velocity.current.multiplyScalar(0.95); // Slow down launch
-      
-      // Smoothly look forward
+      velocity.current.multiplyScalar(0.95); 
       setMouse(m => ({ x: m.x, y: THREE.MathUtils.lerp(m.y, 0, 0.05) }));
     }
 
-    // Exit ship mode
     if (keys['KeyO']) {
       onExit();
       return;
@@ -211,26 +202,24 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
 
     // Target Locking (Key T)
     if (keys['KeyT'] || mobileKeys.lock) {
-      setKeys(k => ({ ...k, KeyT: false })); // Consume key press
-      setMobileKeys(k => ({ ...k, lock: false })); // Consume mobile key press
+      setKeys(k => ({ ...k, KeyT: false }));
+      setMobileKeys(k => ({ ...k, lock: false })); 
       
-      // Find closest base or satellite in front of ship
       let bestTarget: any | null = null;
       let bestScore = -Infinity;
       
       const shipForward = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
       
-      // Check bases
       bases.forEach(base => {
         const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
         const toBase = basePos.clone().sub(position.current);
         const dist = toBase.length();
         
-        if (dist < 50) { // Max lock range
+        if (dist < 50) { 
           toBase.normalize();
           const dot = shipForward.dot(toBase);
-          if (dot > 0.8) { // Must be somewhat in front
-            const score = dot - (dist / 100); // Prefer closer and more centered
+          if (dot > 0.8) { 
+            const score = dot - (dist / 100); 
             if (score > bestScore) {
               bestScore = score;
               bestTarget = { ...base, type: 'base' };
@@ -239,7 +228,6 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
         }
       });
 
-      // Check satellites
       const time = state.clock.elapsedTime;
       satellites.forEach(sat => {
         const angle = time * sat.speed + sat.initialAngle;
@@ -257,7 +245,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
             const score = dot - (dist / 100);
             if (score > bestScore) {
               bestScore = score;
-              bestTarget = { ...sat, position: satPos, type: 'satellite', health: 100 }; // Mock health for now
+              bestTarget = { ...sat, position: satPos, type: 'satellite', health: 100 }; 
             }
           }
         }
@@ -270,7 +258,6 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
       }
     }
 
-    // Update locked target position if it's a satellite
     if (lockedTarget && lockedTarget.type === 'satellite') {
       const time = state.clock.elapsedTime;
       const angle = time * lockedTarget.speed + lockedTarget.initialAngle;
@@ -280,7 +267,6 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
       
       setLockedTarget(prev => prev ? { ...prev, position: satPos } : null);
     } else if (lockedTarget && lockedTarget.type === 'base') {
-      // Sync base health
       const updatedBase = bases.find(b => b.id === lockedTarget.id);
       if (updatedBase && updatedBase.health !== lockedTarget.health) {
         setLockedTarget(prev => prev ? { ...prev, health: updatedBase.health } : null);
@@ -289,7 +275,9 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
 
     // Firing Weapons
     const now = Date.now();
-    if ((keys['MouseLeft'] || mobileKeys.mg) && now - lastFired.current > 100) { // Machine gun: 100ms cooldown
+    
+    // Machine Gun (Light Laser)
+    if ((keys['MouseLeft'] || mobileKeys.mg) && now - lastFired.current > 100) { 
       if (!userData || userData.machineGunAmmo > 0) {
         lastFired.current = now;
         setLastMgFire(now);
@@ -310,7 +298,6 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
           createdAt: now
         }]);
         
-        // Add muzzle flash
         const rightOffset = new THREE.Vector3(0.5, 0, 0).applyQuaternion(shipRef.current!.quaternion);
         const leftOffset = new THREE.Vector3(-0.5, 0, 0).applyQuaternion(shipRef.current!.quaternion);
         const forwardOffset = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
@@ -323,10 +310,16 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
       }
     }
 
-    if ((keys['MouseRight'] || mobileKeys.missile) && now - lastMissile.current > 1000) { // Missile: 1000ms cooldown
+    // Missile (Heavy Laser)
+    if ((keys['MouseRight'] || mobileKeys.missile) && now - lastMissile.current > 1000) { 
       if (!userData || userData.missileAmmo > 0) {
         lastMissile.current = now;
         setLastMissileFire(now);
+        
+        // --- ADD RECOIL HERE ---
+        // Pushes the ship model slightly backward along its local Z axis
+        recoilZ.current = 0.08; 
+        
         if (userData) gameManager.fireMissile();
         
         const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
@@ -346,10 +339,10 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     setProjectiles(prev => {
       const remaining: typeof prev = [];
       prev.forEach(p => {
-        const speed = p.type === 'mg' ? 50 : 20;
+        // Significantly faster speeds for lasers
+        const speed = p.type === 'mg' ? 120 : 50; 
         
         if (p.type === 'missile' && p.target) {
-          // Homing logic
           const targetPos = new THREE.Vector3(p.target.position.x, p.target.position.y, p.target.position.z);
           const toTarget = targetPos.clone().sub(p.pos).normalize();
           p.dir.lerp(toTarget, 0.1).normalize();
@@ -357,7 +350,6 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
         
         p.pos.addScaledVector(p.dir, speed * delta);
         
-        // Check collision with bases
         let hit = false;
         bases.forEach(base => {
           if (hit) return;
@@ -370,7 +362,6 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
           }
         });
 
-        // Check collision with satellites
         if (!hit) {
           satellites.forEach(sat => {
             if (hit) return;
@@ -390,7 +381,6 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
           });
         }
 
-        // Check collision with resources
         if (!hit) {
           gameManager.resources.forEach(res => {
             if (hit || !res.active) return;
@@ -403,23 +393,21 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
           });
         }
         
-        // Remove if hit or too far
-        if (!hit && p.pos.distanceTo(position.current) < 100) {
+        // Increased falloff distance because they move faster
+        if (!hit && p.pos.distanceTo(position.current) < 150) {
           remaining.push(p);
         }
       });
       return remaining;
     });
 
-    // Clean up old effects
     setExplosions(prev => prev.filter(e => now - e.createdAt < 500));
     setMuzzleFlashes(prev => prev.filter(m => now - m.createdAt < 100));
 
-    const speed = (keys['ShiftLeft'] || isBoosting) ? 8 : 1.5; // Reduced overall speed
+    const speed = (keys['ShiftLeft'] || isBoosting) ? 8 : 1.5; 
     const accel = (keys['ShiftLeft'] || isBoosting) ? 15 * delta : 5 * delta;
     const friction = 0.9;
 
-    // Fast travel FOV effect and camera pull back
     if (cameraRef.current) {
       const targetFov = (keys['ShiftLeft'] || isBoosting) ? 100 : 60;
       cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFov, 0.1);
@@ -429,7 +417,6 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
       cameraRef.current.position.lerp(new THREE.Vector3(0, 0.04, targetZ), 0.05);
     }
 
-    // Input vector
     const input = new THREE.Vector3();
     if (!isLaunching) {
       if (keys['KeyW'] || mobileKeys.w) input.z -= 1;
@@ -446,17 +433,14 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     }
 
     const rawInputX = input.x;
-    // Reduce left/right strafing speed significantly
     input.x *= 0.1;
 
     const prevYaw = rotation.current.y;
-    // Apply rotation from mouse
     rotation.current.y = -mouse.x;
     rotation.current.x = -mouse.y;
     
     const yawDelta = rotation.current.y - prevYaw;
 
-    // Calculate base orientation (upright on sphere)
     const up = position.current.clone().normalize();
     const north = new THREE.Vector3(0, 1, 0);
     let forward = north.projectOnPlane(up).normalize();
@@ -467,36 +451,28 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     const baseMatrix = new THREE.Matrix4().makeBasis(right, up, forward.negate());
     const baseQuat = new THREE.Quaternion().setFromRotationMatrix(baseMatrix);
 
-    // Apply yaw and pitch
     const yawQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotation.current.y);
     const pitchQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), rotation.current.x);
     const quaternion = baseQuat.multiply(yawQuat).multiply(pitchQuat);
 
-    // Apply acceleration relative to rotation
     const moveVector = input.clone().applyQuaternion(quaternion);
     velocity.current.add(moveVector.multiplyScalar(accel));
-    
-    // Apply friction
     velocity.current.multiplyScalar(friction);
     
-    // Limit speed
     if (velocity.current.length() > speed) {
       velocity.current.normalize().multiplyScalar(speed);
     }
 
-    // Update position
     position.current.addScaledVector(velocity.current, delta);
 
-    // Collision with planet (keep it floating a few meters above surface)
     const dist = position.current.length();
     const terrainHeight = geographyManager.getHeightAtPoint(
       position.current.x, position.current.y, position.current.z,
       planetRadius, 0.3
     );
-    const minHeight = terrainHeight + 0.05; // Keep slightly above terrain
+    const minHeight = terrainHeight + 0.05; 
     if (dist < minHeight) {
       position.current.normalize().multiplyScalar(minHeight);
-      // Don't kill all velocity, just the downward component
       const up = position.current.clone().normalize();
       const downwardVelocity = velocity.current.clone().projectOnVector(up);
       if (downwardVelocity.dot(up) < 0) {
@@ -510,22 +486,22 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     }
 
     if (cameraRigRef.current) {
-      // Smooth follow
       cameraRigRef.current.position.lerp(position.current, 0.1);
       cameraRigRef.current.quaternion.slerp(quaternion, 0.1);
     }
 
     if (shipModelRef.current) {
-      // Bank based on turning (yawDelta)
       const targetRoll = THREE.MathUtils.clamp(yawDelta * 40, -Math.PI / 2.5, Math.PI / 2.5);
       shipModelRef.current.rotation.z = THREE.MathUtils.lerp(shipModelRef.current.rotation.z, targetRoll, 0.1);
-      
-      // Keep yaw at 0
       shipModelRef.current.rotation.y = 0;
       
-      // Pitch slightly based on forward/back
       const targetPitch = input.z * 0.2;
       shipModelRef.current.rotation.x = THREE.MathUtils.lerp(shipModelRef.current.rotation.x, targetPitch, 0.1);
+
+      // --- APPLY RECOIL DECAY ---
+      // Smoothly snap the ship back to its baseline Z position (-0.005)
+      recoilZ.current = THREE.MathUtils.lerp(recoilZ.current, 0, 0.15);
+      shipModelRef.current.position.z = -0.005 + Math.max(0, recoilZ.current);
     }
   });
 
@@ -536,45 +512,37 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
       </group>
 
       <group ref={shipRef}>
-        {/* Futuristic Jet Model */}
+        {/* The ship's base position Z (-0.005) gets overridden by the recoil logic dynamically */}
         <group ref={shipModelRef} position={[0, -0.002, -0.005]} scale={0.01}>
-          {/* Fuselage */}
-        <mesh position={[0, 0, 0]}>
-          <boxGeometry args={[0.6, 0.4, 2.5]} />
-          <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
-        </mesh>
-        {/* Nose */}
-        <mesh position={[0, 0, -1.5]} rotation={[-Math.PI / 2, 0, 0]}>
-          <coneGeometry args={[0.3, 1, 4]} />
-          <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
-        </mesh>
-        {/* Cockpit */}
-        <mesh position={[0, 0.3, -0.5]}>
-          <boxGeometry args={[0.4, 0.3, 1]} />
-          <meshStandardMaterial color="#00ffff" metalness={1} roughness={0} transparent opacity={0.8} />
-        </mesh>
-        {/* Wings */}
-        <mesh position={[0, 0, 0.2]}>
-          <boxGeometry args={[3.5, 0.05, 1]} />
-          <meshStandardMaterial color="#2a2a2a" metalness={0.8} roughness={0.2} />
-        </mesh>
-        {/* Tail Fins */}
-        <mesh position={[-0.2, 0.4, 1]}>
-          <boxGeometry args={[0.05, 0.8, 0.5]} />
-          <meshStandardMaterial color="#ff3333" metalness={0.5} roughness={0.5} />
-        </mesh>
-        <mesh position={[0.2, 0.4, 1]}>
-          <boxGeometry args={[0.05, 0.8, 0.5]} />
-          <meshStandardMaterial color="#ff3333" metalness={0.5} roughness={0.5} />
-        </mesh>
-          {/* Engine Glow */}
+          <mesh position={[0, 0, 0]}>
+            <boxGeometry args={[0.6, 0.4, 2.5]} />
+            <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
+          </mesh>
+          <mesh position={[0, 0, -1.5]} rotation={[-Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.3, 1, 4]} />
+            <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
+          </mesh>
+          <mesh position={[0, 0.3, -0.5]}>
+            <boxGeometry args={[0.4, 0.3, 1]} />
+            <meshStandardMaterial color="#00ffff" metalness={1} roughness={0} transparent opacity={0.8} />
+          </mesh>
+          <mesh position={[0, 0, 0.2]}>
+            <boxGeometry args={[3.5, 0.05, 1]} />
+            <meshStandardMaterial color="#2a2a2a" metalness={0.8} roughness={0.2} />
+          </mesh>
+          <mesh position={[-0.2, 0.4, 1]}>
+            <boxGeometry args={[0.05, 0.8, 0.5]} />
+            <meshStandardMaterial color="#ff3333" metalness={0.5} roughness={0.5} />
+          </mesh>
+          <mesh position={[0.2, 0.4, 1]}>
+            <boxGeometry args={[0.05, 0.8, 0.5]} />
+            <meshStandardMaterial color="#ff3333" metalness={0.5} roughness={0.5} />
+          </mesh>
           <mesh position={[0, 0, 1.26]}>
             <boxGeometry args={[0.4, 0.2, 0.05]} />
             <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={3} />
           </mesh>
 
-          {/* Trails */}
-          {/* Main Engine Trail */}
           <Trail width={0.08} length={isMobile ? 2 : 4} color={new THREE.Color('#00ffff')} attenuation={(t) => t * t}>
             <mesh position={[0, 0, 1.3]}>
               <sphereGeometry args={[0.1]} />
@@ -582,10 +550,8 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
             </mesh>
           </Trail>
           
-          {/* Wingtip Trails (Disable on mobile) */}
           {!isMobile && (
             <>
-              {/* Left Wingtip Trail */}
               <Trail width={0.01} length={8} color={new THREE.Color('#ffffff')} attenuation={(t) => t * t}>
                 <mesh position={[-1.75, 0, 0.7]}>
                   <sphereGeometry args={[0.05]} />
@@ -593,7 +559,6 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
                 </mesh>
               </Trail>
               
-              {/* Right Wingtip Trail */}
               <Trail width={0.01} length={8} color={new THREE.Color('#ffffff')} attenuation={(t) => t * t}>
                 <mesh position={[1.75, 0, 0.7]}>
                   <sphereGeometry args={[0.05]} />
@@ -605,59 +570,66 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
         </group>
       </group>
 
-      {/* Projectiles */}
-      {projectiles.map(p => (
-        <group key={p.id} position={p.pos}>
-          {p.type === 'mg' ? (
-            <mesh>
-              <sphereGeometry args={[0.05]} />
-              <meshBasicMaterial color="#ffff00" />
-            </mesh>
-          ) : (
-            <group>
-              <mesh>
-                <cylinderGeometry args={[0.05, 0.05, 0.4]} />
-                <meshBasicMaterial color="#ff0000" />
-              </mesh>
-              <mesh position={[0, -0.2, 0]}>
-                <sphereGeometry args={[0.1]} />
-                <meshBasicMaterial color="#ff8800" transparent opacity={0.8} />
-              </mesh>
-              <Trail width={0.2} length={10} color={new THREE.Color('#ff8800')} attenuation={(t) => t * t}>
-                <mesh position={[0, -0.2, 0]}>
-                  <sphereGeometry args={[0.05]} />
-                  <meshBasicMaterial transparent opacity={0} />
-                </mesh>
-              </Trail>
-            </group>
-          )}
-          {/* Tracer effect for MG */}
-          {p.type === 'mg' && (
-            <mesh position={[0, 0, 0.5]} rotation={[Math.PI / 2, 0, 0]}>
-              <cylinderGeometry args={[0.02, 0.02, 1]} />
-              <meshBasicMaterial color="#ffaa00" transparent opacity={0.5} />
-            </mesh>
-          )}
-        </group>
-      ))}
+      {/* Laser Projectiles */}
+      {projectiles.map(p => {
+        // Calculate the quaternion to point the laser strictly along its travel direction
+        const quaternion = new THREE.Quaternion().setFromUnitVectors(
+          new THREE.Vector3(0, 0, 1), // Default forward for rotated cylinders
+          p.dir.clone().normalize()
+        );
 
-      {/* Explosions */}
+        return (
+          <group key={p.id} position={p.pos} quaternion={quaternion}>
+            {p.type === 'mg' ? (
+              <group>
+                <mesh rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.015, 0.015, 1.5, 6]} />
+                  <meshBasicMaterial color="#ffffff" />
+                </mesh>
+                <mesh rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.04, 0.04, 1.6, 6]} />
+                  <meshBasicMaterial color="#00ffff" transparent opacity={0.4} />
+                </mesh>
+                {/* Subtle light emission for standard shots */}
+                <pointLight distance={2} intensity={1} color="#00ffff" />
+              </group>
+            ) : (
+              <group>
+                <mesh rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.05, 0.05, 1.2, 8]} />
+                  <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={5} />
+                </mesh>
+                <Trail width={0.15} length={6} color={new THREE.Color('#ff0000')} attenuation={(t) => t * t}>
+                  <mesh position={[0, 0, 0.5]}>
+                    <sphereGeometry args={[0.01]} />
+                    <meshBasicMaterial transparent opacity={0} />
+                  </mesh>
+                </Trail>
+              </group>
+            )}
+          </group>
+        );
+      })}
+
+      {/* Explosions updated to fit laser coloring */}
       {explosions.map(e => (
         <mesh key={e.id} position={e.pos}>
           <sphereGeometry args={[e.size]} />
-          <meshBasicMaterial color="#ff5500" transparent opacity={1 - (Date.now() - e.createdAt) / 500} />
+          <meshBasicMaterial 
+            color={e.size > 1 ? "#ff0000" : "#00ffff"} 
+            transparent 
+            opacity={1 - (Date.now() - e.createdAt) / 500} 
+          />
         </mesh>
       ))}
 
-      {/* Muzzle Flashes */}
       {muzzleFlashes.map(m => (
         <mesh key={m.id} position={m.pos}>
           <sphereGeometry args={[0.2]} />
-          <meshBasicMaterial color="#ffff00" transparent opacity={1 - (Date.now() - m.createdAt) / 100} />
+          <meshBasicMaterial color="#00ffff" transparent opacity={1 - (Date.now() - m.createdAt) / 100} />
         </mesh>
       ))}
 
-      {/* Target Lock UI */}
       {(() => {
         if (!lockedTarget) return null;
         const isOwnBase = lockedTarget.type === 'base' && userData && lockedTarget.ownerId === userData.uid;
