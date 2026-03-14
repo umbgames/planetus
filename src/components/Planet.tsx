@@ -165,36 +165,45 @@ export function Planet({ radius, isMobile = false }: PlanetProps) {
     // Rotation is now handled by RotatingSystem in App.tsx
   });
 
-  return (
-    <group>
-      <Sphere ref={planetRef} args={[radius, isMobile ? 128 : 512, isMobile ? 128 : 512]} castShadow receiveShadow>
-        <meshStandardMaterial
-          map={texture}
-          displacementMap={displacementMap}
-          displacementScale={0.8} // Emphasize terrain height
-          bumpMap={displacementMap}
-          bumpScale={0.2}
-          roughness={0.85}
-          metalness={0.05}
-        />
-        
-        {/* Outer Atmosphere glow */}
-        <mesh>
-          <sphereGeometry args={[radius * 1.15, 32, 32]} />
-          <meshBasicMaterial
-            color="#4488ff"
-            transparent
-            opacity={0.05}
-            side={THREE.BackSide}
-            blending={THREE.AdditiveBlending}
-            depthWrite={false}
-          />
-        </mesh>
-      </Sphere>
-      
-      <Clouds radius={radius} />
-      <BaseManager planetRadius={radius} />
-      <ResourceManager planetRadius={radius} isMobile={isMobile} />
-    </group>
-  );
+ if (!texture || !displacementMap) {
+  return null;
+}
+
+return (
+  <group>
+    <Sphere
+      ref={planetRef}
+      args={[radius, isMobile ? 128 : 512, isMobile ? 128 : 512]}
+      castShadow
+      receiveShadow
+    >
+      <meshStandardMaterial
+        map={texture}
+        displacementMap={displacementMap}
+        displacementScale={0.8}
+        bumpMap={displacementMap}
+        bumpScale={0.2}
+        roughness={0.85}
+        metalness={0.05}
+      />
+    </Sphere>
+
+    {/* Outer Atmosphere glow */}
+    <mesh>
+      <sphereGeometry args={[radius * 1.15, 32, 32]} />
+      <meshBasicMaterial
+        color="#4488ff"
+        transparent
+        opacity={0.05}
+        side={THREE.BackSide}
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+      />
+    </mesh>
+
+    <Clouds radius={radius} />
+    <BaseManager planetRadius={radius} />
+    <ResourceManager planetRadius={radius} isMobile={isMobile} />
+  </group>
+);
 }
