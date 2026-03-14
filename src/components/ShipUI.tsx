@@ -121,7 +121,7 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             <div className="bg-black/50 backdrop-blur-md p-4 rounded-xl border border-white/10 flex items-center gap-3">
               <Rocket className="text-cyan-400" size={24} />
               <div>
-                <div className="text-white font-bold tracking-wider">SHIP MODE</div>
+                <div className="text-white font-bold tracking-wider">Aetheris</div>
                 <div className="text-zinc-400 text-xs">Press O to exit</div>
               </div>
             </div>
