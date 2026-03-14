@@ -161,8 +161,8 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
                 <WeaponCooldown lastFireTime={lastMissileFire} cooldownDuration={1000} color="bg-red-500" />
               </div> */}
 
-              {/* <div className="text-zinc-500 text-[10px] mt-1">Press T to Lock Target</div>
-            </div> */}
+               {/* <div className="text-zinc-500 text-[10px] mt-1">Press T to Lock Target</div> */}
+            </div> 
           </div>
           
           {/* Crosshair */}
