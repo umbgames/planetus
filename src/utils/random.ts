@@ -34,3 +34,24 @@ export function createPRNG(seed: string) {
     const seedParts = cyrb128(seed);
     return sfc32(seedParts[0], seedParts[1], seedParts[2], seedParts[3]);
 }
+
+export function hashString(seed: string): number {
+  const [a, b, c, d] = cyrb128(seed);
+  return (a ^ b ^ c ^ d) >>> 0;
+}
+
+export function hashToUnitFloat(seed: string): number {
+  return hashString(seed) / 4294967295;
+}
+
+export function deriveSeed(parentSeed: string, key: string | number): string {
+  return `${parentSeed}::${key}`;
+}
+
+export function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+export function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
