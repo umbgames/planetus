@@ -57,6 +57,7 @@ interface GalaxyStarData {
   color: string;
   scale: number;
   position: THREE.Vector3;
+  clickScale: number;
 }
 
 function GalaxyStarField({
@@ -67,14 +68,15 @@ function GalaxyStarField({
 }: {
   galaxySeed: string;
   currentSystemSeed: string;
-  onSelectSystem: (seed: string) => void;
+  onSelectSystem: (star: GalaxyStarData) => void;
   quality?: 'low' | 'medium' | 'high';
 }) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
+  const hitMeshRef = useRef<THREE.InstancedMesh>(null);
   const starData = useMemo<GalaxyStarData[]>(() => {
     const count = quality === 'low' ? 240 : quality === 'medium' ? 480 : 900;
     const random = createPRNG(hashCombine(galaxySeed, 'galaxy-stars', quality));
-    const colors = ['#ffd27f', '#ffe7b8', '#cfe7ff', '#ffc8d2', '#fff4dd'];
+    const colors = ['#ffd27f', '#ffe7b8', '#cfe7ff', '#ffc8d2', '#fff4dd', '#9fd4ff', '#ffb38f'];
     return Array.from({ length: count }, (_, i) => {
       const radius = 4500 + random() * 32000;
       const theta = random() * Math.PI * 2;
@@ -84,49 +86,134 @@ function GalaxyStarField({
         Math.cos(phi) * radius,
         Math.sin(phi) * Math.sin(theta) * radius
       );
+      const isCurrent = hashCombine(galaxySeed, 'system', i) === currentSystemSeed;
+      const visibleScale = (quality === 'low' ? 4.0 : quality === 'medium' ? 5.0 : 6.0) + random() * (quality === 'low' ? 3.0 : quality === 'medium' ? 4.0 : 5.0);
       return {
         id: `galaxy_star_${i}`,
         seed: hashCombine(galaxySeed, 'system', i),
         color: colors[Math.floor(random() * colors.length) % colors.length],
-        scale: 18 + random() * 42,
+        scale: isCurrent ? visibleScale * 1.8 : visibleScale,
+        clickScale: isCurrent ? 52 : 40,
         position,
       };
     });
-  }, [galaxySeed, quality]);
+  }, [galaxySeed, quality, currentSystemSeed]);
 
   useEffect(() => {
-    if (!meshRef.current) return;
     const dummy = new THREE.Object3D();
     const color = new THREE.Color();
-    starData.forEach((star, i) => {
-      dummy.position.copy(star.position);
-      dummy.scale.setScalar(star.scale * (star.seed === currentSystemSeed ? 2.2 : 1.25));
-      dummy.updateMatrix();
-      meshRef.current!.setMatrixAt(i, dummy.matrix);
-      color.set(star.seed === currentSystemSeed ? '#ffffff' : star.color);
-      meshRef.current!.setColorAt(i, color);
-    });
-    meshRef.current.instanceMatrix.needsUpdate = true;
-    if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
+    const applyTo = (mesh: THREE.InstancedMesh | null, mode: 'visible' | 'hit') => {
+      if (!mesh) return;
+      starData.forEach((star, i) => {
+        dummy.position.copy(star.position);
+        dummy.scale.setScalar(mode === 'visible' ? star.scale : star.clickScale);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+        if (mode === 'visible') {
+          color.set(star.seed === currentSystemSeed ? '#ffffff' : star.color);
+          mesh.setColorAt(i, color);
+        }
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    };
+
+    applyTo(meshRef.current, 'visible');
+    applyTo(hitMeshRef.current, 'hit');
   }, [starData, currentSystemSeed]);
 
+  const handleSelect = (instanceId?: number) => {
+    if (typeof instanceId === 'number') onSelectSystem(starData[instanceId]);
+  };
+
   return (
-    <instancedMesh
-      ref={meshRef}
-      args={[undefined, undefined, starData.length]}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (typeof e.instanceId === 'number') onSelectSystem(starData[e.instanceId].seed);
-      }}
-      onPointerOver={() => { document.body.style.cursor = 'pointer'; }}
-      onPointerOut={() => { document.body.style.cursor = 'auto'; }}
-    >
-      <sphereGeometry args={[1, 8, 8]} />
-      <meshBasicMaterial vertexColors toneMapped={false} transparent opacity={0.95} />
-    </instancedMesh>
+    <group>
+      <instancedMesh ref={meshRef} args={[undefined, undefined, starData.length]}>
+        <sphereGeometry args={[1, 8, 8]} />
+        <meshBasicMaterial vertexColors toneMapped={false} transparent opacity={0.92} />
+      </instancedMesh>
+      <instancedMesh
+        ref={hitMeshRef}
+        args={[undefined, undefined, starData.length]}
+        onClick={(e) => {
+          e.stopPropagation();
+          handleSelect(e.instanceId);
+        }}
+        onPointerOver={() => { document.body.style.cursor = 'pointer'; }}
+        onPointerOut={() => { document.body.style.cursor = 'auto'; }}
+      >
+        <sphereGeometry args={[1, 6, 6]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </instancedMesh>
+    </group>
   );
 }
 
+function SystemTransitionController({
+  transition,
+  onCommit,
+  onComplete,
+}: {
+  transition: GalaxyStarData | null;
+  onCommit: () => void;
+  onComplete: () => void;
+}) {
+  const { camera } = useThree();
+  const startPos = useRef(new THREE.Vector3());
+  const outboundPos = useRef(new THREE.Vector3());
+  const inboundPos = useRef(new THREE.Vector3(0, 0, 34));
+  const elapsed = useRef(0);
+  const phase = useRef<'idle' | 'outbound' | 'inbound'>('idle');
+  const committed = useRef(false);
+
+  useEffect(() => {
+    if (!transition) {
+      phase.current = 'idle';
+      elapsed.current = 0;
+      committed.current = false;
+      return;
+    }
+    startPos.current.copy(camera.position);
+    outboundPos.current.copy(transition.position.clone().normalize().multiplyScalar(Math.min(transition.position.length() * 0.22, 7000)));
+    inboundPos.current.set(0, 0, 34);
+    elapsed.current = 0;
+    phase.current = 'outbound';
+    committed.current = false;
+  }, [transition, camera]);
+
+  useFrame((_, delta) => {
+    if (!transition || phase.current === 'idle') return;
+    elapsed.current += delta;
+
+    if (phase.current === 'outbound') {
+      const t = THREE.MathUtils.clamp(elapsed.current / 2.2, 0, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      camera.position.lerpVectors(startPos.current, outboundPos.current, eased);
+      camera.lookAt(transition.position);
+      if (t >= 0.62 && !committed.current) {
+        committed.current = true;
+        onCommit();
+        startPos.current.copy(camera.position);
+        elapsed.current = 0;
+        phase.current = 'inbound';
+      }
+      return;
+    }
+
+    if (phase.current === 'inbound') {
+      const t = THREE.MathUtils.clamp(elapsed.current / 1.4, 0, 1);
+      const eased = t * t * (3 - 2 * t);
+      camera.position.lerpVectors(startPos.current, inboundPos.current, eased);
+      camera.lookAt(0, 0, 0);
+      if (t >= 1) {
+        phase.current = 'idle';
+        onComplete();
+      }
+    }
+  });
+
+  return null;
+}
 
 export default function App() {
   const [trackedSatellite, setTrackedSatellite] = useState<any>(null);
@@ -148,12 +235,37 @@ export default function App() {
   const { lockedTarget } = useShipStore();
   const [currentPlanetId, setCurrentPlanetId] = useState<string | null>(null);
   const [currentSystemSeed, setCurrentSystemSeed] = useState('alpha_centauri_v1');
+  const [systemTransition, setSystemTransition] = useState<GalaxyStarData | null>(null);
+  const [shipRespawnNonce, setShipRespawnNonce] = useState(0);
   const [solarSystem, setSolarSystem] = useState<SolarSystemData | null>(null);
   const [welcomeMessage, setWelcomeMessage] = useState<{ name: string, desc: string } | null>(null);
   const [qualityPreset, setQualityPreset] = useState<'low' | 'medium' | 'high'>(isMobile ? 'low' : 'high');
   const [showOrbitRings, setShowOrbitRings] = useState(true);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState<{ active: boolean; progress: number; label: string }>({ active: true, progress: 0, label: 'Booting navigation core...' });
+
+  const handleSystemSelect = useCallback((star: GalaxyStarData) => {
+    if (star.seed === currentSystemSeed || systemTransition) return;
+    setSystemTransition(star);
+    setLoadingStatus({ active: true, progress: 0.08, label: `Aligning warp corridor to ${star.seed.replaceAll('|', ' ')}` });
+  }, [currentSystemSeed, systemTransition]);
+
+  const commitSystemTransition = useCallback(() => {
+    if (!systemTransition) return;
+    setLoadingStatus({ active: true, progress: 0.72, label: 'Rebuilding local star system from deterministic seed...' });
+    setCurrentSystemSeed(systemTransition.seed);
+    setCurrentPlanetId(null);
+    setTrackedSatellite(null);
+    setShipRespawnNonce(n => n + 1);
+  }, [systemTransition]);
+
+  const completeSystemTransition = useCallback(() => {
+    setLoadingStatus({ active: true, progress: 1, label: 'Star system synchronized.' });
+    window.setTimeout(() => {
+      setLoadingStatus({ active: false, progress: 1, label: 'Star system synchronized.' });
+      setSystemTransition(null);
+    }, 220);
+  }, []);
 
   const currentPlanetRadius = useMemo(() => {
     if (!solarSystem) return PLANET_RADIUS;
@@ -170,7 +282,7 @@ export default function App() {
     const firstPlanet = planets[0];
     if (firstPlanet) {
       geographyManager.setSeed(firstPlanet.seed, firstPlanet.noiseScale, firstPlanet.landThreshold);
-      setCurrentPlanetId(firstPlanet.id);
+      setCurrentPlanetId(null);
     } else {
       setCurrentPlanetId(null);
     }
@@ -605,15 +717,16 @@ export default function App() {
         <ambientLight intensity={0.2} />
         
         <Stars radius={1000000} depth={50} count={starsCount} factor={4} saturation={0} fade speed={qualityPreset === 'low' ? 0.25 : 0.75} />
-        <GalaxyStarField galaxySeed="umb-games-galaxy" currentSystemSeed={currentSystemSeed} onSelectSystem={setCurrentSystemSeed} quality={qualityPreset} />
+        <GalaxyStarField galaxySeed="umb-games-galaxy" currentSystemSeed={currentSystemSeed} onSelectSystem={handleSystemSelect} quality={qualityPreset} />
         
         <CameraTracker />
+        <SystemTransitionController transition={systemTransition} onCommit={commitSystemTransition} onComplete={completeSystemTransition} />
 
         {solarSystem && <SolarSystemView data={solarSystem} isMobile={isMobile} currentPlanetId={currentPlanetId} setCurrentPlanetId={setCurrentPlanetId} showOrbitRings={showOrbitRings} quality={qualityPreset} />}
         
         <Satellite satellites={topSatellites} onSatelliteClick={handleSatelliteClick} solarSystem={solarSystem} currentPlanetId={currentPlanetId} />
         
-        {!isShipMode && (
+        {!isShipMode && !systemTransition && (
           <CameraController 
             trackedSatellite={trackedSatellite} 
             onInteract={() => setTrackedSatellite(null)} 
@@ -622,7 +735,7 @@ export default function App() {
           />
         )}
 
-        {isShipMode && (
+        {isShipMode && !systemTransition && (
           <Ship 
             planetRadius={currentPlanetRadius} 
             onExit={handleExitShip} 
@@ -635,6 +748,7 @@ export default function App() {
             currentPlanetId={currentPlanetId}
             setCurrentPlanetId={setCurrentPlanetId}
             solarSystem={solarSystem}
+            respawnNonce={shipRespawnNonce}
           />
         )}
 
