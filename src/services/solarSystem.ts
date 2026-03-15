@@ -1,4 +1,4 @@
-import { createPRNG, deriveSeed, lerp } from '../utils/random';
+import { createPRNG, hashCombine, seededRange } from '../utils/random';
 
 export interface MoonData {
   id: string;
@@ -9,23 +9,19 @@ export interface MoonData {
   initialAngle: number;
   noiseScale: number;
   landThreshold: number;
-  biomeSeed: string;
 }
 
 export interface RingData {
   innerRadius: number;
   outerRadius: number;
-  tiltX: number;
-  tiltZ: number;
-  colorSeed: number;
+  color: string;
+  opacity: number;
 }
 
 export interface PlanetData {
   id: string;
-  type: 'planet';
   seed: string;
-  biomeSeed: string;
-  starSystemSeed: string;
+  type: 'planet';
   radius: number;
   orbitDistance: number;
   orbitSpeed: number;
@@ -37,10 +33,13 @@ export interface PlanetData {
   colorSeed: number;
   temperatureBias: number;
   humidityBias: number;
-  cloudSeed: string;
+  paletteSeed: number;
+  hasClouds: boolean;
+  cloudDensity: number;
+  cloudSpeed: number;
   cloudRotationSpeed: number;
   moons: MoonData[];
-  rings?: RingData;
+  ring: RingData | null;
 }
 
 export interface AsteroidBeltData {
@@ -58,107 +57,105 @@ export type OrbitalBody = PlanetData | AsteroidBeltData;
 
 export interface SolarSystemData {
   seed: string;
-  galaxySeed: string;
-  starSystemSeed: string;
   starRadius: number;
+  starColor: string;
   bodies: OrbitalBody[];
 }
 
-export function generateSolarSystem(worldSeed: string): SolarSystemData {
-  const galaxySeed = deriveSeed(worldSeed, 'galaxy');
-  const starSystemSeed = deriveSeed(galaxySeed, 'star-system-0');
-  const prng = createPRNG(starSystemSeed);
+const STAR_COLORS = ['#fff4de', '#ffe8b5', '#ffd6a5', '#cfe8ff', '#bcd5ff', '#ffd1dc'];
+const RING_COLORS = ['#d8c3a5', '#c4b5a0', '#bfa88a', '#d9d1c7', '#c7c2b8'];
 
-  const numBodies = Math.floor(prng() * 8) + 5;
+export function generateSolarSystem(worldSeed: string): SolarSystemData {
+  const prng = createPRNG(worldSeed);
+  const numBodies = Math.floor(prng() * 8) + 6;
   const bodies: OrbitalBody[] = [];
-  const baseOrbitDistance = 100;
+  const starRadius = seededRange(hashCombine(worldSeed, 'starRadius'), 8, 16);
+  const starColor = STAR_COLORS[Math.floor(prng() * STAR_COLORS.length) % STAR_COLORS.length];
+
+  let orbitDistance = 90;
 
   for (let i = 0; i < numBodies; i++) {
-    const bodySeed = deriveSeed(starSystemSeed, `body-${i}`);
-    const biomeSeed = deriveSeed(bodySeed, 'biome');
-    const cloudSeed = deriveSeed(bodySeed, 'clouds');
+    const bodySeed = hashCombine(worldSeed, 'body', i);
     const bodyPrng = createPRNG(bodySeed);
-
-    const orbitDistance = baseOrbitDistance * Math.pow(1.72, i);
+    const isAsteroidBelt = i > 1 && bodyPrng() < 0.16;
+    orbitDistance += seededRange(hashCombine(bodySeed, 'orbitGap'), 55, 120);
     const initialAngle = bodyPrng() * Math.PI * 2;
-    const isAsteroidBelt = i > 0 && bodyPrng() < 0.16;
+    const radialRatio = i / Math.max(1, numBodies - 1);
 
     if (isAsteroidBelt) {
       bodies.push({
         id: `belt_${i}`,
         type: 'asteroid_belt',
         orbitDistance,
-        orbitSpeed: (bodyPrng() * 0.018 + 0.008) * (bodyPrng() > 0.5 ? 1 : -1),
-        width: orbitDistance * lerp(0.08, 0.18, bodyPrng()),
-        count: Math.floor(lerp(160, 420, bodyPrng())),
+        orbitSpeed: (seededRange(hashCombine(bodySeed, 'speed'), 0.006, 0.018)) * (bodyPrng() > 0.5 ? 1 : -1),
+        width: orbitDistance * seededRange(hashCombine(bodySeed, 'width'), 0.08, 0.16),
+        count: Math.floor(seededRange(hashCombine(bodySeed, 'count'), 180, 520)),
         initialAngle,
         seed: bodySeed,
       });
       continue;
     }
 
-    const distanceFactor = i / Math.max(1, numBodies - 1);
-    const minRadius = lerp(4, 9, distanceFactor);
-    const maxRadius = lerp(10, 22, distanceFactor);
-    const radius = lerp(minRadius, maxRadius, Math.pow(bodyPrng(), 0.65));
+    const giantBias = radialRatio * radialRatio;
+    const radius = seededRange(hashCombine(bodySeed, 'radius'), 4, 9) + giantBias * seededRange(hashCombine(bodySeed, 'giantBonus'), 3, 18);
+    const hasRing = radius > 12 && bodyPrng() > 0.45;
+    const moonCount = radius > 13
+      ? Math.floor(seededRange(hashCombine(bodySeed, 'moons'), 1, 5))
+      : bodyPrng() > 0.62
+        ? Math.floor(seededRange(hashCombine(bodySeed, 'moonsSmall'), 0, 3))
+        : 0;
 
-    const moonCount = bodyPrng() < 0.35 ? 0 : Math.min(4, Math.floor(bodyPrng() * (1 + distanceFactor * 5)));
-    const hasRings = radius > 11 && bodyPrng() > 0.58;
-
-    const moons: MoonData[] = [];
-    for (let moonIndex = 0; moonIndex < moonCount; moonIndex++) {
-      const moonSeed = deriveSeed(bodySeed, `moon-${moonIndex}`);
+    const moons: MoonData[] = Array.from({ length: moonCount }, (_, moonIndex) => {
+      const moonSeed = hashCombine(bodySeed, 'moon', moonIndex);
       const moonPrng = createPRNG(moonSeed);
-      moons.push({
-        id: `moon_${i}_${moonIndex}`,
+      return {
+        id: `planet_${i}_moon_${moonIndex}`,
         seed: moonSeed,
-        radius: lerp(radius * 0.12, radius * 0.32, moonPrng()),
-        orbitDistance: radius * lerp(2.2 + moonIndex * 1.4, 3.6 + moonIndex * 2.1, moonPrng()),
-        orbitSpeed: (moonPrng() * 0.3 + 0.08) * (moonPrng() > 0.5 ? 1 : -1),
+        radius: seededRange(hashCombine(moonSeed, 'radius'), Math.max(0.8, radius * 0.08), Math.max(1.6, radius * 0.22)),
+        orbitDistance: radius * seededRange(hashCombine(moonSeed, 'orbit'), 2.1 + moonIndex * 0.55, 3.2 + moonIndex * 0.9),
+        orbitSpeed: seededRange(hashCombine(moonSeed, 'speed'), 0.1, 0.32) * (moonPrng() > 0.5 ? 1 : -1),
         initialAngle: moonPrng() * Math.PI * 2,
-        noiseScale: lerp(0.7, 2.8, moonPrng()),
-        landThreshold: lerp(0.06, 0.28, moonPrng()),
-        biomeSeed: deriveSeed(moonSeed, 'biome'),
-      });
-    }
+        noiseScale: seededRange(hashCombine(moonSeed, 'noiseScale'), 0.8, 2.3),
+        landThreshold: seededRange(hashCombine(moonSeed, 'landThreshold'), 0.05, 0.35),
+      };
+    });
 
     bodies.push({
       id: `planet_${i}`,
-      type: 'planet',
       seed: bodySeed,
-      biomeSeed,
-      starSystemSeed,
+      type: 'planet',
       radius,
       orbitDistance,
-      orbitSpeed: (bodyPrng() * 0.04 + 0.008) * (bodyPrng() > 0.5 ? 1 : -1),
-      orbitTiltX: (bodyPrng() - 0.5) * 0.45,
-      orbitTiltZ: (bodyPrng() - 0.5) * 0.45,
+      orbitSpeed: seededRange(hashCombine(bodySeed, 'orbitSpeed'), 0.004, 0.02) * (bodyPrng() > 0.5 ? 1 : -1),
+      orbitTiltX: seededRange(hashCombine(bodySeed, 'tiltX'), -0.28, 0.28),
+      orbitTiltZ: seededRange(hashCombine(bodySeed, 'tiltZ'), -0.28, 0.28),
       initialAngle,
-      noiseScale: lerp(0.55, 2.8, bodyPrng()),
-      landThreshold: lerp(0.08, 0.34, bodyPrng()),
+      noiseScale: seededRange(hashCombine(bodySeed, 'noiseScale'), 0.55, 2.9),
+      landThreshold: seededRange(hashCombine(bodySeed, 'landThreshold'), 0.02, 0.42),
       colorSeed: bodyPrng(),
-      temperatureBias: lerp(-0.3, 0.35, bodyPrng()) - distanceFactor * 0.35,
-      humidityBias: lerp(-0.2, 0.25, bodyPrng()),
-      cloudSeed,
-      cloudRotationSpeed: lerp(0.03, 0.16, bodyPrng()),
+      temperatureBias: seededRange(hashCombine(bodySeed, 'temperatureBias'), -0.25, 0.25),
+      humidityBias: seededRange(hashCombine(bodySeed, 'humidityBias'), -0.25, 0.25),
+      paletteSeed: seededRange(hashCombine(bodySeed, 'paletteSeed'), 0, 1),
+      hasClouds: bodyPrng() > 0.22,
+      cloudDensity: seededRange(hashCombine(bodySeed, 'cloudDensity'), 0.4, 1.0),
+      cloudSpeed: seededRange(hashCombine(bodySeed, 'cloudSpeed'), 0.012, 0.05),
+      cloudRotationSpeed: seededRange(hashCombine(bodySeed, 'cloudRotationSpeed'), -0.08, 0.08),
       moons,
-      rings: hasRings
+      ring: hasRing
         ? {
-            innerRadius: radius * lerp(1.45, 1.9, bodyPrng()),
-            outerRadius: radius * lerp(2.05, 2.85, bodyPrng()),
-            tiltX: (bodyPrng() - 0.5) * 0.9,
-            tiltZ: (bodyPrng() - 0.5) * 0.9,
-            colorSeed: bodyPrng(),
+            innerRadius: radius * seededRange(hashCombine(bodySeed, 'ringInner'), 1.35, 1.7),
+            outerRadius: radius * seededRange(hashCombine(bodySeed, 'ringOuter'), 1.8, 2.6),
+            color: RING_COLORS[Math.floor(seededRange(hashCombine(bodySeed, 'ringColor'), 0, RING_COLORS.length - 0.001))],
+            opacity: seededRange(hashCombine(bodySeed, 'ringOpacity'), 0.18, 0.42),
           }
-        : undefined,
+        : null,
     });
   }
 
   return {
     seed: worldSeed,
-    galaxySeed,
-    starSystemSeed,
-    starRadius: 8,
+    starRadius,
+    starColor,
     bodies,
   };
 }

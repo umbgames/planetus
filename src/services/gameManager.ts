@@ -203,7 +203,13 @@ class GameManager {
       this.resources = snapshot.docs.map(doc => doc.data() as ResourceNode);
       
       if (snapshot.empty) {
-        this.needsResources = false;
+        if (auth.currentUser) {
+          this.initializeResources();
+        } else {
+          this.needsResources = true;
+        }
+      } else {
+        // We will handle respawning in a separate interval
       }
       
       if (this.onResourcesUpdate) this.onResourcesUpdate(this.resources);
@@ -213,11 +219,79 @@ class GameManager {
   private respawnInterval: any = null;
 
   startRespawnTimer() {
-    return;
+    if (this.respawnInterval) return;
+    this.respawnInterval = setInterval(() => {
+      if (!auth.currentUser) return;
+      const inactiveResources = this.resources.filter(r => !r.active);
+      if (inactiveResources.length > 0) {
+        const resToRespawn = inactiveResources[Math.floor(Math.random() * inactiveResources.length)];
+        geographyManager.initializeTopicRegions();
+        
+        let validRegions = geographyManager.regions;
+        if (resToRespawn.type === 'rare') {
+          validRegions = validRegions.filter(r => r.resourceZone === 'high');
+        }
+        
+        if (validRegions.length > 0) {
+          const region = validRegions[Math.floor(Math.random() * validRegions.length)];
+          const planetRadius = 10;
+          const pos = geographyManager.getRandomPointForTopic(region.id, planetRadius);
+          const height = geographyManager.getHeightAtPoint(pos[0], pos[1], pos[2], planetRadius, 0.8);
+          const snappedPos = new THREE.Vector3(pos[0], pos[1], pos[2]).normalize().multiplyScalar(height);
+          
+          updateDoc(doc(db, 'resources', resToRespawn.id), {
+            active: true,
+            position: { x: snappedPos.x, y: snappedPos.y, z: snappedPos.z }
+          }).catch(console.error);
+        }
+      }
+    }, 10000); // Try to respawn one resource every 10 seconds
   }
 
   async initializeResources() {
-    return;
+    if (!auth.currentUser) return;
+    geographyManager.initializeTopicRegions();
+    const planetRadius = 10;
+    const numCommon = 80;
+    const numRare = 20;
+    
+    const spawnResource = async (type: 'common' | 'rare', index: number) => {
+      let validRegions = geographyManager.regions;
+      if (type === 'rare') {
+        validRegions = validRegions.filter(r => r.resourceZone === 'high');
+      }
+      if (validRegions.length === 0) return;
+      
+      const region = validRegions[Math.floor(Math.random() * validRegions.length)];
+      
+      const pos = geographyManager.getRandomPointForTopic(region.id, planetRadius);
+      const height = geographyManager.getHeightAtPoint(pos[0], pos[1], pos[2], planetRadius, 0.8);
+      const snappedPos = new THREE.Vector3(pos[0], pos[1], pos[2]).normalize().multiplyScalar(height);
+      
+      const resourceId = `res_${type}_${index}_${Date.now()}`;
+      
+      try {
+        const resRef = doc(db, 'resources', resourceId);
+        const resData: ResourceNode = {
+          id: resourceId,
+          type,
+          position: { x: snappedPos.x, y: snappedPos.y, z: snappedPos.z },
+          active: true,
+          createdAt: new Date().toISOString()
+        };
+        
+        await setDoc(resRef, resData);
+      } catch (e) {
+        console.error("Failed to create resource", e);
+      }
+    };
+
+    for (let i = 0; i < numCommon; i++) {
+      await spawnResource('common', i);
+    }
+    for (let i = 0; i < numRare; i++) {
+      await spawnResource('rare', i);
+    }
   }
 
   async initializeNPCBases() {
@@ -315,14 +389,10 @@ class GameManager {
     const resource = this.resources.find(r => r.id === resourceId);
     if (!resource || !resource.active) throw new Error("Resource not found or already gathered.");
     
-    // Mark resource as inactive using deterministic ID docs.
-    await setDoc(doc(db, 'resources', resourceId), {
-      id: resourceId,
-      type: resource.type,
-      position: resource.position,
-      active: false,
-      createdAt: resource.createdAt || new Date().toISOString(),
-    }, { merge: true });
+    // Mark resource as inactive
+    await updateDoc(doc(db, 'resources', resourceId), {
+      active: false
+    });
     
     // Give resources to user
     const amount = resource.type === 'common' ? 50 : 10;

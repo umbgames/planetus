@@ -3,7 +3,6 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Stars, Environment } from '@react-three/drei';
 import * as THREE from 'three';
 import { Sun } from './components/Sun';
-import { Planet } from './components/Planet';
 import { BaseManager } from './components/BaseManager';
 import { Satellite } from './components/Satellite';
 import { CameraController } from './components/CameraController';
@@ -18,6 +17,7 @@ import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { geographyManager, GeographyManager } from './services/geography';
 import { useShipStore } from './services/shipStore';
 import { generateSolarSystem, SolarSystemData, PlanetData } from './services/solarSystem';
+import { createPRNG, hashCombine } from './utils/random';
 import { SolarSystemView } from './components/SolarSystemView';
 import { getScaledStarRadius } from './services/orbitUtils';
 
@@ -51,6 +51,83 @@ function RotatingSystem({ children }: { children: React.ReactNode }) {
 const PLANET_RADIUS = 10;
 
 
+interface GalaxyStarData {
+  id: string;
+  seed: string;
+  color: string;
+  scale: number;
+  position: THREE.Vector3;
+}
+
+function GalaxyStarField({
+  galaxySeed,
+  currentSystemSeed,
+  onSelectSystem,
+  quality = 'high',
+}: {
+  galaxySeed: string;
+  currentSystemSeed: string;
+  onSelectSystem: (seed: string) => void;
+  quality?: 'low' | 'medium' | 'high';
+}) {
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const starData = useMemo<GalaxyStarData[]>(() => {
+    const count = quality === 'low' ? 240 : quality === 'medium' ? 480 : 900;
+    const random = createPRNG(hashCombine(galaxySeed, 'galaxy-stars', quality));
+    const colors = ['#ffd27f', '#ffe7b8', '#cfe7ff', '#ffc8d2', '#fff4dd'];
+    return Array.from({ length: count }, (_, i) => {
+      const radius = 4500 + random() * 32000;
+      const theta = random() * Math.PI * 2;
+      const phi = Math.acos(2 * random() - 1);
+      const position = new THREE.Vector3(
+        Math.sin(phi) * Math.cos(theta) * radius,
+        Math.cos(phi) * radius,
+        Math.sin(phi) * Math.sin(theta) * radius
+      );
+      return {
+        id: `galaxy_star_${i}`,
+        seed: hashCombine(galaxySeed, 'system', i),
+        color: colors[Math.floor(random() * colors.length) % colors.length],
+        scale: 6 + random() * 16,
+        position,
+      };
+    });
+  }, [galaxySeed, quality]);
+
+  useEffect(() => {
+    if (!meshRef.current) return;
+    const dummy = new THREE.Object3D();
+    const color = new THREE.Color();
+    starData.forEach((star, i) => {
+      dummy.position.copy(star.position);
+      dummy.scale.setScalar(star.scale * (star.seed === currentSystemSeed ? 1.8 : 1));
+      dummy.updateMatrix();
+      meshRef.current!.setMatrixAt(i, dummy.matrix);
+      color.set(star.seed === currentSystemSeed ? '#ffffff' : star.color);
+      meshRef.current!.setColorAt(i, color);
+    });
+    meshRef.current.instanceMatrix.needsUpdate = true;
+    if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true;
+  }, [starData, currentSystemSeed]);
+
+  return (
+    <instancedMesh
+      ref={meshRef}
+      args={[undefined, undefined, starData.length]}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (typeof e.instanceId === 'number') onSelectSystem(starData[e.instanceId].seed);
+      }}
+      onPointerOver={() => { document.body.style.cursor = 'pointer'; }}
+      onPointerOut={() => { document.body.style.cursor = 'auto'; }}
+    >
+      <sphereGeometry args={[1, 6, 6]} />
+      <meshBasicMaterial vertexColors toneMapped={false} />
+    </instancedMesh>
+  );
+}
+
+
 export default function App() {
   const [trackedSatellite, setTrackedSatellite] = useState<any>(null);
   const [isShipMode, setIsShipMode] = useState(false);
@@ -70,6 +147,7 @@ export default function App() {
   const [hitEffect, setHitEffect] = useState(false);
   const { lockedTarget } = useShipStore();
   const [currentPlanetId, setCurrentPlanetId] = useState<string | null>(null);
+  const [currentSystemSeed, setCurrentSystemSeed] = useState('alpha_centauri_v1');
   const [solarSystem, setSolarSystem] = useState<SolarSystemData | null>(null);
   const [welcomeMessage, setWelcomeMessage] = useState<{ name: string, desc: string } | null>(null);
   const [qualityPreset, setQualityPreset] = useState<'low' | 'medium' | 'high'>(isMobile ? 'low' : 'high');
@@ -85,17 +163,16 @@ export default function App() {
   }, [solarSystem, currentPlanetId]);
 
   useEffect(() => {
-    // Generate solar system deterministically
-    // In a real multiplayer game, this seed would come from the server
-    const seed = "alpha_centauri_v1";
-    const system = generateSolarSystem(seed);
+    const system = generateSolarSystem(currentSystemSeed);
     setSolarSystem(system);
 
     const planets = system.bodies.filter((b): b is PlanetData => b.type === 'planet');
     const firstPlanet = planets[0];
     if (firstPlanet) {
-      geographyManager.setSeed(firstPlanet.id, firstPlanet.noiseScale, firstPlanet.landThreshold);
+      geographyManager.setSeed(firstPlanet.seed, firstPlanet.noiseScale, firstPlanet.landThreshold);
       setCurrentPlanetId(firstPlanet.id);
+    } else {
+      setCurrentPlanetId(null);
     }
 
     let cancelled = false;
@@ -106,17 +183,17 @@ export default function App() {
         setLoadingStatus({
           active: true,
           progress: i / Math.max(planets.length, 1),
-          label: `Caching textures for ${planet.id.replace('planet_', 'PLANET-')}...`,
+          label: `Generating ${planet.id.replace('planet_', 'PLANET-')} in ${currentSystemSeed}...`,
         });
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() => {
-            GeographyManager.warmCache(planet.id, planet.noiseScale, planet.landThreshold);
+            GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold);
             resolve();
           });
         });
       }
       if (!cancelled) {
-        setLoadingStatus({ active: true, progress: 1, label: 'Synchronizing orbital systems...' });
+        setLoadingStatus({ active: true, progress: 1, label: `Star system ${currentSystemSeed} locked.` });
         setTimeout(() => {
           if (!cancelled) setLoadingStatus({ active: false, progress: 1, label: 'Ready' });
         }, 350);
@@ -127,14 +204,14 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [currentSystemSeed]);
 
 
   useEffect(() => {
     if (solarSystem && currentPlanetId) {
       const planet = solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData;
       if (planet) {
-        geographyManager.setSeed(planet.id, planet.noiseScale, planet.landThreshold);
+        geographyManager.setSeed(planet.seed, planet.noiseScale, planet.landThreshold);
         geographyManager.initializeTopicRegions();
         
         // Show welcome message
@@ -147,7 +224,8 @@ export default function App() {
           "Gravity Well Detected",
           "Synchronizing Orbital Velocity"
         ];
-        const randomDesc = descriptions[Math.floor(Math.random() * descriptions.length)];
+        const descPrng = createPRNG(hashCombine(currentSystemSeed, planet.id, 'welcome'));
+        const randomDesc = descriptions[Math.floor(descPrng() * descriptions.length)];
         
         setWelcomeMessage({ name: planetName, desc: randomDesc });
         setTimeout(() => setWelcomeMessage(null), 4000);
@@ -527,6 +605,7 @@ export default function App() {
         <ambientLight intensity={0.2} />
         
         <Stars radius={1000000} depth={50} count={starsCount} factor={4} saturation={0} fade speed={qualityPreset === 'low' ? 0.25 : 0.75} />
+        <GalaxyStarField galaxySeed="umb-games-galaxy" currentSystemSeed={currentSystemSeed} onSelectSystem={setCurrentSystemSeed} quality={qualityPreset} />
         
         <CameraTracker />
 
@@ -586,6 +665,10 @@ export default function App() {
             <div className="bg-zinc-900/70 backdrop-blur border border-zinc-700 rounded-full px-3 py-1 text-xs text-zinc-200 flex items-center gap-2">
               <Zap size={12} className="text-amber-400" />
               <span>{bodyCount} WORLDS</span>
+            </div>
+            <div className="bg-zinc-900/70 backdrop-blur border border-zinc-700 rounded-full px-3 py-1 text-xs text-zinc-200 flex items-center gap-2">
+              <MonitorPlay size={12} className="text-violet-400" />
+              <span>{currentSystemSeed.replaceAll('|', ' ').toUpperCase()}</span>
             </div>
           </div>
         </div>

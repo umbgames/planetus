@@ -1,6 +1,6 @@
 import { createNoise3D } from 'simplex-noise';
 import * as THREE from 'three';
-import { clamp01, createPRNG, deriveSeed, hashToUnitFloat, lerp } from '../utils/random';
+import { createPRNG, hashCombine, hashToUnitFloat, seededRange } from '../utils/random';
 
 export interface Region {
   id: string;
@@ -10,22 +10,15 @@ export interface Region {
   resourceZone: 'high' | 'mid' | 'low';
 }
 
-export interface DeterministicResourceNode {
-  id: string;
-  type: 'common' | 'rare';
-  position: THREE.Vector3;
-}
-
-type BiomeType = 'tundra' | 'snow_forest' | 'grassland' | 'forest' | 'desert' | 'jungle' | 'ocean';
-
 interface CachedGeographyData {
   regions: Region[];
   texture: THREE.CanvasTexture;
   displacementMap: THREE.CanvasTexture;
 }
 
+type BiomeName = 'tundra' | 'snow_forest' | 'grassland' | 'forest' | 'desert' | 'jungle';
+
 const geometryCache = new Map<string, CachedGeographyData>();
-const tmpVec = new THREE.Vector3();
 
 export class GeographyManager {
   regions: Region[] = [];
@@ -38,61 +31,26 @@ export class GeographyManager {
   private prng: () => number;
   private noise3D: (x: number, y: number, z: number) => number;
   private humidityNoise3D: (x: number, y: number, z: number) => number;
-  private detailNoise3D: (x: number, y: number, z: number) => number;
-  private resourceNoise3D: (x: number, y: number, z: number) => number;
   private seed = 'default';
-  private biomeSeed = 'default::biome';
-  private temperatureBias = 0;
-  private humidityBias = 0;
-
-  canvas: HTMLCanvasElement | null = null;
-  ctx: CanvasRenderingContext2D | null = null;
-  imgData: ImageData | null = null;
-  dispCanvas: HTMLCanvasElement | null = null;
-  dispCtx: CanvasRenderingContext2D | null = null;
-  dispImgData: ImageData | null = null;
 
   constructor() {
     this.prng = createPRNG(this.seed);
-    this.noise3D = createNoise3D(createPRNG(this.seed));
-    this.humidityNoise3D = createNoise3D(createPRNG(deriveSeed(this.seed, 'humidity')));
-    this.detailNoise3D = createNoise3D(createPRNG(deriveSeed(this.seed, 'detail')));
-    this.resourceNoise3D = createNoise3D(createPRNG(deriveSeed(this.seed, 'resources')));
+    this.noise3D = createNoise3D(this.prng);
+    this.humidityNoise3D = createNoise3D(createPRNG(hashCombine(this.seed, 'humidity')));
   }
 
-  private getCacheKey() {
-    return `${this.seed}|${this.biomeSeed}|${this.noiseScale}|${this.landThreshold}|${this.temperatureBias}|${this.humidityBias}`;
+  private getCacheKey(seed = this.seed, noiseScale = this.noiseScale, landThreshold = this.landThreshold) {
+    return `${seed}|${noiseScale}|${landThreshold}`;
   }
 
-  setSeed(
-    seed: string,
-    noiseScale: number = 1.5,
-    landThreshold: number = 0.2,
-    options?: { biomeSeed?: string; temperatureBias?: number; humidityBias?: number }
-  ) {
-    const biomeSeed = options?.biomeSeed ?? deriveSeed(seed, 'biome');
-    const temperatureBias = options?.temperatureBias ?? 0;
-    const humidityBias = options?.humidityBias ?? 0;
-
-    if (
-      this.seed !== seed ||
-      this.noiseScale !== noiseScale ||
-      this.landThreshold !== landThreshold ||
-      this.biomeSeed !== biomeSeed ||
-      this.temperatureBias !== temperatureBias ||
-      this.humidityBias !== humidityBias
-    ) {
+  setSeed(seed: string, noiseScale: number = 1.5, landThreshold: number = 0.2) {
+    if (this.seed !== seed || this.noiseScale !== noiseScale || this.landThreshold !== landThreshold) {
       this.seed = seed;
-      this.biomeSeed = biomeSeed;
       this.noiseScale = noiseScale;
       this.landThreshold = landThreshold;
-      this.temperatureBias = temperatureBias;
-      this.humidityBias = humidityBias;
       this.prng = createPRNG(seed);
-      this.noise3D = createNoise3D(createPRNG(seed));
-      this.humidityNoise3D = createNoise3D(createPRNG(deriveSeed(biomeSeed, 'humidity')));
-      this.detailNoise3D = createNoise3D(createPRNG(deriveSeed(biomeSeed, 'detail')));
-      this.resourceNoise3D = createNoise3D(createPRNG(deriveSeed(seed, 'resources')));
+      this.noise3D = createNoise3D(this.prng);
+      this.humidityNoise3D = createNoise3D(createPRNG(hashCombine(seed, 'humidity')));
       this.regions = [];
       this.texture = null;
       this.displacementMap = null;
@@ -113,23 +71,25 @@ export class GeographyManager {
     const nz = z / len;
 
     let n = this.noise3D(nx * this.noiseScale, ny * this.noiseScale, nz * this.noiseScale);
-    n += 0.5 * this.noise3D(nx * this.noiseScale * 2, ny * this.noiseScale * 2, nz * this.noiseScale * 2);
+    n += 0.55 * this.noise3D(nx * this.noiseScale * 2, ny * this.noiseScale * 2, nz * this.noiseScale * 2);
     const ridge = this.noise3D(nx * this.noiseScale * 3, ny * this.noiseScale * 3, nz * this.noiseScale * 3);
-    n += 0.3 * (1.0 - Math.abs(ridge));
-    n += 0.25 * this.detailNoise3D(nx * this.noiseScale * 4, ny * this.noiseScale * 4, nz * this.noiseScale * 4);
-    n += 0.125 * this.detailNoise3D(nx * this.noiseScale * 8, ny * this.noiseScale * 8, nz * this.noiseScale * 8);
+    n += 0.28 * (1.0 - Math.abs(ridge));
+    n += 0.18 * this.noise3D(nx * this.noiseScale * 5, ny * this.noiseScale * 5, nz * this.noiseScale * 5);
     return n;
   }
 
   getElevation(x: number, y: number, z: number) {
     const t = this.getTerrain(x, y, z);
     if (t <= this.landThreshold) return 0;
-    return Math.pow(Math.max(0, t - this.landThreshold), 1.5);
+    let elevation = Math.max(0, t - this.landThreshold);
+    elevation = Math.pow(elevation, 1.65);
+    return elevation;
   }
 
   getHeightAtPoint(x: number, y: number, z: number, radius: number, displacementScale: number): number {
     if (!this.isLand(x, y, z)) return radius;
-    const dispValueNormalized = Math.min(1, this.getElevation(x, y, z) * 170 / 255);
+    const elevation = this.getElevation(x, y, z);
+    const dispValueNormalized = Math.min(1, elevation * 170 / 255);
     return radius + dispValueNormalized * displacementScale;
   }
 
@@ -137,71 +97,14 @@ export class GeographyManager {
     return this.getTerrain(x, y, z) > this.landThreshold;
   }
 
-  getLatitude(x: number, y: number, z: number) {
-    tmpVec.set(x, y, z).normalize();
-    return Math.asin(tmpVec.y) / (Math.PI / 2);
-  }
-
-  getTemperature(x: number, y: number, z: number) {
-    const latitude = 1 - Math.abs(this.getLatitude(x, y, z));
-    const tempNoise = this.detailNoise3D(x * 1.75, y * 1.75, z * 1.75) * 0.18;
-    return clamp01(latitude + tempNoise + this.temperatureBias);
-  }
-
-  getHumidity(x: number, y: number, z: number) {
-    const humidity = this.humidityNoise3D(x * 2.1, y * 2.1, z * 2.1) * 0.5 + 0.5 + this.humidityBias;
-    return clamp01(humidity);
-  }
-
-  getBiome(x: number, y: number, z: number): BiomeType {
-    if (!this.isLand(x, y, z)) return 'ocean';
-
-    const temperature = this.getTemperature(x, y, z);
-    const humidity = this.getHumidity(x, y, z);
-
-    if (temperature < 0.33) {
-      return humidity < 0.5 ? 'tundra' : 'snow_forest';
-    }
-    if (temperature < 0.66) {
-      return humidity < 0.5 ? 'grassland' : 'forest';
-    }
-    return humidity < 0.5 ? 'desert' : 'jungle';
-  }
-
-  private getBiomeBaseColor(biome: BiomeType) {
-    switch (biome) {
-      case 'tundra': return new THREE.Color('#93a7a7');
-      case 'snow_forest': return new THREE.Color('#d4e1e7');
-      case 'grassland': return new THREE.Color('#82a85e');
-      case 'forest': return new THREE.Color('#3f6a3c');
-      case 'desert': return new THREE.Color('#c9aa62');
-      case 'jungle': return new THREE.Color('#2f7a46');
-      default: return new THREE.Color('#23354e');
-    }
-  }
-
-  private getBiomeColor(x: number, y: number, z: number, elevation: number) {
-    const biome = this.getBiome(x, y, z);
-    if (biome === 'ocean') {
-      const waterDepth = clamp01((this.landThreshold - this.getTerrain(x, y, z)) * 0.8 + 0.4);
-      return new THREE.Color().setRGB(0.09, 0.15 + waterDepth * 0.05, 0.28 + waterDepth * 0.1);
-    }
-
-    const base = this.getBiomeBaseColor(biome);
-    const variation = this.detailNoise3D(x * 8, y * 8, z * 8) * 0.08;
-    const temperature = this.getTemperature(x, y, z);
-    const humidity = this.getHumidity(x, y, z);
-    const lift = elevation * 0.32 + temperature * 0.06 - humidity * 0.04 + variation;
-
-    const color = base.clone();
-    color.offsetHSL(variation * 0.08, variation * 0.12, lift);
-    return color;
-  }
-
   initializeTopicRegions() {
     const cached = geometryCache.get(this.getCacheKey());
     if (cached) {
-      this.regions = cached.regions.map((region) => ({ ...region, center: region.center.clone(), color: region.color.clone() }));
+      this.regions = cached.regions.map((region) => ({
+        ...region,
+        center: region.center.clone(),
+        color: region.color.clone(),
+      }));
       this.texture = cached.texture;
       this.displacementMap = cached.displacementMap;
       if (this.onTextureUpdate && this.texture && this.displacementMap) {
@@ -221,43 +124,47 @@ export class GeographyManager {
       { name: 'Sports', zone: 'low' as const },
     ];
 
-    this.regions = TOPICS.map((topic, index) => {
-      const topicSeed = deriveSeed(this.seed, topic.name);
-      const topicPrng = createPRNG(topicSeed);
-      let center = new THREE.Vector3(1, 0, 0);
+    const newRegions: Region[] = [];
 
-      for (let i = 0; i < 800; i++) {
-        const u = topicPrng();
-        const v = topicPrng();
+    for (const topic of TOPICS) {
+      let center = new THREE.Vector3(1, 0, 0);
+      for (let i = 0; i < 500; i++) {
+        const u = this.prng();
+        const v = this.prng();
         const theta = 2 * Math.PI * u;
         const phi = Math.acos(2 * v - 1);
         const x = Math.sin(phi) * Math.cos(theta);
         const y = Math.cos(phi);
         const z = Math.sin(phi) * Math.sin(theta);
         if (this.isLand(x, y, z)) {
-          center = new THREE.Vector3(x, y, z);
-          break;
+          const pt = new THREE.Vector3(x, y, z);
+          const tooClose = newRegions.some((r) => pt.distanceToSquared(r.center) < 0.4);
+          if (!tooClose) {
+            center = pt;
+            break;
+          }
         }
       }
 
-      const color = new THREE.Color().setHSL((hashToUnitFloat(topicSeed) + index * 0.07) % 1, 0.38, 0.42);
-      return {
+      const color = new THREE.Color().setHSL(hashToUnitFloat(hashCombine(this.seed, topic.name)), 0.55, 0.5);
+      newRegions.push({
         id: topic.name,
         hashtag: topic.name,
         center,
         color,
         resourceZone: topic.zone,
-      };
-    });
+      });
+    }
 
+    this.regions = newRegions;
     this.generateTexture();
   }
 
   getRegionForPoint(x: number, y: number, z: number): Region | null {
     if (!this.isLand(x, y, z) || this.regions.length === 0) return null;
-    const pt = tmpVec.set(x, y, z).normalize();
     let minDist = Infinity;
     let closestRegion: Region | null = null;
+    const pt = new THREE.Vector3(x, y, z).normalize();
     for (const region of this.regions) {
       const dist = pt.distanceToSquared(region.center);
       if (dist < minDist) {
@@ -269,10 +176,9 @@ export class GeographyManager {
   }
 
   getRandomPointForTopic(topic: string, radius: number): [number, number, number] {
-    const prng = createPRNG(deriveSeed(this.seed, `topic-point-${topic}`));
-    for (let i = 0; i < 800; i++) {
-      const u = prng();
-      const v = prng();
+    for (let i = 0; i < 500; i++) {
+      const u = this.prng();
+      const v = this.prng();
       const theta = 2 * Math.PI * u;
       const phi = Math.acos(2 * v - 1);
       const x = Math.sin(phi) * Math.cos(theta);
@@ -281,50 +187,83 @@ export class GeographyManager {
       const region = this.getRegionForPoint(x, y, z);
       if (region && region.id === topic) return [x * radius, y * radius, z * radius];
     }
+
+    for (let i = 0; i < 500; i++) {
+      const u = this.prng();
+      const v = this.prng();
+      const theta = 2 * Math.PI * u;
+      const phi = Math.acos(2 * v - 1);
+      const x = Math.sin(phi) * Math.cos(theta);
+      const y = Math.cos(phi);
+      const z = Math.sin(phi) * Math.sin(theta);
+      if (this.isLand(x, y, z)) return [x * radius, y * radius, z * radius];
+    }
+
     return [radius, 0, 0];
   }
 
-  generateDeterministicResources(radius: number, displacementScale: number = 0.8) {
-    const common: DeterministicResourceNode[] = [];
-    const rare: DeterministicResourceNode[] = [];
-    const sampleSteps = 92;
-    const rareNoise3D = createNoise3D(createPRNG(deriveSeed(this.seed, 'resource-rare')));
-    const commonNoise3D = createNoise3D(createPRNG(deriveSeed(this.seed, 'resource-common')));
-
-    for (let yIndex = 0; yIndex <= sampleSteps; yIndex++) {
-      const v = yIndex / sampleSteps;
-      const phi = v * Math.PI;
-      const ringSteps = Math.max(24, Math.floor(Math.sin(phi) * sampleSteps * 2));
-
-      for (let xIndex = 0; xIndex < ringSteps; xIndex++) {
-        const u = xIndex / ringSteps;
-        const theta = u * Math.PI * 2;
-        const nx = Math.sin(phi) * Math.cos(theta);
-        const ny = Math.cos(phi);
-        const nz = Math.sin(phi) * Math.sin(theta);
-
-        if (!this.isLand(nx, ny, nz)) continue;
-
-        const rareNoise = rareNoise3D(nx * 3.2, ny * 3.2, nz * 3.2) * 0.5 + 0.5;
-        const commonNoise = commonNoise3D(nx * 4.4, ny * 4.4, nz * 4.4) * 0.5 + 0.5;
-
-        const worldPos = new THREE.Vector3(nx, ny, nz).multiplyScalar(this.getHeightAtPoint(nx, ny, nz, radius, displacementScale));
-        const cellKey = `${yIndex}_${xIndex}`;
-
-        if (rareNoise > 0.85) {
-          rare.push({ id: `res_${this.seed}_rare_${cellKey}`, type: 'rare', position: worldPos });
-        } else if (commonNoise > 0.70) {
-          common.push({ id: `res_${this.seed}_common_${cellKey}`, type: 'common', position: worldPos });
-        }
-      }
-    }
-
-    return [...common, ...rare];
+  private getTemperatureAtPoint(x: number, y: number, z: number) {
+    const latitude = 1 - Math.abs(y);
+    const thermalNoise = this.noise3D(x * 2.2, y * 2.2, z * 2.2) * 0.18;
+    const seedBias = seededRange(hashCombine(this.seed, 'tempBias'), -0.18, 0.18);
+    return THREE.MathUtils.clamp(latitude + thermalNoise + seedBias, 0, 1);
   }
 
+  private getHumidityAtPoint(x: number, y: number, z: number) {
+    const humidity = this.humidityNoise3D(x * 2.8, y * 2.8, z * 2.8) * 0.5 + 0.5;
+    const extra = this.humidityNoise3D(x * 6.2, y * 6.2, z * 6.2) * 0.12;
+    const seedBias = seededRange(hashCombine(this.seed, 'humidityBias'), -0.18, 0.18);
+    return THREE.MathUtils.clamp(humidity + extra + seedBias, 0, 1);
+  }
+
+  getBiomeAtPoint(x: number, y: number, z: number): BiomeName {
+    const temperature = this.getTemperatureAtPoint(x, y, z);
+    const humidity = this.getHumidityAtPoint(x, y, z);
+    const tempBand = temperature < 0.33 ? 'cold' : temperature < 0.66 ? 'temperate' : 'hot';
+    const humidityBand = humidity < 0.5 ? 'dry' : 'wet';
+
+    if (tempBand === 'cold' && humidityBand === 'dry') return 'tundra';
+    if (tempBand === 'cold' && humidityBand === 'wet') return 'snow_forest';
+    if (tempBand === 'temperate' && humidityBand === 'dry') return 'grassland';
+    if (tempBand === 'temperate' && humidityBand === 'wet') return 'forest';
+    if (tempBand === 'hot' && humidityBand === 'dry') return 'desert';
+    return 'jungle';
+  }
+
+  private getBiomePalette() {
+    const hueShift = seededRange(hashCombine(this.seed, 'biomeHueShift'), -0.06, 0.06);
+    const lightShift = seededRange(hashCombine(this.seed, 'biomeLightShift'), -0.08, 0.08);
+    const satShift = seededRange(hashCombine(this.seed, 'biomeSatShift'), -0.1, 0.1);
+    const mk = (h: number, s: number, l: number) => new THREE.Color().setHSL(
+      (h + hueShift + 1) % 1,
+      THREE.MathUtils.clamp(s + satShift, 0, 1),
+      THREE.MathUtils.clamp(l + lightShift, 0, 1)
+    );
+    return {
+      tundra: mk(0.14, 0.22, 0.66),
+      snow_forest: mk(0.54, 0.26, 0.77),
+      grassland: mk(0.26, 0.42, 0.48),
+      forest: mk(0.32, 0.5, 0.34),
+      desert: mk(0.11, 0.55, 0.58),
+      jungle: mk(0.36, 0.62, 0.3),
+      waterDeep: mk(0.58, 0.55, 0.18),
+      waterShallow: mk(0.54, 0.48, 0.32),
+      shoreline: mk(0.13, 0.45, 0.68),
+      mountain: mk(0.08, 0.12, 0.62),
+      snowCap: mk(0.56, 0.12, 0.9),
+    };
+  }
+
+  canvas: HTMLCanvasElement | null = null;
+  ctx: CanvasRenderingContext2D | null = null;
+  imgData: ImageData | null = null;
+  dispCanvas: HTMLCanvasElement | null = null;
+  dispCtx: CanvasRenderingContext2D | null = null;
+  dispImgData: ImageData | null = null;
+
   generateTexture() {
-    const width = 2048;
-    const height = 1024;
+    const width = 1024;
+    const height = 512;
 
     if (!this.canvas) {
       this.canvas = document.createElement('canvas');
@@ -342,6 +281,7 @@ export class GeographyManager {
 
     const data = this.imgData!.data;
     const dispData = this.dispImgData!.data;
+    const palette = this.getBiomePalette();
 
     for (let y = 0; y < height; y++) {
       const phi = (y / height) * Math.PI;
@@ -352,17 +292,53 @@ export class GeographyManager {
         const pz = Math.sin(phi) * Math.sin(theta);
         const idx = (y * width + x) * 4;
         const elevation = this.getElevation(px, py, pz);
-        const dispValue = Math.min(255, Math.floor(elevation * 170));
 
+        if (!this.isLand(px, py, pz)) {
+          const coastFactor = THREE.MathUtils.clamp((this.getTerrain(px, py, pz) - this.landThreshold + 0.12) / 0.12, 0, 1);
+          const color = palette.waterDeep.clone().lerp(palette.waterShallow, coastFactor);
+          const wave = this.noise3D(px * 14, py * 14, pz * 14) * 0.05;
+          color.offsetHSL(0, 0, wave);
+          data[idx] = Math.round(color.r * 255);
+          data[idx + 1] = Math.round(color.g * 255);
+          data[idx + 2] = Math.round(color.b * 255);
+          data[idx + 3] = 255;
+          dispData[idx] = 0;
+          dispData[idx + 1] = 0;
+          dispData[idx + 2] = 0;
+          dispData[idx + 3] = 255;
+          continue;
+        }
+
+        const dispValue = Math.min(255, Math.floor(elevation * 180));
         dispData[idx] = dispValue;
         dispData[idx + 1] = dispValue;
         dispData[idx + 2] = dispValue;
         dispData[idx + 3] = 255;
 
-        const color = this.getBiomeColor(px, py, pz, elevation);
-        data[idx] = Math.round(clamp01(color.r) * 255);
-        data[idx + 1] = Math.round(clamp01(color.g) * 255);
-        data[idx + 2] = Math.round(clamp01(color.b) * 255);
+        const biome = this.getBiomeAtPoint(px, py, pz);
+        const base = palette[biome].clone();
+        const region = this.getRegionForPoint(px, py, pz);
+        const detail = this.noise3D(px * 28, py * 28, pz * 28) * 0.08;
+        const humidity = this.getHumidityAtPoint(px, py, pz);
+        const temperature = this.getTemperatureAtPoint(px, py, pz);
+
+        if (elevation > 0.46) {
+          base.lerp(palette.mountain, THREE.MathUtils.clamp((elevation - 0.46) * 1.8, 0, 1));
+        }
+        if (Math.abs(py) > 0.82 || (temperature < 0.18 && elevation > 0.2)) {
+          base.lerp(palette.snowCap, THREE.MathUtils.clamp((Math.abs(py) - 0.82) * 4 + elevation * 0.4, 0, 1));
+        }
+        if (elevation < 0.04) {
+          base.lerp(palette.shoreline, 0.45 - elevation * 6);
+        }
+        if (region) {
+          base.lerp(region.color, region.resourceZone === 'high' ? 0.12 : region.resourceZone === 'mid' ? 0.07 : 0.04);
+        }
+
+        const shade = 0.95 + elevation * 0.85 + humidity * 0.06 - (1 - temperature) * 0.04 + detail;
+        data[idx] = Math.max(0, Math.min(255, Math.round(base.r * 255 * shade)));
+        data[idx + 1] = Math.max(0, Math.min(255, Math.round(base.g * 255 * shade)));
+        data[idx + 2] = Math.max(0, Math.min(255, Math.round(base.b * 255 * shade)));
         data[idx + 3] = 255;
       }
     }
@@ -370,21 +346,27 @@ export class GeographyManager {
     this.ctx!.putImageData(this.imgData!, 0, 0);
     this.dispCtx!.putImageData(this.dispImgData!, 0, 0);
 
-    this.texture = new THREE.CanvasTexture(this.canvas!);
-    this.texture.colorSpace = THREE.SRGBColorSpace;
-    this.texture.needsUpdate = true;
+    if (!this.texture) {
+      this.texture = new THREE.CanvasTexture(this.canvas);
+      this.texture.colorSpace = THREE.SRGBColorSpace;
+      this.displacementMap = new THREE.CanvasTexture(this.dispCanvas!);
+    }
 
-    this.displacementMap = new THREE.CanvasTexture(this.dispCanvas!);
-    this.displacementMap.needsUpdate = true;
+    this.texture.needsUpdate = true;
+    this.displacementMap!.needsUpdate = true;
 
     geometryCache.set(this.getCacheKey(), {
-      regions: this.regions.map((region) => ({ ...region, center: region.center.clone(), color: region.color.clone() })),
+      regions: this.regions.map((region) => ({
+        ...region,
+        center: region.center.clone(),
+        color: region.color.clone(),
+      })),
       texture: this.texture,
-      displacementMap: this.displacementMap,
+      displacementMap: this.displacementMap!,
     });
 
-    if (this.onTextureUpdate && this.texture && this.displacementMap) {
-      this.onTextureUpdate(this.texture, this.displacementMap);
+    if (this.onTextureUpdate) {
+      this.onTextureUpdate(this.texture, this.displacementMap!);
     }
   }
 }

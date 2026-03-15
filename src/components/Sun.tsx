@@ -7,9 +7,10 @@ interface SunProps {
   distance?: number;
   speed?: number;
   onClick?: () => void;
+  color?: string;
 }
 
-export function Sun({ radius = 2, distance = 30, speed = 0.1, onClick }: SunProps) {
+export function Sun({ radius = 2, distance = 30, speed = 0.1, onClick, color = '#fff1b8' }: SunProps) {
   const groupRef = useRef<THREE.Group>(null);
   const lightRef = useRef<THREE.DirectionalLight>(null);
   const coreSegments = useMemo(() => (radius > 20 ? 40 : 28), [radius]);
@@ -47,7 +48,7 @@ export function Sun({ radius = 2, distance = 30, speed = 0.1, onClick }: SunProp
       {/* Sun Mesh */}
       <mesh>
         <sphereGeometry args={[radius, coreSegments, coreSegments]} />
-        <meshBasicMaterial color="#fff1b8" />
+        <meshBasicMaterial color={color} />
       </mesh>
 
       <mesh>

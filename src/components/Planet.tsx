@@ -4,28 +4,35 @@ import * as THREE from 'three';
 import { BaseManager } from './BaseManager';
 import { ResourceManager } from './ResourceManager';
 import { GeographyManager } from '../services/geography';
-import { hashToUnitFloat, lerp } from '../utils/random';
+import { hashCombine, seededRange } from '../utils/random';
 
 interface CloudsProps {
   radius: number;
   isMobile?: boolean;
-  planetSeed: string;
-  serverTimeSeconds?: number;
-  cloudRotationSpeed?: number;
+  seed: string;
+  serverTime?: number;
+  density?: number;
+  speed?: number;
+  rotationSpeed?: number;
 }
 
 const CLOUD_VERTEX_SHADER = `
   varying vec3 vPosition;
+  varying vec3 vNormal;
   void main() {
-    vPosition = normalize(position);
+    vPosition = position;
+    vNormal = normalize(normalMatrix * normal);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
 
 const CLOUD_FRAGMENT_SHADER = `
   varying vec3 vPosition;
+  varying vec3 vNormal;
   uniform float uTime;
-  uniform float uSeed;
+  uniform float uDensity;
+  uniform float uSeedA;
+  uniform float uSeedB;
 
   vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
   vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -45,7 +52,10 @@ const CLOUD_FRAGMENT_SHADER = `
     vec3 x2 = x0 - i2 + C.yyy;
     vec3 x3 = x0 - D.yyy;
     i = mod289(i);
-    vec4 p = permute(permute(permute(i.z + vec4(0.0, i1.z, i2.z, 1.0)) + i.y + vec4(0.0, i1.y, i2.y, 1.0)) + i.x + vec4(0.0, i1.x, i2.x, 1.0));
+    vec4 p = permute(permute(permute(
+      i.z + vec4(0.0, i1.z, i2.z, 1.0))
+      + i.y + vec4(0.0, i1.y, i2.y, 1.0))
+      + i.x + vec4(0.0, i1.x, i2.x, 1.0));
     float n_ = 0.142857142857;
     vec3 ns = n_ * D.wyz - D.xzx;
     vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
@@ -68,43 +78,40 @@ const CLOUD_FRAGMENT_SHADER = `
     vec4 norm = taylorInvSqrt(vec4(dot(p0, p0), dot(p1, p1), dot(p2, p2), dot(p3, p3)));
     p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
     vec4 m = max(0.6 - vec4(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), 0.0);
-    m *= m;
+    m = m * m;
     return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
   }
 
   void main() {
     vec3 spherePos = normalize(vPosition);
-    vec3 flowA = vec3(uSeed * 7.31, 0.0, uTime * 0.025);
-    vec3 flowB = vec3(0.0, uSeed * 5.17, -uTime * 0.018);
-    float n1 = snoise(spherePos * 2.35 + flowA) * 0.5 + 0.5;
-    float n2 = snoise(spherePos * 5.25 + flowB) * 0.5 + 0.5;
-    float density = n1 * 0.68 + n2 * 0.32;
-    float alpha = smoothstep(0.48, 0.78, density) * 0.42;
-    gl_FragColor = vec4(vec3(1.0), alpha);
+    vec3 windA = vec3(uTime * 0.035, 0.0, uTime * 0.012);
+    vec3 windB = vec3(-uTime * 0.018, uTime * 0.01, 0.0);
+    float layerA = snoise(spherePos * (2.7 + uSeedA * 2.0) + windA + vec3(uSeedA * 10.0));
+    float layerB = snoise(spherePos * (5.5 + uSeedB * 2.5) + windB + vec3(uSeedB * 13.0)) * 0.55;
+    float density = layerA * 0.75 + layerB * 0.45 + uDensity * 0.25;
+    float alpha = smoothstep(0.10, 0.42, density) * smoothstep(-0.2, 0.9, dot(vNormal, vec3(0.0, 0.0, 1.0)) + 0.35);
+    gl_FragColor = vec4(vec3(1.0), alpha * 0.65);
   }
 `;
 
-const Clouds = memo(function Clouds({ radius, isMobile = false, planetSeed, serverTimeSeconds = 0, cloudRotationSpeed = 0.08 }: CloudsProps) {
+const Clouds = memo(function Clouds({ radius, isMobile = false, seed, serverTime = 0, density = 0.75, speed = 0.025, rotationSpeed = 0.02 }: CloudsProps) {
   const cloudsRef = useRef<THREE.Mesh>(null);
-  const uniforms = useMemo(
-    () => ({
-      uTime: { value: 0 },
-      uSeed: { value: hashToUnitFloat(planetSeed) * 100.0 + 0.01 },
-    }),
-    [planetSeed]
-  );
+  const uniforms = useMemo(() => ({
+    uTime: { value: 0 },
+    uDensity: { value: density },
+    uSeedA: { value: seededRange(hashCombine(seed, 'cloudA'), 0, 1) },
+    uSeedB: { value: seededRange(hashCombine(seed, 'cloudB'), 0, 1) },
+  }), [seed, density]);
 
-  const cloudSegments = isMobile ? 24 : 40;
-  const hazeSegments = isMobile ? 20 : 28;
-  const seedTilt = useMemo(() => (hashToUnitFloat(`${planetSeed}:tilt`) - 0.5) * 0.35, [planetSeed]);
+  const cloudSegments = isMobile ? 28 : 44;
+  const hazeSegments = isMobile ? 20 : 30;
 
   useFrame((state) => {
-    const deterministicTime = serverTimeSeconds || state.clock.elapsedTime;
-    uniforms.uTime.value = deterministicTime;
-
+    const t = serverTime || state.clock.elapsedTime;
+    uniforms.uTime.value = t * Math.max(0.01, speed * 24);
     if (cloudsRef.current) {
-      cloudsRef.current.rotation.y = deterministicTime * cloudRotationSpeed;
-      cloudsRef.current.rotation.z = seedTilt;
+      cloudsRef.current.rotation.y = t * rotationSpeed;
+      cloudsRef.current.rotation.z = t * rotationSpeed * 0.35;
     }
   });
 
@@ -121,10 +128,16 @@ const Clouds = memo(function Clouds({ radius, isMobile = false, planetSeed, serv
           blending={THREE.NormalBlending}
         />
       </mesh>
-
-      <mesh frustumCulled rotation={[seedTilt * 0.5, 0, 0]}>
+      <mesh frustumCulled>
         <sphereGeometry args={[radius * 1.04, hazeSegments, hazeSegments]} />
-        <meshStandardMaterial color="#aaccff" transparent opacity={0.12} roughness={1} depthWrite={false} blending={THREE.AdditiveBlending} />
+        <meshStandardMaterial
+          color="#b9d7ff"
+          transparent
+          opacity={0.16}
+          roughness={1}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+        />
       </mesh>
     </group>
   );
@@ -134,12 +147,12 @@ interface PlanetProps {
   radius: number;
   isMobile?: boolean;
   seed: string;
-  biomeSeed?: string;
   noiseScale: number;
   landThreshold: number;
-  temperatureBias?: number;
-  humidityBias?: number;
-  serverTimeSeconds?: number;
+  showClouds?: boolean;
+  serverTime?: number;
+  cloudDensity?: number;
+  cloudSpeed?: number;
   cloudRotationSpeed?: number;
 }
 
@@ -147,22 +160,23 @@ export const Planet = memo(function Planet({
   radius,
   isMobile = false,
   seed,
-  biomeSeed,
   noiseScale,
   landThreshold,
-  temperatureBias = 0,
-  humidityBias = 0,
-  serverTimeSeconds,
-  cloudRotationSpeed,
+  showClouds = true,
+  serverTime = 0,
+  cloudDensity = 0.75,
+  cloudSpeed = 0.02,
+  cloudRotationSpeed = 0.02,
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
   const { camera } = useThree();
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
   const [displacementMap, setDisplacementMap] = useState<THREE.CanvasTexture | null>(null);
+  const [segments, setSegments] = useState(isMobile ? 64 : 128);
   const [geographyManager] = useState(() => new GeographyManager());
 
   useEffect(() => {
-    geographyManager.setSeed(seed, noiseScale, landThreshold, { biomeSeed, temperatureBias, humidityBias });
+    geographyManager.setSeed(seed, noiseScale, landThreshold);
     geographyManager.initializeTopicRegions();
 
     const nextTexture = geographyManager.texture ?? null;
@@ -190,50 +204,61 @@ export const Planet = memo(function Planet({
     return () => {
       geographyManager.onTextureUpdate = null;
     };
-  }, [geographyManager, seed, biomeSeed, noiseScale, landThreshold, temperatureBias, humidityBias]);
-
-  const [planetSegments, setPlanetSegments] = useState(isMobile ? 64 : 128);
-  const atmosphereSegments = isMobile ? 20 : 28;
+  }, [geographyManager, seed, noiseScale, landThreshold]);
 
   useFrame(() => {
     if (!planetRef.current) return;
-    const worldPos = planetRef.current.getWorldPosition(new THREE.Vector3());
+    const worldPos = new THREE.Vector3();
+    planetRef.current.getWorldPosition(worldPos);
     const dist = camera.position.distanceTo(worldPos);
-    const maxSeg = isMobile ? 128 : 256;
-    const minSeg = isMobile ? 32 : 64;
-    const near = radius * 8;
-    const far = radius * 30;
-    const t = THREE.MathUtils.clamp((dist - near) / Math.max(1, far - near), 0, 1);
-    const seg = Math.max(minSeg, Math.min(maxSeg, Math.round(lerp(maxSeg, minSeg, t))));
-    setPlanetSegments((prev) => (prev === seg ? prev : seg));
+    const nextSegments = isMobile
+      ? dist < radius * 14 ? 128 : dist < radius * 34 ? 64 : 32
+      : dist < radius * 16 ? 256 : dist < radius * 38 ? 128 : 64;
+    if (nextSegments !== segments) setSegments(nextSegments);
   });
 
-  const materialProps = useMemo(
-    () => ({
-      map: texture,
-      displacementMap,
-      displacementScale: isMobile ? 0.45 : 0.65,
-      bumpMap: displacementMap,
-      bumpScale: isMobile ? 0.12 : 0.18,
-      roughness: 0.9,
-      metalness: 0.03,
-    }),
-    [texture, displacementMap, isMobile]
-  );
+  const atmosphereSegments = useMemo(() => (isMobile ? 24 : 32), [isMobile]);
+  const materialProps = useMemo(() => ({
+    map: texture,
+    displacementMap,
+    displacementScale: isMobile ? 0.4 : 0.62,
+    bumpMap: displacementMap,
+    bumpScale: isMobile ? 0.1 : 0.17,
+    roughness: 0.88,
+    metalness: 0.04,
+  }), [texture, displacementMap, isMobile]);
 
   return (
     <group>
       <mesh ref={planetRef} castShadow receiveShadow frustumCulled>
-        <sphereGeometry args={[radius, planetSegments, planetSegments]} />
+        <sphereGeometry args={[radius, segments, segments]} />
         <meshStandardMaterial {...materialProps} />
       </mesh>
 
       <mesh frustumCulled>
         <sphereGeometry args={[radius * 1.15, atmosphereSegments, atmosphereSegments]} />
-        <meshBasicMaterial color="#4488ff" transparent opacity={0.05} side={THREE.BackSide} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <meshBasicMaterial
+          color="#5e93ff"
+          transparent
+          opacity={0.07}
+          side={THREE.BackSide}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
       </mesh>
 
-      <Clouds radius={radius} isMobile={isMobile} planetSeed={seed} serverTimeSeconds={serverTimeSeconds} cloudRotationSpeed={cloudRotationSpeed} />
+      {showClouds && (
+        <Clouds
+          radius={radius}
+          isMobile={isMobile}
+          seed={seed}
+          serverTime={serverTime}
+          density={cloudDensity}
+          speed={cloudSpeed}
+          rotationSpeed={cloudRotationSpeed}
+        />
+      )}
+
       <BaseManager planetRadius={radius} geographyManager={geographyManager} />
       <ResourceManager planetRadius={radius} isMobile={isMobile} geographyManager={geographyManager} />
     </group>
