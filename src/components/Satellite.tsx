@@ -1,12 +1,15 @@
 import React, { useRef, useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { Text, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
+import { SolarSystemData, PlanetData } from '../services/solarSystem';
+import { buildOrbitMap, getPlanetWorldPosition } from '../services/orbitUtils';
 
 interface SatelliteProps {
-  planetRadius: number;
-  players: { name: string; bases: number; info: string }[];
+  satellites: any[];
   onSatelliteClick?: (tag: any) => void;
+  solarSystem: SolarSystemData | null;
+  currentPlanetId: string | null;
 }
 
 const vertexShader = `
@@ -177,9 +180,36 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
   );
 }
 
-export function Satellite({ satellites, onSatelliteClick }: { satellites: any[], onSatelliteClick?: (tag: any) => void }) {
+export function Satellite({ satellites, onSatelliteClick, solarSystem, currentPlanetId }: SatelliteProps) {
+  const groupRef = useRef<THREE.Group>(null);
+  const orbitMap = useMemo(() => solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>(), [solarSystem]);
+  const mainPlanetPos = useMemo(() => new THREE.Vector3(), []);
+  const currentPlanetPos = useMemo(() => new THREE.Vector3(), []);
+
+  useFrame((state) => {
+    if (groupRef.current && solarSystem) {
+      const mainPlanet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet');
+      if (mainPlanet) {
+        const time = state.clock.getElapsedTime();
+        getPlanetWorldPosition(mainPlanet, time, orbitMap, mainPlanetPos);
+
+        if (currentPlanetId) {
+          const currentPlanet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId);
+          if (currentPlanet) {
+            getPlanetWorldPosition(currentPlanet, time, orbitMap, currentPlanetPos);
+            groupRef.current.position.subVectors(mainPlanetPos, currentPlanetPos);
+          } else {
+            groupRef.current.position.copy(mainPlanetPos);
+          }
+        } else {
+          groupRef.current.position.copy(mainPlanetPos);
+        }
+      }
+    }
+  });
+
   return (
-    <group>
+    <group ref={groupRef}>
       {satellites.map((tag) => (
         <SingleSatellite 
           key={tag.name} 

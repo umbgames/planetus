@@ -5,9 +5,12 @@ import * as THREE from 'three'
 import { gameManager, BaseData } from '../services/gameManager'
 import { useShipStore } from '../services/shipStore'
 
+import { GeographyManager } from '../services/geography';
+
 interface BaseManagerProps {
-  planetRadius: number
-  isMobile?: boolean
+  planetRadius: number;
+  isMobile?: boolean;
+  geographyManager: GeographyManager;
 }
 
 const CUBE_WIDTH = 0.06
@@ -16,7 +19,7 @@ const CUBE_DEPTH = 0.06
 
 const baseGeometry = new THREE.BoxGeometry(1,1,1)
 
-function Base({ data, isMobile }: { data: BaseData, isMobile:boolean }) {
+function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:boolean, geographyManager: GeographyManager }) {
 
   const groupRef = useRef<THREE.Group>(null)
   const highDetailRef = useRef<THREE.Group>(null)
@@ -28,7 +31,7 @@ function Base({ data, isMobile }: { data: BaseData, isMobile:boolean }) {
   const landingLights = useRef<THREE.Group>(null)
 
   const { camera } = useThree()
-  const { lockedTarget, setLockedTarget } = useShipStore()
+  const { lockedTarget, setLockedTarget, projectiles, setProjectiles } = useShipStore()
 
   const isNPC = data.ownerId === 'npc'
 
@@ -44,6 +47,14 @@ function Base({ data, isMobile }: { data: BaseData, isMobile:boolean }) {
   const isSelected = lockedTarget?.id === data.id
 
   const basePos = useRef(new THREE.Vector3())
+  const lastFired = useRef(0)
+  
+  // Base defense stats
+  const maxAmmo = 20 + data.level * 10;
+  const [ammo, setAmmo] = useState(maxAmmo);
+  const fireRate = Math.max(0.2, 1.5 - data.level * 0.2); // seconds between shots
+  const defenseRange = 40 + data.level * 10;
+  const [baseLasers, setBaseLasers] = useState<{id: string, pos: THREE.Vector3, targetPos: THREE.Vector3, createdAt: number}[]>([]);
 
   const handleBaseClick = (e:any) => {
     e.stopPropagation()
@@ -94,6 +105,40 @@ function Base({ data, isMobile }: { data: BaseData, isMobile:boolean }) {
     if(radarRef.current){
       radarRef.current.rotation.y = time*1.2
     }
+
+    /** BASE DEFENSE LOGIC **/
+    if (ammo > 0 && time - lastFired.current > fireRate) {
+      // Find nearest enemy projectile
+      let nearestProj = null;
+      let minDist = defenseRange;
+      
+      for (const proj of projectiles) {
+        // Simple check: if projectile is close to base, it's an enemy projectile
+        const dist = proj.pos.distanceTo(basePos.current);
+        if (dist < minDist) {
+          minDist = dist;
+          nearestProj = proj;
+        }
+      }
+      
+      if (nearestProj) {
+        // Fire laser
+        setBaseLasers(prev => [...prev, {
+          id: Math.random().toString(),
+          pos: basePos.current.clone().add(normal.clone().multiplyScalar(totalHeight + 0.5)),
+          targetPos: nearestProj.pos.clone(),
+          createdAt: time
+        }]);
+        setAmmo(prev => prev - 1);
+        lastFired.current = time;
+        
+        // Destroy projectile (simple interception)
+        setProjectiles((prev: any[]) => prev.filter(p => p.id !== nearestProj.id));
+      }
+    }
+    
+    // Update base lasers
+    setBaseLasers(prev => prev.filter(l => time - l.createdAt < 0.5));
 
     /** MINER SPIN **/
 
@@ -348,12 +393,56 @@ function Base({ data, isMobile }: { data: BaseData, isMobile:boolean }) {
         </Html>
       )}
 
+      {/* Base Lasers */}
+      {baseLasers.map(laser => {
+        const dir = laser.targetPos.clone().sub(laser.pos).normalize();
+        const length = laser.pos.distanceTo(laser.targetPos);
+        const midPoint = laser.pos.clone().add(dir.clone().multiplyScalar(length / 2));
+        const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+        
+        return (
+          <mesh key={laser.id} position={midPoint} quaternion={quaternion}>
+            <cylinderGeometry args={[0.05, 0.05, length, 8]} />
+            <meshBasicMaterial color="#ff0000" transparent opacity={0.8} />
+          </mesh>
+        );
+      })}
+
+      {/* UI Overlay */}
+      {isSelected && (
+        <Html position={[0, totalHeight + 1.5, 0]} center zIndexRange={[100, 0]}>
+          <div className="bg-black/80 text-white p-2 rounded border border-white/20 text-xs whitespace-nowrap pointer-events-none flex flex-col gap-1">
+            <div className="font-bold text-blue-400">Base {data.id.slice(0,4)}</div>
+            <div className="text-gray-300">Level {data.level} Base</div>
+            <div className="text-gray-400">Owner: {isNPC ? 'NPC' : data.ownerId.slice(0,6)}</div>
+            
+            {/* Defense Stats */}
+            <div className="mt-1 pt-1 border-t border-white/20">
+              <div className="flex justify-between items-center gap-4">
+                <span className="text-red-400">Defense:</span>
+                <span className="text-white">Lvl {data.level}</span>
+              </div>
+              <div className="flex justify-between items-center gap-4">
+                <span className="text-orange-400">Ammo:</span>
+                <span className="text-white">{ammo} / {maxAmmo}</span>
+              </div>
+              <div className="w-full bg-gray-700 h-1 mt-1 rounded overflow-hidden">
+                <div 
+                  className="bg-orange-500 h-full" 
+                  style={{ width: `${(ammo / maxAmmo) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </Html>
+      )}
+
     </group>
   )
 
 }
 
-export function BaseManager({ planetRadius, isMobile=false }: BaseManagerProps){
+export function BaseManager({ planetRadius, isMobile=false, geographyManager }: BaseManagerProps){
 
   const [bases,setBases] = useState<BaseData[]>([])
 
@@ -378,7 +467,7 @@ export function BaseManager({ planetRadius, isMobile=false }: BaseManagerProps){
   return(
     <group>
       {bases.map(base=>(
-        <Base key={base.id} data={base} isMobile={isMobile}/>
+        <Base key={base.id} data={base} isMobile={isMobile} geographyManager={geographyManager} />
       ))}
     </group>
   )

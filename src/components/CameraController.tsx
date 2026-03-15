@@ -6,9 +6,11 @@ import * as THREE from 'three';
 interface CameraControllerProps {
   trackedSatellite: any | null;
   onInteract: () => void;
+  currentPlanetId: string | null;
+  planetRadius: number;
 }
 
-export function CameraController({ trackedSatellite, onInteract }: CameraControllerProps) {
+export function CameraController({ trackedSatellite, onInteract, currentPlanetId, planetRadius }: CameraControllerProps) {
   const { camera, scene } = useThree();
   const controlsRef = useRef<any>(null);
   
@@ -19,11 +21,11 @@ export function CameraController({ trackedSatellite, onInteract }: CameraControl
   
   useFrame((state) => {
     const dist = camera.position.length();
-    const R = 10; // Planet radius
+    const R = currentPlanetId ? planetRadius : 8; // Planet radius or Sun radius
     const altitude = dist - R;
     
     let tiltFactor = 0;
-    if (altitude < 4) {
+    if (currentPlanetId && altitude < 4) {
       tiltFactor = 1 - (altitude / 4);
     }
     tiltFactor = Math.max(0, Math.min(1, tiltFactor));
@@ -51,8 +53,8 @@ export function CameraController({ trackedSatellite, onInteract }: CameraControl
     fog.color.copy(skyColor);
     
     // Use exponential curve for fog distances so it only comes in near the surface
-    const fogNear = THREE.MathUtils.lerp(100, 0.5, Math.pow(tiltFactor, 4));
-    const fogFar = THREE.MathUtils.lerp(200, 4.0, Math.pow(tiltFactor, 4));
+    const fogNear = THREE.MathUtils.lerp(1000000, 0.5, Math.pow(tiltFactor, 4));
+    const fogFar = THREE.MathUtils.lerp(2000000, 4.0, Math.pow(tiltFactor, 4));
     fog.near = fogNear;
     fog.far = fogFar;
 
@@ -62,7 +64,7 @@ export function CameraController({ trackedSatellite, onInteract }: CameraControl
       controlsRef.current.zoomSpeed = THREE.MathUtils.lerp(1.0, 0.05, tiltFactor);
     }
 
-    if (trackedSatellite) {
+    if (trackedSatellite && currentPlanetId) {
       const time = state.clock.elapsedTime;
       const tag = trackedSatellite;
       
@@ -92,7 +94,7 @@ export function CameraController({ trackedSatellite, onInteract }: CameraControl
       if (controlsRef.current) {
         const controls = controlsRef.current;
         
-        if (tiltFactor > 0.01) {
+        if (tiltFactor > 0.01 && currentPlanetId) {
           const camDir = camera.position.clone().normalize();
           const surfacePoint = camDir.clone().multiplyScalar(R);
           
@@ -125,7 +127,7 @@ export function CameraController({ trackedSatellite, onInteract }: CameraControl
         // Dynamically adjust minDistance to prevent going inside the planet
         // while allowing close zooms when tilted
         const targetDistFromCenter = controls.target.length();
-        controls.minDistance = Math.max(0.0002, 10.0002 - targetDistFromCenter);
+        controls.minDistance = Math.max(0.0002, R + 0.0002 - targetDistFromCenter);
         
         controls.update();
         
@@ -141,8 +143,8 @@ export function CameraController({ trackedSatellite, onInteract }: CameraControl
     <OrbitControls 
       ref={controlsRef} 
       enablePan={false} 
-      minDistance={10.0002} 
-      maxDistance={40} 
+      minDistance={currentPlanetId ? planetRadius + 0.0002 : 8.0002} 
+      maxDistance={1000000} 
       makeDefault
       onStart={() => {
         if (trackedSatellite) {

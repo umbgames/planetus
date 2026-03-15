@@ -3,9 +3,12 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { gameManager, ResourceNode } from '../services/gameManager';
 
+import { GeographyManager } from '../services/geography';
+
 interface ResourceManagerProps {
   planetRadius: number;
   isMobile?: boolean;
+  geographyManager: GeographyManager;
 }
 
 function CommonResource({ scale, isMobile }: { scale: number, isMobile: boolean }) {
@@ -93,7 +96,7 @@ function Resource({ data, isMobile }: { data: ResourceNode, isMobile: boolean })
   );
 }
 
-export function ResourceManager({ planetRadius, isMobile = false }: ResourceManagerProps) {
+export function ResourceManager({ planetRadius, isMobile = false, geographyManager }: ResourceManagerProps) {
   const [resources, setResources] = useState<ResourceNode[]>([]);
 
   useEffect(() => {

@@ -10,13 +10,16 @@ import { CameraController } from './components/CameraController';
 import { Ship } from './components/Ship';
 import { ShipUI } from './components/ShipUI';
 import { MarketUI } from './components/MarketUI';
-import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp, ArrowRightLeft } from 'lucide-react';
+import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp, ArrowRightLeft, MonitorPlay, Gauge, Orbit, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { gameManager, UserData, BaseData } from './services/gameManager';
 import { auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { geographyManager } from './services/geography';
 import { useShipStore } from './services/shipStore';
+import { generateSolarSystem, SolarSystemData, PlanetData } from './services/solarSystem';
+import { SolarSystemView } from './components/SolarSystemView';
+import { getScaledStarRadius } from './services/orbitUtils';
 
 export const planetRotationRef = { current: 0 };
 
@@ -74,6 +77,59 @@ export default function App() {
   const [screenShake, setScreenShake] = useState(false);
   const [hitEffect, setHitEffect] = useState(false);
   const { lockedTarget } = useShipStore();
+  const [currentPlanetId, setCurrentPlanetId] = useState<string | null>(null);
+  const [solarSystem, setSolarSystem] = useState<SolarSystemData | null>(null);
+  const [welcomeMessage, setWelcomeMessage] = useState<{ name: string, desc: string } | null>(null);
+  const [qualityPreset, setQualityPreset] = useState<'low' | 'medium' | 'high'>(isMobile ? 'low' : 'high');
+  const [showOrbitRings, setShowOrbitRings] = useState(true);
+
+  const currentPlanetRadius = useMemo(() => {
+    if (!solarSystem) return PLANET_RADIUS;
+    if (!currentPlanetId) return getScaledStarRadius(solarSystem.starRadius);
+    const planet = solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData;
+    return planet ? planet.radius * 0.9 : PLANET_RADIUS;
+  }, [solarSystem, currentPlanetId]);
+
+  useEffect(() => {
+    // Generate solar system deterministically
+    // In a real multiplayer game, this seed would come from the server
+    const seed = "alpha_centauri_v1";
+    const system = generateSolarSystem(seed);
+    setSolarSystem(system);
+    
+    // Set the singleton geographyManager to the first planet's seed
+    const firstPlanet = system.bodies.find(b => b.type === 'planet') as PlanetData;
+    if (firstPlanet) {
+      geographyManager.setSeed(firstPlanet.id, firstPlanet.noiseScale, firstPlanet.landThreshold);
+      setCurrentPlanetId(firstPlanet.id);
+    }
+  }, []);
+
+
+  useEffect(() => {
+    if (solarSystem && currentPlanetId) {
+      const planet = solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData;
+      if (planet) {
+        geographyManager.setSeed(planet.id, planet.noiseScale, planet.landThreshold);
+        geographyManager.initializeTopicRegions();
+        
+        // Show welcome message
+        const planetName = planet.id.replace('planet_', 'PLANET-');
+        const descriptions = [
+          "Entering Orbital Sector",
+          "Atmospheric Entry Confirmed",
+          "Scanning Surface Anomalies",
+          "Establishing Communication Link",
+          "Gravity Well Detected",
+          "Synchronizing Orbital Velocity"
+        ];
+        const randomDesc = descriptions[Math.floor(Math.random() * descriptions.length)];
+        
+        setWelcomeMessage({ name: planetName, desc: randomDesc });
+        setTimeout(() => setWelcomeMessage(null), 4000);
+      }
+    }
+  }, [currentPlanetId, solarSystem]);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -85,11 +141,15 @@ export default function App() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  useEffect(() => {
+    setQualityPreset(isMobile ? 'low' : 'high');
+  }, [isMobile]);
+
   const prevTagsRef = useRef<Record<string, any>>({});
 
   // Take top 10 players and assign random animation properties
   const topSatellites = useMemo(() => {
-    const currentTags = satelliteUsers.sort((a, b) => b.bases - a.bases).slice(0, 10);
+    const currentTags = [...satelliteUsers].sort((a, b) => b.bases - a.bases).slice(0, 10);
     const newTagsRef: Record<string, any> = {};
     
     const result = currentTags.map((tag) => {
@@ -123,10 +183,22 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  const hasRestoredState = useRef(false);
+
   useEffect(() => {
     gameManager.init();
     
-    gameManager.onUserDataUpdate = (data) => setUserData(data);
+    gameManager.onUserDataUpdate = (data) => {
+      setUserData(data);
+      if (data && data.playerSave && !hasRestoredState.current) {
+        hasRestoredState.current = true;
+        setCurrentPlanetId(data.playerSave.lastPlanetID);
+        // We also need to pass the saved position to the Ship component
+        // But Ship component initializes its own position.
+        // Let's add initialPosition and initialRotation to Ship.
+        setIsShipMode(true);
+      }
+    };
     gameManager.onBasesUpdate = (data) => setBases(data);
     gameManager.onSatelliteUsersUpdate = (users) => {
       // Combine with mock players for now to ensure there are always some satellites
@@ -377,6 +449,12 @@ export default function App() {
     return null;
   };
 
+  const starsCount = qualityPreset === 'low' ? 800 : qualityPreset === 'medium' ? 1600 : 3000;
+  const dpr = qualityPreset === 'low' ? [1, 1.2] as [number, number] : qualityPreset === 'medium' ? [1, 1.5] as [number, number] : [1, 2] as [number, number];
+  const enableEnvironment = qualityPreset !== 'low';
+  const bodyCount = solarSystem?.bodies.filter(b => b.type === 'planet').length ?? 0;
+  const activePlanetName = currentPlanetId ? currentPlanetId.replace('planet_', 'PLANET-') : 'SOL';
+
   return (
     <motion.div 
       className="w-full h-screen bg-black overflow-hidden relative font-sans text-white"
@@ -397,34 +475,46 @@ export default function App() {
       </AnimatePresence>
 
       {/* 3D Canvas */}
-      <Canvas shadows={!isMobile} camera={{ position: [0, 0, 25], fov: 45, near: 0.0001, far: 1000 }} dpr={isMobile ? [1, 1.5] : [1, 2]} performance={{ min: 0.5 }}>
+      <Canvas shadows={!isMobile && qualityPreset !== 'low'} camera={{ position: [0, 0, 25], fov: 45, near: 0.0001, far: 1000000 } } dpr={dpr} performance={{ min: 0.5 }} gl={{ antialias: qualityPreset !== 'low', powerPreference: 'high-performance' }}>
         <ambientLight intensity={0.2} />
-        <Sun radius={3} distance={40} speed={0.05} />
         
-        <Stars radius={100} depth={50} count={isMobile ? 1000 : 3000} factor={4} saturation={0} fade speed={1} />
+        <Stars radius={1000000} depth={50} count={starsCount} factor={4} saturation={0} fade speed={qualityPreset === 'low' ? 0.25 : 0.75} />
         
         <CameraTracker />
 
-        <RotatingSystem>
-          <Planet radius={PLANET_RADIUS} isMobile={isMobile} />
-          {/* BaseManager is now inside Planet */}
-        </RotatingSystem>
+        {solarSystem && <SolarSystemView data={solarSystem} isMobile={isMobile} currentPlanetId={currentPlanetId} setCurrentPlanetId={setCurrentPlanetId} showOrbitRings={showOrbitRings} quality={qualityPreset} />}
         
-        <Satellite satellites={topSatellites} onSatelliteClick={handleSatelliteClick} />
+        <Satellite satellites={topSatellites} onSatelliteClick={handleSatelliteClick} solarSystem={solarSystem} currentPlanetId={currentPlanetId} />
         
         {!isShipMode && (
-          <CameraController trackedSatellite={trackedSatellite} onInteract={() => setTrackedSatellite(null)} />
+          <CameraController 
+            trackedSatellite={trackedSatellite} 
+            onInteract={() => setTrackedSatellite(null)} 
+            currentPlanetId={currentPlanetId}
+            planetRadius={currentPlanetRadius}
+          />
         )}
 
         {isShipMode && (
-          <Ship planetRadius={PLANET_RADIUS} onExit={handleExitShip} bases={bases} userData={userData} satellites={topSatellites} />
+          <Ship 
+            planetRadius={currentPlanetRadius} 
+            onExit={handleExitShip} 
+            bases={bases} 
+            userData={userData} 
+            satellites={topSatellites} 
+            initialPosition={userData?.playerSave?.position}
+            initialRotation={userData?.playerSave?.rotation}
+            currentPlanetId={currentPlanetId}
+            setCurrentPlanetId={setCurrentPlanetId}
+            solarSystem={solarSystem}
+          />
         )}
 
-        <Environment preset="city" />
+        {enableEnvironment && <Environment preset="city" />}
       </Canvas>
 
       {/* Ship UI */}
-      {isShipMode && <ShipUI onExit={handleExitShip} userData={userData} />}
+      {isShipMode && <ShipUI onExit={handleExitShip} userData={userData} solarSystem={solarSystem} currentPlanetId={currentPlanetId} setCurrentPlanetId={setCurrentPlanetId} />}
 
       {/* UI Overlay */}
       <div className="absolute top-0 left-0 w-full p-6 pointer-events-none flex justify-between items-start z-40">
@@ -435,6 +525,20 @@ export default function App() {
           <p className="text-xs font-semibold text-zinc-400 tracking-widest mt-1 mb-2">
             EXPLORE, BUILD,TAKE..
           </p>
+          <div className="mt-3 inline-flex flex-wrap gap-2 pointer-events-auto">
+            <div className="bg-zinc-900/70 backdrop-blur border border-zinc-700 rounded-full px-3 py-1 text-xs text-zinc-200 flex items-center gap-2">
+              <Orbit size={12} className="text-cyan-400" />
+              <span>{activePlanetName}</span>
+            </div>
+            <div className="bg-zinc-900/70 backdrop-blur border border-zinc-700 rounded-full px-3 py-1 text-xs text-zinc-200 flex items-center gap-2">
+              <Gauge size={12} className="text-emerald-400" />
+              <span>{qualityPreset.toUpperCase()} QUALITY</span>
+            </div>
+            <div className="bg-zinc-900/70 backdrop-blur border border-zinc-700 rounded-full px-3 py-1 text-xs text-zinc-200 flex items-center gap-2">
+              <Zap size={12} className="text-amber-400" />
+              <span>{bodyCount} WORLDS</span>
+            </div>
+          </div>
         </div>
         
         <div className="pointer-events-auto flex flex-col items-end gap-2">
@@ -470,8 +574,59 @@ export default function App() {
                 <ArrowRightLeft size={12} />
                 Galactic Market
               </button>
+              <button 
+                onClick={() => {
+                  showToast("Watching ad...");
+                  setTimeout(() => {
+                    gameManager.addCurrency(100);
+                    showToast("Earned 100 Common Resources!");
+                  }, 2000);
+                }}
+                className="mt-2 w-full bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+              >
+                <MonitorPlay size={12} />
+                Watch Ad
+              </button>
             </div>
           )}
+        </div>
+      </div>
+
+      <div className="absolute top-24 left-6 z-40 pointer-events-auto bg-zinc-900/70 backdrop-blur border border-zinc-700 rounded-2xl p-4 w-[280px]">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-xs uppercase tracking-[0.25em] text-cyan-400 font-bold">System Control</div>
+            <div className="text-sm text-white font-semibold">Performance + Navigation</div>
+          </div>
+        </div>
+        <div className="mb-3">
+          <div className="text-[11px] uppercase tracking-wider text-zinc-500 mb-2">Quality Preset</div>
+          <div className="grid grid-cols-3 gap-2">
+            {(['low', 'medium', 'high'] as const).map((preset) => (
+              <button
+                key={preset}
+                onClick={() => setQualityPreset(preset)}
+                className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors border ${qualityPreset === preset ? 'bg-cyan-600 text-white border-cyan-400' : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'}`}
+              >
+                {preset.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center justify-between bg-zinc-800/70 rounded-xl px-3 py-2 border border-zinc-700">
+          <div>
+            <div className="text-sm text-white font-medium">Orbit Rings</div>
+            <div className="text-[11px] text-zinc-400">Better navigation in solar view</div>
+          </div>
+          <button
+            onClick={() => setShowOrbitRings(v => !v)}
+            className={`w-14 h-8 rounded-full transition-colors relative ${showOrbitRings ? 'bg-cyan-600' : 'bg-zinc-700'}`}
+          >
+            <span className={`absolute top-1 h-6 w-6 rounded-full bg-white transition-all ${showOrbitRings ? 'left-7' : 'left-1'}`} />
+          </button>
+        </div>
+        <div className="mt-3 text-[11px] text-zinc-400 leading-relaxed">
+          Lower quality reduces stars, environment, antialiasing, and asteroid density for smoother play on weaker GPUs.
         </div>
       </div>
 
@@ -489,7 +644,7 @@ export default function App() {
             {!nearbyBase && currentZone && (
               <div className="flex flex-col items-center gap-2">
                 <div className="bg-black/60 backdrop-blur px-3 py-1 rounded text-xs text-white border border-white/10">
-                  Zone: <span className={currentZone === 'high' ? 'text-red-400' : currentZone === 'mid' ? 'text-amber-400' : 'text-blue-400'}>{currentZone.toUpperCase()}</span>
+                  Zone: <span className={currentZone === 'high' ? 'text-red-400' : currentZone === 'mid' ? 'text-amber-400' : 'text-blue-400'}>{(currentZone || '').toUpperCase()}</span>
                 </div>
                 <button 
                   onClick={handleBuildBase}
@@ -612,6 +767,37 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {/* Welcome Message Overlay */}
+      <AnimatePresence>
+        {welcomeMessage && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.2 }}
+            className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
+          >
+            <div className="bg-black/40 backdrop-blur-md px-12 py-8 rounded-3xl border border-white/10 text-center">
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+              >
+                <div className="text-blue-400 text-xs font-bold tracking-[0.3em] uppercase mb-2">
+                  Welcome to
+                </div>
+                <h2 className="text-6xl font-black tracking-tighter text-white uppercase italic">
+                  {welcomeMessage.name}
+                </h2>
+                <div className="h-1 w-24 bg-blue-500 mx-auto mt-6 rounded-full" />
+                <p className="text-zinc-400 mt-6 text-sm font-medium tracking-widest uppercase">
+                  {welcomeMessage.desc}
+                </p>
+              </motion.div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Spawn Ship Button */}
       <AnimatePresence>
         {canSpawnShip && !isShipMode && (
@@ -641,7 +827,7 @@ export default function App() {
             exit={{ opacity: 0 }}
             className="absolute bottom-6 left-6 bg-black/50 backdrop-blur p-4 rounded-xl border border-white/10 z-40 pointer-events-auto"
           >
-            {/* <h3 className="font-bold text-red-400 mb-2">Ship Controls</h3>
+            <h3 className="font-bold text-red-400 mb-2">Ship Controls</h3>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-zinc-300">
               <div><span className="font-mono text-white">W/S</span> Forward/Back</div>
               <div><span className="font-mono text-white">A/D</span> Left/Right</div>
@@ -650,7 +836,7 @@ export default function App() {
               <div><span className="font-mono text-white">Q/E</span> Roll</div>
               <div><span className="font-mono text-white">Shift</span> Boost</div>
               <div className="col-span-2 mt-2 text-red-400"><span className="font-mono text-white">O</span> Exit Ship</div>
-            </div> */}
+            </div>
             <button 
               onClick={toggleFullscreen}
               className="mt-4 w-full bg-zinc-800 hover:bg-zinc-700 text-white text-xs py-2 rounded border border-zinc-600 transition-colors flex items-center justify-center gap-2"

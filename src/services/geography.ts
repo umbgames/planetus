@@ -1,7 +1,6 @@
 import { createNoise3D } from 'simplex-noise';
 import * as THREE from 'three';
-
-const noise3D = createNoise3D();
+import { createPRNG } from '../utils/random';
 
 export interface Region {
   id: string;
@@ -24,12 +23,34 @@ const REGION_COLORS = [
   '#eab308', // yellow-500
 ];
 
-class GeographyManager {
+export class GeographyManager {
   regions: Region[] = [];
   noiseScale = 1.5;
   landThreshold = 0.2; // Adjusted to fine-tune land/water balance
   texture: THREE.CanvasTexture | null = null;
   onTextureUpdate: ((texture: THREE.CanvasTexture, displacementMap: THREE.CanvasTexture) => void) | null = null;
+  
+  private prng: () => number;
+  private noise3D: (x: number, y: number, z: number) => number;
+  private seed: string = 'default';
+
+  constructor() {
+    this.prng = createPRNG(this.seed);
+    this.noise3D = createNoise3D(this.prng);
+  }
+
+  setSeed(seed: string, noiseScale: number = 1.5, landThreshold: number = 0.2) {
+    if (this.seed !== seed || this.noiseScale !== noiseScale || this.landThreshold !== landThreshold) {
+      this.seed = seed;
+      this.noiseScale = noiseScale;
+      this.landThreshold = landThreshold;
+      this.prng = createPRNG(seed);
+      this.noise3D = createNoise3D(this.prng);
+      this.regions = [];
+      this.texture = null;
+      this.displacementMap = null;
+    }
+  }
 
   getTerrain(x: number, y: number, z: number) {
     const len = Math.sqrt(x*x + y*y + z*z);
@@ -38,26 +59,26 @@ class GeographyManager {
     const nz = z/len;
     
     // Base continent shape
-    let n = noise3D(nx * this.noiseScale, ny * this.noiseScale, nz * this.noiseScale);
+    let n = this.noise3D(nx * this.noiseScale, ny * this.noiseScale, nz * this.noiseScale);
     
     // Medium details (hills)
-    n += 0.5 * noise3D(nx * this.noiseScale * 2, ny * this.noiseScale * 2, nz * this.noiseScale * 2);
+    n += 0.5 * this.noise3D(nx * this.noiseScale * 2, ny * this.noiseScale * 2, nz * this.noiseScale * 2);
     
     // Ridged noise for mountain ranges and valleys
-    let ridge = noise3D(nx * this.noiseScale * 3, ny * this.noiseScale * 3, nz * this.noiseScale * 3);
+    let ridge = this.noise3D(nx * this.noiseScale * 3, ny * this.noiseScale * 3, nz * this.noiseScale * 3);
     n += 0.3 * (1.0 - Math.abs(ridge)); // Creates sharp ridges
     
     // Fine details (rocky terrain)
-    n += 0.25 * noise3D(nx * this.noiseScale * 4, ny * this.noiseScale * 4, nz * this.noiseScale * 4);
+    n += 0.25 * this.noise3D(nx * this.noiseScale * 4, ny * this.noiseScale * 4, nz * this.noiseScale * 4);
     
     // Extra fine details (surface roughness)
-    n += 0.125 * noise3D(nx * this.noiseScale * 8, ny * this.noiseScale * 8, nz * this.noiseScale * 8);
+    n += 0.125 * this.noise3D(nx * this.noiseScale * 8, ny * this.noiseScale * 8, nz * this.noiseScale * 8);
     
     // Micro details
-    n += 0.0625 * noise3D(nx * this.noiseScale * 16, ny * this.noiseScale * 16, nz * this.noiseScale * 16);
+    n += 0.0625 * this.noise3D(nx * this.noiseScale * 16, ny * this.noiseScale * 16, nz * this.noiseScale * 16);
     
     // Nano details for high-res texture
-    n += 0.03125 * noise3D(nx * this.noiseScale * 32, ny * this.noiseScale * 32, nz * this.noiseScale * 32);
+    n += 0.03125 * this.noise3D(nx * this.noiseScale * 32, ny * this.noiseScale * 32, nz * this.noiseScale * 32);
     
     return n;
   }
@@ -104,8 +125,8 @@ class GeographyManager {
     for (const topic of TOPICS) {
       let center = new THREE.Vector3(1, 0, 0);
       for (let i = 0; i < 500; i++) {
-        const u = Math.random();
-        const v = Math.random();
+        const u = this.prng();
+        const v = this.prng();
         const theta = 2 * Math.PI * u;
         const phi = Math.acos(2 * v - 1);
         const x = Math.sin(phi) * Math.cos(theta);
@@ -162,8 +183,8 @@ class GeographyManager {
   getRandomPointForTopic(topic: string, radius: number): [number, number, number] {
     // Rejection sampling
     for (let i = 0; i < 500; i++) {
-      const u = Math.random();
-      const v = Math.random();
+      const u = this.prng();
+      const v = this.prng();
       const theta = 2 * Math.PI * u;
       const phi = Math.acos(2 * v - 1);
       const x = Math.sin(phi) * Math.cos(theta);
@@ -178,8 +199,8 @@ class GeographyManager {
     
     // Fallback: just return a random land point
     for (let i = 0; i < 500; i++) {
-      const u = Math.random();
-      const v = Math.random();
+      const u = this.prng();
+      const v = this.prng();
       const theta = 2 * Math.PI * u;
       const phi = Math.acos(2 * v - 1);
       const x = Math.sin(phi) * Math.cos(theta);
@@ -244,7 +265,7 @@ class GeographyManager {
 
         if (!this.isLand(px, py, pz)) {
           // Water
-          const waterNoise = noise3D(px * 10, py * 10, pz * 10) * 0.05;
+          const waterNoise = this.noise3D(px * 10, py * 10, pz * 10) * 0.05;
           data[idx] = Math.max(0, Math.min(255, waterColor.r * 255 * (1 + waterNoise)));
           data[idx+1] = Math.max(0, Math.min(255, waterColor.g * 255 * (1 + waterNoise)));
           data[idx+2] = Math.max(0, Math.min(255, waterColor.b * 255 * (1 + waterNoise)));
@@ -304,7 +325,7 @@ class GeographyManager {
           const shade = 1 + elevation * 0.8; // Darker valleys, lighter peaks
           
           // Add some high frequency noise for surface detail
-          const surfaceDetail = noise3D(px * 50, py * 50, pz * 50) * 0.1;
+          const surfaceDetail = this.noise3D(px * 50, py * 50, pz * 50) * 0.1;
           const finalShade = shade + surfaceDetail;
           
           if (min2Dist - minDist < 0.015 && areRegionsClose) {

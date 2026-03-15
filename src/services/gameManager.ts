@@ -24,6 +24,11 @@ export interface UserData {
   machineGunAmmo: number;
   missileAmmo: number;
   createdAt: string;
+  playerSave?: {
+    lastPlanetID: string;
+    position: { x: number; y: number; z: number };
+    rotation: { x: number; y: number; z: number };
+  };
 }
 
 export interface MarketOffer {
@@ -427,6 +432,24 @@ class GameManager {
         rareResources: this.userData.rareResources + rareYield
       });
     }
+  }
+
+  async savePlayerState(planetId: string, position: THREE.Vector3, rotation: THREE.Euler) {
+    if (!auth.currentUser || !this.userData) return;
+    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+      playerSave: {
+        lastPlanetID: planetId,
+        position: { x: position.x, y: position.y, z: position.z },
+        rotation: { x: rotation.x, y: rotation.y, z: rotation.z }
+      }
+    });
+  }
+
+  async addCurrency(amount: number) {
+    if (!auth.currentUser || !this.userData) return;
+    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+      commonResources: this.userData.commonResources + amount
+    });
   }
 
   async upgradeBase(baseId: string) {
