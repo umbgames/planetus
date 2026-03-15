@@ -6,13 +6,7 @@ import { geographyManager } from '../services/geography';
 import { BaseData, UserData, gameManager } from '../services/gameManager';
 import { useShipStore } from '../services/shipStore';
 import { SolarSystemData, PlanetData } from '../services/solarSystem';
-import {
-  buildOrbitMap,
-  getBodyWorldPosition,
-  getScaledStarRadius,
-  getScaledPlanetRadius,
-  VISUAL_SCALE
-} from '../services/orbitUtils';
+import { buildOrbitMap, getBodyWorldPosition, getScaledStarRadius, getScaledPlanetRadius, VISUAL_SCALE } from '../services/orbitUtils';
 
 const INFINITE_TEST_AMMO = true;
 
@@ -98,12 +92,8 @@ export function Ship({
 
   const lastFired = useRef(0);
   const lastMissile = useRef(0);
-  const [explosions, setExplosions] = useState<
-    { id: string; pos: THREE.Vector3; createdAt: number; size: number }[]
-  >([]);
-  const [muzzleFlashes, setMuzzleFlashes] = useState<
-    { id: string; pos: THREE.Vector3; createdAt: number }[]
-  >([]);
+  const [explosions, setExplosions] = useState<{ id: string; pos: THREE.Vector3; createdAt: number; size: number }[]>([]);
+  const [muzzleFlashes, setMuzzleFlashes] = useState<{ id: string; pos: THREE.Vector3; createdAt: number }[]>([]);
 
   const prevPlanetId = useRef(currentPlanetId);
 
@@ -118,9 +108,7 @@ export function Ship({
   useEffect(() => {
     const checkMobile = () => {
       const isMobileUserAgent =
-        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-          navigator.userAgent
-        );
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       setIsMobile(
         window.innerWidth <= 768 ||
           isMobileUserAgent ||
@@ -130,19 +118,14 @@ export function Ship({
     };
     checkMobile();
 
-    const handleKeyDown = (e: KeyboardEvent) =>
-      setKeys(k => ({ ...k, [e.code]: true }));
-    const handleKeyUp = (e: KeyboardEvent) =>
-      setKeys(k => ({ ...k, [e.code]: false }));
+    const handleKeyDown = (e: KeyboardEvent) => setKeys(k => ({ ...k, [e.code]: true }));
+    const handleKeyUp = (e: KeyboardEvent) => setKeys(k => ({ ...k, [e.code]: false }));
 
     const handleMouseMove = (e: MouseEvent) => {
       if (document.pointerLockElement === gl.domElement) {
         setMouse(m => ({
           x: m.x + e.movementX * 0.002,
-          y: Math.max(
-            -Math.PI / 2,
-            Math.min(Math.PI / 2, m.y + e.movementY * 0.002)
-          )
+          y: Math.max(-Math.PI / 2, Math.min(Math.PI / 2, m.y + e.movementY * 0.002))
         }));
       }
     };
@@ -174,10 +157,7 @@ export function Ship({
 
           setMouse(m => ({
             x: m.x + dx * 0.005,
-            y: Math.max(
-              -Math.PI / 2,
-              Math.min(Math.PI / 2, m.y + dy * 0.005)
-            )
+            y: Math.max(-Math.PI / 2, Math.min(Math.PI / 2, m.y + dy * 0.005))
           }));
 
           touchLook.current = { x: touch.clientX, y: touch.clientY };
@@ -238,10 +218,7 @@ export function Ship({
       cameraRigRef.current.position.copy(camera.position);
     }
 
-    if (
-      !window.matchMedia('(pointer: coarse)').matches &&
-      !('ontouchstart' in window)
-    ) {
+    if (!window.matchMedia('(pointer: coarse)').matches && !('ontouchstart' in window)) {
       gl.domElement.requestPointerLock();
     }
 
@@ -267,8 +244,7 @@ export function Ship({
     };
   }, [camera, gl]);
 
-  const { setShipPosition, setVelocity, setAltitude, setBoostEnergy } =
-    useShipStore();
+  const { setShipPosition, setVelocity, setAltitude, setBoostEnergy } = useShipStore();
   const frameCount = useRef(0);
   const orbitMap = useMemo(
     () => (solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>()),
@@ -326,10 +302,7 @@ export function Ship({
             orbitMap,
             new THREE.Vector3()
           );
-          const relativePlanetPos = new THREE.Vector3().subVectors(
-            planetPos,
-            currentPlanetPos
-          );
+          const relativePlanetPos = new THREE.Vector3().subVectors(planetPos, currentPlanetPos);
           const distToPlanet = position.current.distanceTo(relativePlanetPos);
 
           if (
@@ -348,16 +321,12 @@ export function Ship({
 
       if (!switched && currentPlanetId !== null) {
         const sunPos = new THREE.Vector3(0, 0, 0);
-        const relativeSunPos = new THREE.Vector3().subVectors(
-          sunPos,
-          currentPlanetPos
-        );
+        const relativeSunPos = new THREE.Vector3().subVectors(sunPos, currentPlanetPos);
         const distToSun = position.current.distanceTo(relativeSunPos);
 
         if (
           distToSun <
-          getScaledStarRadius(solarSystem.starRadius) *
-            VISUAL_SCALE.SUN_SWITCH_RADIUS_MULTIPLIER
+          getScaledStarRadius(solarSystem.starRadius) * VISUAL_SCALE.SUN_SWITCH_RADIUS_MULTIPLIER
         ) {
           if (setCurrentPlanetId) {
             setCurrentPlanetId(null);
@@ -384,17 +353,10 @@ export function Ship({
           new THREE.Vector3()
         );
 
-        const relativeTarget = new THREE.Vector3().subVectors(
-          targetPlanetPos,
-          currentPlanetPos
-        );
-
+        const relativeTarget = new THREE.Vector3().subVectors(targetPlanetPos, currentPlanetPos);
         const distToTarget = position.current.distanceTo(relativeTarget);
 
-        if (
-          distToTarget <
-          getScaledPlanetRadius((targetPlanet as PlanetData).radius) * 5
-        ) {
+        if (distToTarget < getScaledPlanetRadius((targetPlanet as PlanetData).radius) * 5) {
           if (setCurrentPlanetId) {
             setCurrentPlanetId(targetPlanet.id);
           }
@@ -402,12 +364,10 @@ export function Ship({
           setLockedTarget(null);
 
           const perspectiveCamera = camera as THREE.PerspectiveCamera;
-          perspectiveCamera.fov = 45;
+          perspectiveCamera.fov = 50;
           perspectiveCamera.updateProjectionMatrix();
         } else {
-          const jumpDir = new THREE.Vector3()
-            .subVectors(relativeTarget, position.current)
-            .normalize();
+          const jumpDir = new THREE.Vector3().subVectors(relativeTarget, position.current).normalize();
           const jumpSpeed = 5000 * delta;
           position.current.add(jumpDir.multiplyScalar(jumpSpeed));
 
@@ -424,7 +384,7 @@ export function Ship({
           }
 
           const perspectiveCamera = camera as THREE.PerspectiveCamera;
-          perspectiveCamera.fov = THREE.MathUtils.lerp(perspectiveCamera.fov, 110, 0.1);
+          perspectiveCamera.fov = THREE.MathUtils.lerp(perspectiveCamera.fov, 78, 0.1);
           perspectiveCamera.updateProjectionMatrix();
         }
 
@@ -439,7 +399,6 @@ export function Ship({
     const altitude = distForAtmosphere - R;
 
     let tiltFactor = 0;
-
     if (altitude < 4) {
       tiltFactor = 1 - altitude / 4;
     }
@@ -451,9 +410,7 @@ export function Ship({
       scene.background = new THREE.Color('#000000');
     }
 
-    (scene.background as THREE.Color)
-      .copy(spaceColor.current)
-      .lerp(skyColor.current, tiltFactor);
+    (scene.background as THREE.Color).copy(spaceColor.current).lerp(skyColor.current, tiltFactor);
 
     if (!scene.fog) {
       scene.fog = new THREE.Fog('#cda077', 100, 200);
@@ -492,16 +449,10 @@ export function Ship({
       let bestTarget: any | null = null;
       let bestScore = -Infinity;
 
-      const shipForward = new THREE.Vector3(0, 0, -1).applyQuaternion(
-        shipRef.current!.quaternion
-      );
+      const shipForward = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
 
       bases.forEach(base => {
-        const basePos = new THREE.Vector3(
-          base.position.x,
-          base.position.y,
-          base.position.z
-        );
+        const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
         const toBase = basePos.clone().sub(position.current);
         const dist = toBase.length();
 
@@ -535,12 +486,7 @@ export function Ship({
             const score = dot - dist / 100;
             if (score > bestScore) {
               bestScore = score;
-              bestTarget = {
-                ...sat,
-                position: satPos,
-                type: 'satellite',
-                health: 100
-              };
+              bestTarget = { ...sat, position: satPos, type: 'satellite', health: 100 };
             }
           }
         }
@@ -563,21 +509,11 @@ export function Ship({
         const satPos = new THREE.Vector3(liveSatellite.orbitRadius, 0, 0);
         satPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
         satPos.applyEuler(
-          new THREE.Euler(
-            liveSatellite.tiltX,
-            liveSatellite.tiltY,
-            liveSatellite.tiltZ
-          )
+          new THREE.Euler(liveSatellite.tiltX, liveSatellite.tiltY, liveSatellite.tiltZ)
         );
 
         setLockedTarget(prev =>
-          prev
-            ? {
-                ...prev,
-                position: satPos,
-                health: liveSatellite.health ?? prev.health
-              }
-            : null
+          prev ? { ...prev, position: satPos, health: liveSatellite.health ?? prev.health } : null
         );
       }
     } else if (lockedTarget && lockedTarget.type === 'base') {
@@ -600,10 +536,7 @@ export function Ship({
         orbitMap,
         new THREE.Vector3()
       );
-      const relativeTarget = new THREE.Vector3().subVectors(
-        targetPlanetPos,
-        currentPlanetPos
-      );
+      const relativeTarget = new THREE.Vector3().subVectors(targetPlanetPos, currentPlanetPos);
 
       if (!lockedTarget.position || !lockedTarget.position.equals(relativeTarget)) {
         setLockedTarget(prev => (prev ? { ...prev, position: relativeTarget } : null));
@@ -618,9 +551,7 @@ export function Ship({
         setLastMgFire(now);
         if (userData && !INFINITE_TEST_AMMO) gameManager.fireMachineGun();
 
-        const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(
-          shipRef.current!.quaternion
-        );
+        const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
         if (lockedTarget) {
           const targetPos = new THREE.Vector3(
             lockedTarget.position.x,
@@ -642,15 +573,9 @@ export function Ship({
           }
         ]);
 
-        const rightOffset = new THREE.Vector3(0.5, 0, 0).applyQuaternion(
-          shipRef.current!.quaternion
-        );
-        const leftOffset = new THREE.Vector3(-0.5, 0, 0).applyQuaternion(
-          shipRef.current!.quaternion
-        );
-        const forwardOffset = new THREE.Vector3(0, 0, -1).applyQuaternion(
-          shipRef.current!.quaternion
-        );
+        const rightOffset = new THREE.Vector3(0.5, 0, 0).applyQuaternion(shipRef.current!.quaternion);
+        const leftOffset = new THREE.Vector3(-0.5, 0, 0).applyQuaternion(shipRef.current!.quaternion);
+        const forwardOffset = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
 
         setMuzzleFlashes(prev => [
           ...prev,
@@ -677,9 +602,7 @@ export function Ship({
 
         if (userData && !INFINITE_TEST_AMMO) gameManager.fireMissile();
 
-        const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(
-          shipRef.current!.quaternion
-        );
+        const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
 
         setProjectiles(prev => [
           ...prev,
@@ -715,11 +638,7 @@ export function Ship({
         let hit = false;
         bases.forEach(base => {
           if (hit) return;
-          const basePos = new THREE.Vector3(
-            base.position.x,
-            base.position.y,
-            base.position.z
-          );
+          const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
           if (p.pos.distanceTo(basePos) < 1.0) {
             hit = true;
             const damage = p.type === 'mg' ? 5 : 50;
@@ -765,11 +684,7 @@ export function Ship({
         if (!hit) {
           gameManager.resources.forEach(res => {
             if (hit || !res.active) return;
-            const resPos = new THREE.Vector3(
-              res.position.x,
-              res.position.y,
-              res.position.z
-            );
+            const resPos = new THREE.Vector3(res.position.x, res.position.y, res.position.z);
             if (p.pos.distanceTo(resPos) < 0.8) {
               hit = true;
               gameManager.gatherResource(res.id).catch(console.error);
@@ -818,16 +733,8 @@ export function Ship({
       0,
       1
     );
-    const cruiseMultiplier = THREE.MathUtils.lerp(
-      1,
-      isBoostingActive ? 180 : 36,
-      orbitalFactor
-    );
-    const deepSpaceBoost = THREE.MathUtils.lerp(
-      1,
-      isBoostingActive ? 8 : 3,
-      deepSpaceFactor
-    );
+    const cruiseMultiplier = THREE.MathUtils.lerp(1, isBoostingActive ? 180 : 36, orbitalFactor);
+    const deepSpaceBoost = THREE.MathUtils.lerp(1, isBoostingActive ? 8 : 3, deepSpaceFactor);
     const effectiveSpeed = speed * cruiseMultiplier * deepSpaceBoost;
     const effectiveAccel =
       accel *
@@ -837,19 +744,15 @@ export function Ship({
     if (cameraRef.current) {
       const targetFov = isBoostingActive ? 72 : 50;
       const fovLerp = 1 - Math.exp(-8 * delta);
-
-      cameraRef.current.fov = THREE.MathUtils.lerp(
-        cameraRef.current.fov,
-        targetFov,
-        fovLerp
-      );
+      cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFov, fovLerp);
       cameraRef.current.far = 250000;
       cameraRef.current.updateProjectionMatrix();
 
       const targetZ = isBoostingActive ? 0.22 : 0.12;
+      const targetLocalY = 0.035;
       const cameraLocalLerp = 1 - Math.exp(-12 * delta);
       cameraRef.current.position.lerp(
-        new THREE.Vector3(0, 0.035, targetZ),
+        new THREE.Vector3(0, targetLocalY, targetZ),
         cameraLocalLerp
       );
     }
@@ -887,14 +790,8 @@ export function Ship({
     const baseMatrix = new THREE.Matrix4().makeBasis(right, up, forward.negate());
     const baseQuat = new THREE.Quaternion().setFromRotationMatrix(baseMatrix);
 
-    const yawQuat = new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0, 1, 0),
-      rotation.current.y
-    );
-    const pitchQuat = new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(1, 0, 0),
-      rotation.current.x
-    );
+    const yawQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotation.current.y);
+    const pitchQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), rotation.current.x);
     const quaternion = baseQuat.multiply(yawQuat).multiply(pitchQuat);
 
     const moveVector = input.clone().applyQuaternion(quaternion);
@@ -931,13 +828,9 @@ export function Ship({
     }
 
     if (cameraRigRef.current) {
-      const speedFactor = THREE.MathUtils.clamp(
-        velocity.current.length() / 20,
-        0,
-        1
-      );
-      const followStrength = THREE.MathUtils.lerp(16, 28, speedFactor);
-      const rotStrength = THREE.MathUtils.lerp(14, 24, speedFactor);
+      const speedFactor = THREE.MathUtils.clamp(velocity.current.length() / 20, 0, 1);
+      const followStrength = THREE.MathUtils.lerp(18, 30, speedFactor);
+      const rotStrength = THREE.MathUtils.lerp(16, 26, speedFactor);
 
       const followPos = 1 - Math.exp(-followStrength * delta);
       const followRot = 1 - Math.exp(-rotStrength * delta);
@@ -1019,11 +912,7 @@ export function Ship({
           </mesh>
           <mesh position={[0, 0, 1.26]}>
             <boxGeometry args={[0.4, 0.2, 0.05]} />
-            <meshStandardMaterial
-              color="#00ffff"
-              emissive="#00ffff"
-              emissiveIntensity={3}
-            />
+            <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={3} />
           </mesh>
 
           <Trail
@@ -1149,9 +1038,7 @@ export function Ship({
       {(() => {
         if (!lockedTarget) return null;
         const isOwnBase =
-          lockedTarget.type === 'base' &&
-          userData &&
-          lockedTarget.ownerId === userData.uid;
+          lockedTarget.type === 'base' && userData && lockedTarget.ownerId === userData.uid;
         const color = isOwnBase ? '#3b82f6' : '#ff0000';
         const colorClass = isOwnBase
           ? 'text-blue-500 border-blue-500/50'
@@ -1159,19 +1046,10 @@ export function Ship({
 
         return (
           <mesh
-            position={[
-              lockedTarget.position.x,
-              lockedTarget.position.y,
-              lockedTarget.position.z
-            ]}
+            position={[lockedTarget.position.x, lockedTarget.position.y, lockedTarget.position.z]}
           >
             <ringGeometry args={[2, 2.2, 32]} />
-            <meshBasicMaterial
-              color={color}
-              side={THREE.DoubleSide}
-              transparent
-              opacity={0.8}
-            />
+            <meshBasicMaterial color={color} side={THREE.DoubleSide} transparent opacity={0.8} />
             <Html center>
               <div
                 className={`${colorClass} font-mono text-xs font-bold whitespace-nowrap bg-black/50 px-2 py-1 rounded border`}
