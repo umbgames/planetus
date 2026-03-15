@@ -90,7 +90,7 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
 
     groupRef.current.getWorldPosition(worldPos);
     const dist = camera.position.distanceTo(worldPos);
-    const activationDistance = Math.max(100, scaledRadius * 22 * VISUAL_SCALE.PLANET_LOD_DISTANCE_MULTIPLIER);
+    const activationDistance = Math.max(220, scaledRadius * 40 * VISUAL_SCALE.PLANET_LOD_DISTANCE_MULTIPLIER);
     if (dist < activationDistance && !isActive) setIsActive(true);
     else if (dist >= activationDistance && isActive) setIsActive(false);
   });
@@ -130,7 +130,7 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
         ) : (
           <mesh>
             <sphereGeometry args={[scaledRadius, quality === 'low' ? 10 : quality === 'medium' ? 14 : 18, quality === 'low' ? 10 : quality === 'medium' ? 14 : 18]} />
-            <meshStandardMaterial color={planet.ring ? '#8a7f72' : '#6b6b75'} roughness={1} />
+            <meshStandardMaterial color={planet.ring ? '#8a7f72' : '#6b6b75'} emissive={planet.ring ? '#3d342b' : '#202028'} emissiveIntensity={0.18} roughness={1} />
           </mesh>
         )}
 

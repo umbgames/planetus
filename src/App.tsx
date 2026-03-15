@@ -88,7 +88,7 @@ function GalaxyStarField({
         id: `galaxy_star_${i}`,
         seed: hashCombine(galaxySeed, 'system', i),
         color: colors[Math.floor(random() * colors.length) % colors.length],
-        scale: 6 + random() * 16,
+        scale: 18 + random() * 42,
         position,
       };
     });
@@ -100,7 +100,7 @@ function GalaxyStarField({
     const color = new THREE.Color();
     starData.forEach((star, i) => {
       dummy.position.copy(star.position);
-      dummy.scale.setScalar(star.scale * (star.seed === currentSystemSeed ? 1.8 : 1));
+      dummy.scale.setScalar(star.scale * (star.seed === currentSystemSeed ? 2.2 : 1.25));
       dummy.updateMatrix();
       meshRef.current!.setMatrixAt(i, dummy.matrix);
       color.set(star.seed === currentSystemSeed ? '#ffffff' : star.color);
@@ -121,8 +121,8 @@ function GalaxyStarField({
       onPointerOver={() => { document.body.style.cursor = 'pointer'; }}
       onPointerOut={() => { document.body.style.cursor = 'auto'; }}
     >
-      <sphereGeometry args={[1, 6, 6]} />
-      <meshBasicMaterial vertexColors toneMapped={false} />
+      <sphereGeometry args={[1, 8, 8]} />
+      <meshBasicMaterial vertexColors toneMapped={false} transparent opacity={0.95} />
     </instancedMesh>
   );
 }

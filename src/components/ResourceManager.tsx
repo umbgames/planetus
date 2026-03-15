@@ -53,6 +53,7 @@ function Resource({ data, isMobile }: { data: ResourceNode, isMobile: boolean })
   const groupRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.Group>(null);
   const { camera } = useThree();
+  const [lodLevel, setLodLevel] = useState<'full' | 'proxy' | 'hidden'>('full');
   
   const isCommon = data.type === 'common';
   const scale = isCommon ? 0.15 : 0.12;
@@ -72,16 +73,20 @@ function Resource({ data, isMobile }: { data: ResourceNode, isMobile: boolean })
     
     // Calculate distance to camera for LOD
     const dist = camera.position.distanceTo(groupRef.current.position);
-    const maxDist = isMobile ? 10 : 15;
-    
-    if (dist > maxDist) {
+    const fullDist = isMobile ? 18 : 34;
+    const proxyDist = isMobile ? 60 : 120;
+
+    if (dist > proxyDist) {
+      if (lodLevel !== 'hidden') setLodLevel('hidden');
       groupRef.current.visible = false;
     } else {
       groupRef.current.visible = true;
+      const nextLod = dist > fullDist ? 'proxy' : 'full';
+      if (nextLod !== lodLevel) setLodLevel(nextLod);
       // Floating animation
       meshRef.current.position.y = Math.sin(state.clock.elapsedTime * 2 + data.id.length) * 0.05 + 0.1;
-      meshRef.current.rotation.y += 0.02;
-      meshRef.current.rotation.x += 0.01;
+      meshRef.current.rotation.y += nextLod === 'proxy' ? 0.01 : 0.02;
+      meshRef.current.rotation.x += nextLod === 'proxy' ? 0.005 : 0.01;
     }
   });
 
@@ -90,7 +95,20 @@ function Resource({ data, isMobile }: { data: ResourceNode, isMobile: boolean })
   return (
     <group ref={groupRef}>
       <group ref={meshRef} userData={{ isResource: true, resourceId: data.id }}>
-        {isCommon ? <CommonResource scale={scale} isMobile={isMobile} /> : <RareResource scale={scale} isMobile={isMobile} />}
+        {lodLevel === 'proxy' ? (
+          <mesh>
+            <icosahedronGeometry args={[isCommon ? 0.16 : 0.22, 0]} />
+            <meshStandardMaterial
+              color={isCommon ? '#f59e0b' : '#d946ef'}
+              emissive={isCommon ? '#b45309' : '#c026d3'}
+              emissiveIntensity={isCommon ? 0.45 : 0.9}
+              roughness={0.3}
+              metalness={0.7}
+            />
+          </mesh>
+        ) : (
+          isCommon ? <CommonResource scale={scale} isMobile={isMobile} /> : <RareResource scale={scale} isMobile={isMobile} />
+        )}
       </group>
     </group>
   );

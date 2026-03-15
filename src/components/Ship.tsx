@@ -359,8 +359,8 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
 
     fog.color.copy(skyColor.current);
 
-    const fogNear = THREE.MathUtils.lerp(50, 0.5, Math.pow(tiltFactor, 4));
-    const fogFar = THREE.MathUtils.lerp(100, 4.0, Math.pow(tiltFactor, 4));
+    const fogNear = THREE.MathUtils.lerp(8000, 0.5, Math.pow(tiltFactor, 4));
+    const fogFar = THREE.MathUtils.lerp(30000, 4.0, Math.pow(tiltFactor, 4));
 
     fog.near = fogNear;
     fog.far = fogFar;
@@ -611,9 +611,18 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
       boostEnergy.current = Math.min(100, boostEnergy.current + 10 * delta);
     }
 
+    const altitudeFromSurface = Math.max(0, position.current.length() - planetRadius);
+    const orbitalFactor = THREE.MathUtils.clamp(altitudeFromSurface / Math.max(planetRadius * 4, 8), 0, 1);
+    const deepSpaceFactor = THREE.MathUtils.clamp(altitudeFromSurface / Math.max(planetRadius * 30, 40), 0, 1);
+    const cruiseMultiplier = THREE.MathUtils.lerp(1, isBoostingActive ? 180 : 36, orbitalFactor);
+    const deepSpaceBoost = THREE.MathUtils.lerp(1, isBoostingActive ? 8 : 3, deepSpaceFactor);
+    const effectiveSpeed = speed * cruiseMultiplier * deepSpaceBoost;
+    const effectiveAccel = accel * THREE.MathUtils.lerp(1, isBoostingActive ? 140 : 28, orbitalFactor) * THREE.MathUtils.lerp(1, isBoostingActive ? 5 : 2.25, deepSpaceFactor);
+
     if (cameraRef.current) {
       const targetFov = isBoostingActive ? 100 : 60;
       cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFov, 0.1);
+      cameraRef.current.far = 250000;
       cameraRef.current.updateProjectionMatrix();
       
       const targetZ = isBoostingActive ? 0.25 : 0.15;
@@ -660,11 +669,11 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     const quaternion = baseQuat.multiply(yawQuat).multiply(pitchQuat);
 
     const moveVector = input.clone().applyQuaternion(quaternion);
-    velocity.current.add(moveVector.multiplyScalar(accel));
-    velocity.current.multiplyScalar(friction);
+    velocity.current.add(moveVector.multiplyScalar(effectiveAccel));
+    velocity.current.multiplyScalar(THREE.MathUtils.lerp(friction, 0.995, orbitalFactor));
     
-    if (velocity.current.length() > speed) {
-      velocity.current.normalize().multiplyScalar(speed);
+    if (velocity.current.length() > effectiveSpeed) {
+      velocity.current.normalize().multiplyScalar(effectiveSpeed);
     }
 
     position.current.addScaledVector(velocity.current, delta);
@@ -712,7 +721,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
   return (
     <>
       <group ref={cameraRigRef}>
-        <PerspectiveCamera makeDefault ref={cameraRef} position={[0, 0.04, 0.15]} rotation={[-0.1, 0, 0]} fov={60} near={0.001} far={500} />
+        <PerspectiveCamera makeDefault ref={cameraRef} position={[0, 0.04, 0.15]} rotation={[-0.1, 0, 0]} fov={60} near={0.001} far={250000} />
       </group>
 
       <group ref={shipRef}>
