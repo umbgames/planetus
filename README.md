@@ -73,4 +73,4 @@ This allows players to explore the universe anywhere.
 Clone the repository:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/planet-us.git
+git clone https://github.com/umbgames/planetus.git
