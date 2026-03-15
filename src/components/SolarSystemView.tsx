@@ -40,6 +40,7 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
   quality = 'medium',
 }: OrbitingPlanetProps) {
   const groupRef = useRef<THREE.Group>(null);
+  const spinRef = useRef<THREE.Group>(null);
   const [isActive, setIsActive] = useState(false);
   const { camera } = useThree();
   const worldPos = useMemo(() => new THREE.Vector3(), []);
@@ -49,7 +50,7 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
     [planet.radius]
   );
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     if (!groupRef.current) return;
 
     const time = state.clock.getElapsedTime();
@@ -58,19 +59,20 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
     const x = Math.cos(angle) * scaledOrbitDistance;
     const z = Math.sin(angle) * scaledOrbitDistance;
 
-    // Preserve orbital tilt look
     const y =
       x * Math.sin(planet.orbitTiltZ) +
       z * Math.sin(planet.orbitTiltX);
 
     groupRef.current.position.set(x, y, z);
 
-    // axial spin
-    groupRef.current.rotation.y += 0.005;
+    // slow smooth identical spin for all planets
+    if (spinRef.current) {
+      spinRef.current.rotation.y += 0.02 * delta;
+    }
 
-    // LOD activation distance should scale with planet size and orbital presentation
     groupRef.current.getWorldPosition(worldPos);
     const dist = camera.position.distanceTo(worldPos);
+
     const activationDistance = Math.max(
       80,
       scaledRadius * 18 * VISUAL_SCALE.PLANET_LOD_DISTANCE_MULTIPLIER
@@ -97,20 +99,28 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
         document.body.style.cursor = 'auto';
       }}
     >
-      {isActive ? (
-        <Planet
-          radius={scaledRadius}
-          isMobile={isMobile}
-          seed={planet.id}
-          noiseScale={planet.noiseScale}
-          landThreshold={planet.landThreshold}
-        />
-      ) : (
-        <mesh>
-          <sphereGeometry args={[scaledRadius, quality === 'low' ? 10 : quality === 'medium' ? 14 : 18, quality === 'low' ? 10 : quality === 'medium' ? 14 : 18]} />
-          <meshStandardMaterial color="#444444" roughness={1} />
-        </mesh>
-      )}
+      <group ref={spinRef}>
+        {isActive ? (
+          <Planet
+            radius={scaledRadius}
+            isMobile={isMobile}
+            seed={planet.id}
+            noiseScale={planet.noiseScale}
+            landThreshold={planet.landThreshold}
+          />
+        ) : (
+          <mesh>
+            <sphereGeometry
+              args={[
+                scaledRadius,
+                quality === 'low' ? 10 : quality === 'medium' ? 14 : 18,
+                quality === 'low' ? 10 : quality === 'medium' ? 14 : 18,
+              ]}
+            />
+            <meshStandardMaterial color="#444444" roughness={1} />
+          </mesh>
+        )}
+      </group>
     </group>
   );
 });
@@ -119,7 +129,13 @@ function OrbitRing({ radius, color = '#1e3a8a' }: { radius: number; color?: stri
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]}>
       <ringGeometry args={[radius - 0.22, radius + 0.22, 128]} />
-      <meshBasicMaterial color={color} transparent opacity={0.14} side={THREE.DoubleSide} depthWrite={false} />
+      <meshBasicMaterial
+        color={color}
+        transparent
+        opacity={0.14}
+        side={THREE.DoubleSide}
+        depthWrite={false}
+      />
     </mesh>
   );
 }
@@ -155,14 +171,21 @@ function AsteroidBelt({
     for (let i = 0; i < asteroidCount; i++) {
       const angle = random() * Math.PI * 2;
       const distance = scaledOrbitDistance + (random() - 0.5) * scaledWidth;
+
       const x = Math.cos(angle) * distance;
       const z = Math.sin(angle) * distance;
       const y = (random() - 0.5) * scaledWidth * 0.2;
+
       const scale = random() * 0.5 + 0.1;
+
       items.push({
         position: new THREE.Vector3(x, y, z),
         scale,
-        rotation: new THREE.Euler(random() * Math.PI, random() * Math.PI, random() * Math.PI),
+        rotation: new THREE.Euler(
+          random() * Math.PI,
+          random() * Math.PI,
+          random() * Math.PI
+        ),
       });
     }
 
@@ -171,7 +194,9 @@ function AsteroidBelt({
 
   useEffect(() => {
     if (!meshRef.current) return;
+
     const dummy = new THREE.Object3D();
+
     asteroids.forEach((ast, i) => {
       dummy.position.copy(ast.position);
       dummy.rotation.copy(ast.rotation);
@@ -179,12 +204,15 @@ function AsteroidBelt({
       dummy.updateMatrix();
       meshRef.current!.setMatrixAt(i, dummy.matrix);
     });
+
     meshRef.current.instanceMatrix.needsUpdate = true;
   }, [asteroids]);
 
   useFrame((state) => {
     if (!groupRef.current) return;
-    groupRef.current.rotation.y = belt.initialAngle + state.clock.getElapsedTime() * belt.orbitSpeed;
+
+    groupRef.current.rotation.y =
+      belt.initialAngle + state.clock.getElapsedTime() * belt.orbitSpeed;
   });
 
   return (
@@ -209,7 +237,10 @@ export function SolarSystemView({
 
   const orbitMap = useMemo(() => buildOrbitMap(data.bodies), [data.bodies]);
 
-  const scaledStarRadius = useMemo(() => getScaledStarRadius(data.starRadius), [data.starRadius]);
+  const scaledStarRadius = useMemo(
+    () => getScaledStarRadius(data.starRadius),
+    [data.starRadius]
+  );
 
   useFrame((state) => {
     if (!groupRef.current) return;
@@ -229,6 +260,7 @@ export function SolarSystemView({
 
         const x = Math.cos(angle) * scaledOrbitDistance;
         const z = Math.sin(angle) * scaledOrbitDistance;
+
         const y =
           x * Math.sin(planet.orbitTiltZ) +
           z * Math.sin(planet.orbitTiltX);
@@ -249,18 +281,33 @@ export function SolarSystemView({
         onClick={() => setCurrentPlanetId(null)}
       />
 
-      {showOrbitRings && data.bodies.map((body) => {
-        if (body.type === 'planet') {
-          const planet = body as PlanetData;
-          const orbitDistance = orbitMap.get(planet.id) ?? planet.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
-          return <OrbitRing key={`ring-${planet.id}`} radius={orbitDistance} color={currentPlanetId === planet.id ? '#38bdf8' : '#1d4ed8'} />;
-        }
-        return null;
-      })}
+      {showOrbitRings &&
+        data.bodies.map((body) => {
+          if (body.type === 'planet') {
+            const planet = body as PlanetData;
+
+            const orbitDistance =
+              orbitMap.get(planet.id) ??
+              planet.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
+
+            return (
+              <OrbitRing
+                key={`ring-${planet.id}`}
+                radius={orbitDistance}
+                color={
+                  currentPlanetId === planet.id ? '#38bdf8' : '#1d4ed8'
+                }
+              />
+            );
+          }
+
+          return null;
+        })}
 
       {data.bodies.map((body) => {
         if (body.type === 'planet') {
           const planet = body as PlanetData;
+
           const scaledOrbitDistance =
             orbitMap.get(planet.id) ??
             planet.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
@@ -282,10 +329,12 @@ export function SolarSystemView({
           const belt = body as AsteroidBeltData;
 
           const scaledOrbitDistance =
-            belt.orbitDistance * VISUAL_SCALE.ASTEROID_DISTANCE_MULTIPLIER;
+            belt.orbitDistance *
+            VISUAL_SCALE.ASTEROID_DISTANCE_MULTIPLIER;
 
           const scaledWidth =
-            belt.width * VISUAL_SCALE.ASTEROID_WIDTH_MULTIPLIER;
+            belt.width *
+            VISUAL_SCALE.ASTEROID_WIDTH_MULTIPLIER;
 
           return (
             <AsteroidBelt
