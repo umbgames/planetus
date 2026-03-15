@@ -217,12 +217,6 @@ export const Planet = memo(function Planet({
     };
   }, [geographyManager, seed, noiseScale, landThreshold]);
 
-  useEffect(() => {
-    return () => {
-      if (texture) texture.dispose();
-      if (displacementMap) displacementMap.dispose();
-    };
-  }, [texture, displacementMap]);
 
   const planetSegments = useMemo(() => {
     // 512x512 is extremely expensive for a real-time sphere.

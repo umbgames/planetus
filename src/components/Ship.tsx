@@ -8,6 +8,8 @@ import { useShipStore } from '../services/shipStore';
 import { SolarSystemData, PlanetData } from '../services/solarSystem';
 import { buildOrbitMap, getBodyWorldPosition, getScaledStarRadius, getScaledPlanetRadius, VISUAL_SCALE } from '../services/orbitUtils';
 
+const INFINITE_TEST_AMMO = true;
+
 interface ShipProps {
   planetRadius: number;
   onExit: () => void;
@@ -19,9 +21,10 @@ interface ShipProps {
   currentPlanetId?: string | null;
   setCurrentPlanetId?: (id: string | null) => void;
   solarSystem?: SolarSystemData | null;
+  onSatelliteDamaged?: (satellite: { uid?: string; name: string }, damage: number) => void;
 }
 
-export function Ship({ planetRadius, onExit, bases = [], userData = null, satellites = [], initialPosition, initialRotation, currentPlanetId, setCurrentPlanetId, solarSystem }: ShipProps) {
+export function Ship({ planetRadius, onExit, bases = [], userData = null, satellites = [], initialPosition, initialRotation, currentPlanetId, setCurrentPlanetId, solarSystem, onSatelliteDamaged }: ShipProps) {
   // 1️⃣ Updated useThree to access the scene
   const { camera, gl, scene } = useThree();
   const shipRef = useRef<THREE.Group>(null);
@@ -439,13 +442,18 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     }
 
     if (lockedTarget && lockedTarget.type === 'satellite') {
-      const time = state.clock.elapsedTime;
-      const angle = time * lockedTarget.speed + lockedTarget.initialAngle;
-      const satPos = new THREE.Vector3(lockedTarget.orbitRadius, 0, 0);
-      satPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
-      satPos.applyEuler(new THREE.Euler(lockedTarget.tiltX, lockedTarget.tiltY, lockedTarget.tiltZ));
-      
-      setLockedTarget(prev => prev ? { ...prev, position: satPos } : null);
+      const liveSatellite = satellites.find((sat) => sat.name === lockedTarget.name);
+      if (!liveSatellite || (liveSatellite.health ?? 0) <= 0) {
+        setLockedTarget(null);
+      } else {
+        const time = state.clock.elapsedTime;
+        const angle = time * liveSatellite.speed + liveSatellite.initialAngle;
+        const satPos = new THREE.Vector3(liveSatellite.orbitRadius, 0, 0);
+        satPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+        satPos.applyEuler(new THREE.Euler(liveSatellite.tiltX, liveSatellite.tiltY, liveSatellite.tiltZ));
+
+        setLockedTarget(prev => prev ? { ...prev, position: satPos, health: liveSatellite.health ?? prev.health } : null);
+      }
     } else if (lockedTarget && lockedTarget.type === 'base') {
       const updatedBase = bases.find(b => b.id === lockedTarget.id);
       if (updatedBase && updatedBase.health !== lockedTarget.health) {
@@ -466,10 +474,10 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     
     // Machine Gun (Light Laser)
     if ((keys['MouseLeft'] || mobileKeys.mg) && now - lastFired.current > 100) { 
-      if (!userData || userData.machineGunAmmo > 0) {
+      if (INFINITE_TEST_AMMO || !userData || userData.machineGunAmmo > 0) {
         lastFired.current = now;
         setLastMgFire(now);
-        if (userData) gameManager.fireMachineGun();
+        if (userData && !INFINITE_TEST_AMMO) gameManager.fireMachineGun();
         
         const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
         if (lockedTarget) {
@@ -499,8 +507,8 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     }
 
     // Missile (Heavy Laser)
-    if ((keys['MouseRight'] || mobileKeys.missile) && now - lastMissile.current > 1000) { 
-      if (!userData || userData.missileAmmo > 0) {
+    if ((keys['MouseRight'] || mobileKeys.missile) && now - lastMissile.current > 250) { 
+      if (INFINITE_TEST_AMMO || !userData || userData.missileAmmo > 0) {
         lastMissile.current = now;
         setLastMissileFire(now);
         
@@ -508,7 +516,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
         // Pushes the ship model slightly backward along its local Z axis
         recoilZ.current = 0.08; 
         
-        if (userData) gameManager.fireMissile();
+        if (userData && !INFINITE_TEST_AMMO) gameManager.fireMissile();
         
         const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
         
@@ -561,10 +569,9 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
 
             if (p.pos.distanceTo(satPos) < 1.0) {
               hit = true;
-              if (sat.uid) {
-                gameManager.destroySatellite(sat.uid).catch(console.error);
-              }
-              setExplosions(prev => [...prev, { id: Math.random().toString(), pos: p.pos.clone(), createdAt: now, size: p.type === 'mg' ? 1 : 3 }]);
+              const damage = p.type === 'mg' ? 12 : 55;
+              onSatelliteDamaged?.(sat, damage);
+              setExplosions(prev => [...prev, { id: Math.random().toString(), pos: p.pos.clone(), createdAt: now, size: p.type === 'mg' ? 1.2 : 3.5 }]);
             }
           });
         }
@@ -780,23 +787,31 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
             {p.type === 'mg' ? (
               <group>
                 <mesh rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.015, 0.015, 1.5, 6]} />
+                  <cylinderGeometry args={[0.02, 0.02, 2.4, 8]} />
                   <meshBasicMaterial color="#ffffff" />
                 </mesh>
                 <mesh rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.04, 0.04, 1.6, 6]} />
-                  <meshBasicMaterial color="#00ffff" transparent opacity={0.4} />
+                  <cylinderGeometry args={[0.06, 0.06, 2.8, 8]} />
+                  <meshBasicMaterial color="#00e5ff" transparent opacity={0.35} />
                 </mesh>
-                {/* Subtle light emission for standard shots */}
-                <pointLight distance={2} intensity={1} color="#00ffff" />
+                <mesh>
+                  <sphereGeometry args={[0.08, 12, 12]} />
+                  <meshBasicMaterial color="#9ffcff" />
+                </mesh>
+                <pointLight distance={3} intensity={1.5} color="#00ffff" />
               </group>
             ) : (
               <group>
                 <mesh rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.05, 0.05, 1.2, 8]} />
-                  <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={5} />
+                  <cylinderGeometry args={[0.06, 0.06, 2.2, 10]} />
+                  <meshStandardMaterial color="#ff5a5a" emissive="#ff2222" emissiveIntensity={7} />
                 </mesh>
-                <Trail width={0.15} length={6} color={new THREE.Color('#ff0000')} attenuation={(t) => t * t}>
+                <mesh>
+                  <sphereGeometry args={[0.11, 16, 16]} />
+                  <meshBasicMaterial color="#ffd0d0" />
+                </mesh>
+                <pointLight distance={4} intensity={2} color="#ff3333" />
+                <Trail width={0.2} length={8} color={new THREE.Color('#ff0000')} attenuation={(t) => t * t}>
                   <mesh position={[0, 0, 0.5]}>
                     <sphereGeometry args={[0.01]} />
                     <meshBasicMaterial transparent opacity={0} />

@@ -99,14 +99,16 @@ function Resource({ data, isMobile }: { data: ResourceNode, isMobile: boolean })
 export function ResourceManager({ planetRadius, isMobile = false, geographyManager }: ResourceManagerProps) {
   const [resources, setResources] = useState<ResourceNode[]>([]);
 
+
   useEffect(() => {
     const updateResources = (newResources: ResourceNode[]) => {
-      setResources(newResources.filter(r => r.active));
+      const activeResources = newResources.filter(r => r.active);
+      setResources(activeResources);
     };
-    
+
     gameManager.onResourcesUpdate = updateResources;
     updateResources(gameManager.resources);
-    
+
     return () => {
       gameManager.onResourcesUpdate = null;
     };

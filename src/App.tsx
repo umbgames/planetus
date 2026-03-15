@@ -10,12 +10,12 @@ import { CameraController } from './components/CameraController';
 import { Ship } from './components/Ship';
 import { ShipUI } from './components/ShipUI';
 import { MarketUI } from './components/MarketUI';
-import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp, ArrowRightLeft, MonitorPlay, Gauge, Orbit, Zap } from 'lucide-react';
+import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp, ArrowRightLeft, MonitorPlay, Gauge, Orbit, Zap, Settings, X, LoaderCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { gameManager, UserData, BaseData } from './services/gameManager';
 import { auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { geographyManager } from './services/geography';
+import { geographyManager, GeographyManager } from './services/geography';
 import { useShipStore } from './services/shipStore';
 import { generateSolarSystem, SolarSystemData, PlanetData } from './services/solarSystem';
 import { SolarSystemView } from './components/SolarSystemView';
@@ -50,14 +50,6 @@ function RotatingSystem({ children }: { children: React.ReactNode }) {
 
 const PLANET_RADIUS = 10;
 
-// Mock players for satellites
-const MOCK_PLAYERS = [
-  { name: 'PlayerOne', bases: 12, info: 'Veteran explorer of the outer rim.' },
-  { name: 'SpaceNinja', bases: 8, info: 'Specializes in stealth outposts.' },
-  { name: 'AstroBob', bases: 5, info: 'Mining magnate and trader.' },
-  { name: 'StarLord', bases: 3, info: 'Just looking for a good time.' },
-  { name: 'NovaCorp', bases: 15, info: 'Corporate entity expanding its reach.' },
-];
 
 export default function App() {
   const [trackedSatellite, setTrackedSatellite] = useState<any>(null);
@@ -72,7 +64,7 @@ export default function App() {
   const [currentZone, setCurrentZone] = useState<'high' | 'mid' | 'low' | null>(null);
   const [shipPosition, setShipPosition] = useState<THREE.Vector3 | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [satelliteUsers, setSatelliteUsers] = useState<{ uid?: string; name: string; bases: number; info: string }[]>(MOCK_PLAYERS);
+  const [satelliteUsers, setSatelliteUsers] = useState<{ uid?: string; name: string; bases: number; info: string; health: number }[]>([]);
   const [isMobile, setIsMobile] = useState(false);
   const [screenShake, setScreenShake] = useState(false);
   const [hitEffect, setHitEffect] = useState(false);
@@ -82,6 +74,8 @@ export default function App() {
   const [welcomeMessage, setWelcomeMessage] = useState<{ name: string, desc: string } | null>(null);
   const [qualityPreset, setQualityPreset] = useState<'low' | 'medium' | 'high'>(isMobile ? 'low' : 'high');
   const [showOrbitRings, setShowOrbitRings] = useState(true);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState<{ active: boolean; progress: number; label: string }>({ active: true, progress: 0, label: 'Booting navigation core...' });
 
   const currentPlanetRadius = useMemo(() => {
     if (!solarSystem) return PLANET_RADIUS;
@@ -96,13 +90,43 @@ export default function App() {
     const seed = "alpha_centauri_v1";
     const system = generateSolarSystem(seed);
     setSolarSystem(system);
-    
-    // Set the singleton geographyManager to the first planet's seed
-    const firstPlanet = system.bodies.find(b => b.type === 'planet') as PlanetData;
+
+    const planets = system.bodies.filter((b): b is PlanetData => b.type === 'planet');
+    const firstPlanet = planets[0];
     if (firstPlanet) {
       geographyManager.setSeed(firstPlanet.id, firstPlanet.noiseScale, firstPlanet.landThreshold);
       setCurrentPlanetId(firstPlanet.id);
     }
+
+    let cancelled = false;
+    const warmTextures = async () => {
+      for (let i = 0; i < planets.length; i++) {
+        const planet = planets[i];
+        if (cancelled) return;
+        setLoadingStatus({
+          active: true,
+          progress: i / Math.max(planets.length, 1),
+          label: `Caching textures for ${planet.id.replace('planet_', 'PLANET-')}...`,
+        });
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            GeographyManager.warmCache(planet.id, planet.noiseScale, planet.landThreshold);
+            resolve();
+          });
+        });
+      }
+      if (!cancelled) {
+        setLoadingStatus({ active: true, progress: 1, label: 'Synchronizing orbital systems...' });
+        setTimeout(() => {
+          if (!cancelled) setLoadingStatus({ active: false, progress: 1, label: 'Ready' });
+        }, 350);
+      }
+    };
+
+    warmTextures();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
 
@@ -145,23 +169,25 @@ export default function App() {
     setQualityPreset(isMobile ? 'low' : 'high');
   }, [isMobile]);
 
+
   const prevTagsRef = useRef<Record<string, any>>({});
 
   // Take top 10 players and assign random animation properties
   const topSatellites = useMemo(() => {
-    const currentTags = [...satelliteUsers].sort((a, b) => b.bases - a.bases).slice(0, 10);
+    const currentTags = [...satelliteUsers].filter((tag) => (tag.health ?? 100) > 0).sort((a, b) => b.bases - a.bases).slice(0, 10);
     const newTagsRef: Record<string, any> = {};
     
     const result = currentTags.map((tag) => {
       if (prevTagsRef.current[tag.name]) {
         // Keep existing properties, just update bases
         const existing = prevTagsRef.current[tag.name];
-        newTagsRef[tag.name] = { ...existing, bases: tag.bases, info: tag.info };
+        newTagsRef[tag.name] = { ...existing, uid: tag.uid, bases: tag.bases, info: tag.info, health: tag.health ?? 100 };
         return newTagsRef[tag.name];
       } else {
         // Generate new properties
         const newTag = {
           ...tag,
+          health: tag.health ?? 100,
           speed: (Math.random() > 0.5 ? 1 : -1) * (0.15 + Math.random() * 0.2), // Slower, smoother speed
           orbitRadius: PLANET_RADIUS * (1.2 + Math.random() * 0.8), // Varying distance from planet
           initialAngle: Math.random() * Math.PI * 2,
@@ -178,10 +204,33 @@ export default function App() {
     return result;
   }, [satelliteUsers]);
 
+  const satelliteToastRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    const prev = satelliteToastRef.current;
+    const next: Record<string, number> = {};
+    satelliteUsers.forEach((sat) => {
+      const key = sat.uid || sat.name;
+      next[key] = sat.health ?? 100;
+      const prevHealth = prev[key];
+      if (typeof prevHealth === 'number' && prevHealth > 0 && (sat.health ?? 100) <= 0) {
+        showToast(`${sat.name} destroyed`);
+      }
+    });
+    satelliteToastRef.current = next;
+  }, [satelliteUsers]);
+
   const showToast = (message: string) => {
     setToastMessage(message);
     setTimeout(() => setToastMessage(null), 3000);
   };
+
+  const handleSatelliteDamaged = useCallback((satellite: { uid?: string; name: string }, damage: number) => {
+    if (!satellite.uid) return;
+    gameManager.damageSatellite(satellite.uid, damage).catch((e: any) => {
+      if (e?.message) showToast(e.message);
+    });
+  }, []);
 
   const hasRestoredState = useRef(false);
 
@@ -201,8 +250,7 @@ export default function App() {
     };
     gameManager.onBasesUpdate = (data) => setBases(data);
     gameManager.onSatelliteUsersUpdate = (users) => {
-      // Combine with mock players for now to ensure there are always some satellites
-      setSatelliteUsers([...MOCK_PLAYERS, ...users]);
+      setSatelliteUsers(users);
     };
     
     return () => {
@@ -502,6 +550,7 @@ export default function App() {
             bases={bases} 
             userData={userData} 
             satellites={topSatellites} 
+            onSatelliteDamaged={handleSatelliteDamaged}
             initialPosition={userData?.playerSave?.position}
             initialRotation={userData?.playerSave?.rotation}
             currentPlanetId={currentPlanetId}
@@ -592,43 +641,88 @@ export default function App() {
         </div>
       </div>
 
-      <div className="absolute top-24 left-6 z-40 pointer-events-auto bg-zinc-900/70 backdrop-blur border border-zinc-700 rounded-2xl p-4 w-[280px]">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <div className="text-xs uppercase tracking-[0.25em] text-cyan-400 font-bold">System Control</div>
-            <div className="text-sm text-white font-semibold">Performance + Navigation</div>
+      <div className="absolute top-24 left-6 z-40 pointer-events-auto">
+        <button
+          onClick={() => setShowSettingsPanel((v) => !v)}
+          className="bg-zinc-900/80 hover:bg-zinc-800 text-white border border-zinc-700 rounded-2xl px-4 py-3 shadow-2xl flex items-center gap-3"
+        >
+          {showSettingsPanel ? <X size={18} /> : <Settings size={18} />}
+          <div className="text-left">
+            <div className="text-xs uppercase tracking-[0.25em] text-cyan-400 font-bold">Settings</div>
+            <div className="text-sm text-white font-semibold">Graphics + Navigation</div>
           </div>
-        </div>
-        <div className="mb-3">
-          <div className="text-[11px] uppercase tracking-wider text-zinc-500 mb-2">Quality Preset</div>
-          <div className="grid grid-cols-3 gap-2">
-            {(['low', 'medium', 'high'] as const).map((preset) => (
-              <button
-                key={preset}
-                onClick={() => setQualityPreset(preset)}
-                className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors border ${qualityPreset === preset ? 'bg-cyan-600 text-white border-cyan-400' : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'}`}
-              >
-                {preset.toUpperCase()}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex items-center justify-between bg-zinc-800/70 rounded-xl px-3 py-2 border border-zinc-700">
-          <div>
-            <div className="text-sm text-white font-medium">Orbit Rings</div>
-            <div className="text-[11px] text-zinc-400">Better navigation in solar view</div>
-          </div>
-          <button
-            onClick={() => setShowOrbitRings(v => !v)}
-            className={`w-14 h-8 rounded-full transition-colors relative ${showOrbitRings ? 'bg-cyan-600' : 'bg-zinc-700'}`}
-          >
-            <span className={`absolute top-1 h-6 w-6 rounded-full bg-white transition-all ${showOrbitRings ? 'left-7' : 'left-1'}`} />
-          </button>
-        </div>
-        <div className="mt-3 text-[11px] text-zinc-400 leading-relaxed">
-          Lower quality reduces stars, environment, antialiasing, and asteroid density for smoother play on weaker GPUs.
-        </div>
+        </button>
+
+        <AnimatePresence>
+          {showSettingsPanel && (
+            <motion.div
+              initial={{ opacity: 0, y: -12, scale: 0.96 }}
+              animate={{ opacity: 1, y: 10, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.96 }}
+              className="mt-3 bg-zinc-900/80 backdrop-blur border border-zinc-700 rounded-2xl p-4 w-[280px]"
+            >
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.25em] text-cyan-400 font-bold">System Control</div>
+                  <div className="text-sm text-white font-semibold">Performance + Navigation</div>
+                </div>
+              </div>
+              <div className="mb-3">
+                <div className="text-[11px] uppercase tracking-wider text-zinc-500 mb-2">Quality Preset</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['low', 'medium', 'high'] as const).map((preset) => (
+                    <button
+                      key={preset}
+                      onClick={() => setQualityPreset(preset)}
+                      className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors border ${qualityPreset === preset ? 'bg-cyan-600 text-white border-cyan-400' : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'}`}
+                    >
+                      {preset.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between bg-zinc-800/70 rounded-xl px-3 py-2 border border-zinc-700">
+                <div>
+                  <div className="text-sm text-white font-medium">Orbit Rings</div>
+                  <div className="text-[11px] text-zinc-400">Better navigation in solar view</div>
+                </div>
+                <button
+                  onClick={() => setShowOrbitRings(v => !v)}
+                  className={`w-14 h-8 rounded-full transition-colors relative ${showOrbitRings ? 'bg-cyan-600' : 'bg-zinc-700'}`}
+                >
+                  <span className={`absolute top-1 h-6 w-6 rounded-full bg-white transition-all ${showOrbitRings ? 'left-7' : 'left-1'}`} />
+                </button>
+              </div>
+              <div className="mt-3 text-[11px] text-zinc-400 leading-relaxed">
+                Lower quality reduces stars, environment, antialiasing, and asteroid density for smoother play on weaker GPUs.
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
+
+      <AnimatePresence>
+        {loadingStatus.active && (
+          <motion.div
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[80] bg-black flex items-center justify-center pointer-events-auto"
+          >
+            <div className="w-full max-w-md px-8">
+              <div className="flex items-center justify-center gap-3 mb-6">
+                <LoaderCircle size={28} className="text-cyan-400 animate-spin" />
+                <div className="text-white text-2xl font-black tracking-wider">PLANET:US</div>
+              </div>
+              <div className="text-center text-zinc-400 text-sm mb-4">{loadingStatus.label}</div>
+              <div className="h-3 bg-zinc-800 rounded-full overflow-hidden border border-zinc-700">
+                <motion.div className="h-full bg-cyan-500" initial={{ width: 0 }} animate={{ width: `${Math.round(loadingStatus.progress * 100)}%` }} />
+              </div>
+              <div className="text-center text-cyan-300 text-xs mt-3 font-mono">{Math.round(loadingStatus.progress * 100)}% CACHED</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {showMarket && <MarketUI onClose={() => setShowMarket(false)} userData={userData} />}
 

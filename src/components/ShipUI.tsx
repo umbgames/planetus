@@ -220,7 +220,7 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
               
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2 justify-end">
-                  <span className="text-yellow-500 font-mono text-sm">{userData ? userData.machineGunAmmo : '∞'}</span>
+                  <span className="text-yellow-500 font-mono text-sm">∞</span>
                   <span className="text-white text-xs">MG (L-Click)</span>
                 </div>
                 <WeaponCooldown lastFireTime={lastMgFire} cooldownDuration={100} color="bg-yellow-500" />
@@ -228,10 +228,10 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
 
               <div className="flex flex-col gap-1">
                 <div className="flex items-center gap-2 justify-end">
-                  <span className="text-red-500 font-mono text-sm">{userData ? userData.missileAmmo : '∞'}</span>
+                  <span className="text-red-500 font-mono text-sm">∞</span>
                   <span className="text-white text-xs">MSL (R-Click)</span>
                 </div>
-                <WeaponCooldown lastFireTime={lastMissileFire} cooldownDuration={1000} color="bg-red-500" />
+                <WeaponCooldown lastFireTime={lastMissileFire} cooldownDuration={250} color="bg-red-500" />
               </div>
 
               <div className="text-zinc-500 text-[10px] mt-1">Press T to Lock Target</div>
@@ -401,7 +401,7 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
           >
             <Zap size={24} color={!userData || userData.machineGunAmmo ? '#fff' : '#555'} />
             <MobileCooldownOverlay lastFireTime={lastMgFire} cooldownDuration={100} />
-            <span style={{ position: 'absolute', bottom: -20, fontSize: '10px', color: '#ffaa00', fontWeight: 'bold' }}>{userData ? userData.machineGunAmmo : '∞'}</span>
+            <span style={{ position: 'absolute', bottom: -20, fontSize: '10px', color: '#ffaa00', fontWeight: 'bold' }}>∞</span>
           </button>
 
           {/* Missile Button */}
@@ -412,8 +412,8 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
             onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, missile: false})); }}
           >
             <Flame size={24} color={!userData || userData.missileAmmo ? '#fff' : '#555'} />
-            <MobileCooldownOverlay lastFireTime={lastMissileFire} cooldownDuration={1000} />
-            <span style={{ position: 'absolute', bottom: -20, fontSize: '10px', color: '#ff0000', fontWeight: 'bold' }}>{userData ? userData.missileAmmo : '∞'}</span>
+            <MobileCooldownOverlay lastFireTime={lastMissileFire} cooldownDuration={250} />
+            <span style={{ position: 'absolute', bottom: -20, fontSize: '10px', color: '#ff0000', fontWeight: 'bold' }}>∞</span>
           </button>
 
           {/* Target Lock Button */}

@@ -21,6 +21,8 @@ export interface UserData {
   commonResources: number;
   rareResources: number;
   hasSatellite: boolean;
+  satelliteHealth: number;
+  satelliteDestroyedAt?: string | null;
   machineGunAmmo: number;
   missileAmmo: number;
   createdAt: string;
@@ -54,12 +56,12 @@ export interface ResourceNode {
 class GameManager {
   bases: BaseData[] = [];
   userData: UserData | null = null;
-  satelliteUsers: { uid?: string; name: string; bases: number; info: string }[] = [];
+  satelliteUsers: { uid?: string; name: string; bases: number; info: string; health: number }[] = [];
   marketOffers: MarketOffer[] = [];
   resources: ResourceNode[] = [];
   onBasesUpdate: ((bases: BaseData[]) => void) | null = null;
   onUserDataUpdate: ((userData: UserData | null) => void) | null = null;
-  onSatelliteUsersUpdate: ((users: { uid?: string; name: string; bases: number; info: string }[]) => void) | null = null;
+  onSatelliteUsersUpdate: ((users: { uid?: string; name: string; bases: number; info: string; health: number }[]) => void) | null = null;
   onMarketOffersUpdate: ((offers: MarketOffer[]) => void) | null = null;
   onResourcesUpdate: ((resources: ResourceNode[]) => void) | null = null;
   unsubscribeBases: (() => void) | null = null;
@@ -111,6 +113,8 @@ class GameManager {
         commonResources: 0,
         rareResources: 0,
         hasSatellite: false,
+        satelliteHealth: 100,
+        satelliteDestroyedAt: null,
         machineGunAmmo: 500,
         missileAmmo: 20,
         createdAt: new Date().toISOString()
@@ -125,6 +129,8 @@ class GameManager {
     this.unsubscribeUser = onSnapshot(doc(db, 'users', uid), (doc) => {
       if (doc.exists()) {
         const data = doc.data() as UserData;
+        if (typeof data.satelliteHealth !== 'number') data.satelliteHealth = 100;
+        if (!('satelliteDestroyedAt' in data)) data.satelliteDestroyedAt = null;
         
         // Apply pending updates to prevent jitter
         if (this.pendingAmmoUpdates.mg > 0) {
@@ -181,7 +187,8 @@ class GameManager {
           uid: u.uid,
           name: u.displayName,
           bases: userBases,
-          info: `A powerful explorer with ${userBases} bases.`
+          info: `A powerful explorer with ${userBases} bases.`,
+          health: typeof u.satelliteHealth === 'number' ? u.satelliteHealth : 100
         };
       });
       this.satelliteUsers = satUsers;
@@ -554,7 +561,9 @@ class GameManager {
       await updateDoc(doc(db, 'users', auth.currentUser.uid), {
         commonResources: this.userData.commonResources - costCommon,
         rareResources: this.userData.rareResources - costRare,
-        hasSatellite: true
+        hasSatellite: true,
+        satelliteHealth: 100,
+        satelliteDestroyedAt: null
       });
     } else {
       throw new Error(`Not enough resources. Need ${costCommon} Common and ${costRare} Rare.`);
@@ -662,7 +671,25 @@ class GameManager {
   async destroySatellite(userId: string) {
     if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
     await updateDoc(doc(db, 'users', userId), {
-      hasSatellite: false
+      hasSatellite: false,
+      satelliteHealth: 0,
+      satelliteDestroyedAt: new Date().toISOString()
+    });
+  }
+
+  async damageSatellite(userId: string, damage: number) {
+    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
+    if (!userId || damage <= 0) return;
+    if (userId === auth.currentUser.uid) return;
+
+    const target = this.satelliteUsers.find(s => s.uid === userId);
+    if (!target) throw new Error("Satellite not found.");
+
+    const nextHealth = Math.max(0, (target.health ?? 100) - damage);
+    await updateDoc(doc(db, 'users', userId), {
+      satelliteHealth: nextHealth,
+      hasSatellite: nextHealth > 0,
+      satelliteDestroyedAt: nextHealth <= 0 ? new Date().toISOString() : null
     });
   }
 
