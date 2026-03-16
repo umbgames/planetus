@@ -3,12 +3,17 @@ import { createPRNG, hashCombine, seededRange } from '../utils/random';
 export interface MoonData {
   id: string;
   seed: string;
+  parentPlanetId: string;
   radius: number;
   orbitDistance: number;
   orbitSpeed: number;
+  orbitTiltX: number;
+  orbitTiltZ: number;
   initialAngle: number;
   noiseScale: number;
   landThreshold: number;
+  paletteSeed: number;
+  hasClouds: boolean;
 }
 
 export interface RingData {
@@ -96,14 +101,21 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
       continue;
     }
 
-    const giantBias = radialRatio * radialRatio;
-    const radius = seededRange(hashCombine(bodySeed, 'radius'), 4, 9) + giantBias * seededRange(hashCombine(bodySeed, 'giantBonus'), 3, 18);
+    const giantBias = Math.pow(radialRatio, 1.7);
+    const baseRadius = seededRange(hashCombine(bodySeed, 'radius'), 6.5, 13.5);
+    const giantRoll = seededRange(hashCombine(bodySeed, 'giantRoll'), 0, 1);
+    const giantMultiplier = giantRoll > (0.72 - giantBias * 0.28)
+      ? seededRange(hashCombine(bodySeed, 'giantMultiplier'), 1.5, 3.2 + giantBias * 2.2)
+      : seededRange(hashCombine(bodySeed, 'standardMultiplier'), 0.95, 1.45 + giantBias * 0.45);
+    const radius = baseRadius * giantMultiplier;
     const hasRing = radius > 12 && bodyPrng() > 0.45;
-    const moonCount = radius > 13
-      ? Math.floor(seededRange(hashCombine(bodySeed, 'moons'), 1, 5))
-      : bodyPrng() > 0.62
-        ? Math.floor(seededRange(hashCombine(bodySeed, 'moonsSmall'), 0, 3))
-        : 0;
+    const moonCount = radius > 16
+      ? Math.floor(seededRange(hashCombine(bodySeed, 'moons'), 2, 7))
+      : radius > 10
+        ? Math.floor(seededRange(hashCombine(bodySeed, 'moonsMid'), 0, 4))
+        : bodyPrng() > 0.7
+          ? Math.floor(seededRange(hashCombine(bodySeed, 'moonsSmall'), 0, 2))
+          : 0;
 
     const moons: MoonData[] = Array.from({ length: moonCount }, (_, moonIndex) => {
       const moonSeed = hashCombine(bodySeed, 'moon', moonIndex);
@@ -111,12 +123,17 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
       return {
         id: `planet_${i}_moon_${moonIndex}`,
         seed: moonSeed,
-        radius: seededRange(hashCombine(moonSeed, 'radius'), Math.max(0.8, radius * 0.08), Math.max(1.6, radius * 0.22)),
-        orbitDistance: radius * seededRange(hashCombine(moonSeed, 'orbit'), 2.1 + moonIndex * 0.55, 3.2 + moonIndex * 0.9),
-        orbitSpeed: seededRange(hashCombine(moonSeed, 'speed'), 0.1, 0.32) * (moonPrng() > 0.5 ? 1 : -1),
+        parentPlanetId: `planet_${i}`,
+        radius: seededRange(hashCombine(moonSeed, 'radius'), Math.max(1.2, radius * 0.1), Math.max(2.8, radius * 0.26)),
+        orbitDistance: radius * seededRange(hashCombine(moonSeed, 'orbit'), 3.8 + moonIndex * 1.1, 6.6 + moonIndex * 1.6),
+        orbitSpeed: seededRange(hashCombine(moonSeed, 'speed'), 0.014, 0.065) * (moonPrng() > 0.5 ? 1 : -1),
+        orbitTiltX: seededRange(hashCombine(moonSeed, 'tiltX'), -0.28, 0.28),
+        orbitTiltZ: seededRange(hashCombine(moonSeed, 'tiltZ'), -0.28, 0.28),
         initialAngle: moonPrng() * Math.PI * 2,
-        noiseScale: seededRange(hashCombine(moonSeed, 'noiseScale'), 0.8, 2.3),
-        landThreshold: seededRange(hashCombine(moonSeed, 'landThreshold'), 0.05, 0.35),
+        noiseScale: seededRange(hashCombine(moonSeed, 'noiseScale'), 0.9, 2.6),
+        landThreshold: seededRange(hashCombine(moonSeed, 'landThreshold'), 0.03, 0.33),
+        paletteSeed: seededRange(hashCombine(moonSeed, 'paletteSeed'), 0, 1),
+        hasClouds: moonPrng() > 0.82 && radius > 16,
       };
     });
 

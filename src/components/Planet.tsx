@@ -154,6 +154,7 @@ interface PlanetProps {
   cloudDensity?: number;
   cloudSpeed?: number;
   cloudRotationSpeed?: number;
+  textureDetail?: 'standard' | 'enhanced';
 }
 
 export const Planet = memo(function Planet({
@@ -167,6 +168,7 @@ export const Planet = memo(function Planet({
   cloudDensity = 0.75,
   cloudSpeed = 0.02,
   cloudRotationSpeed = 0.02,
+  textureDetail = 'enhanced',
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
   const { camera } = useThree();
@@ -176,7 +178,7 @@ export const Planet = memo(function Planet({
   const [geographyManager] = useState(() => new GeographyManager());
 
   useEffect(() => {
-    geographyManager.setSeed(seed, noiseScale, landThreshold);
+    geographyManager.setSeed(seed, noiseScale, landThreshold, textureDetail);
     geographyManager.initializeTopicRegions();
 
     const nextTexture = geographyManager.texture ?? null;
@@ -204,7 +206,7 @@ export const Planet = memo(function Planet({
     return () => {
       geographyManager.onTextureUpdate = null;
     };
-  }, [geographyManager, seed, noiseScale, landThreshold]);
+  }, [geographyManager, seed, noiseScale, landThreshold, textureDetail]);
 
   useFrame(() => {
     if (!planetRef.current) return;

@@ -166,21 +166,37 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
                   {planets.map(planet => {
                     const isCurrent = planet.id === currentPlanetId;
                     return (
-                      <div 
-                        key={planet.id} 
-                        className={`p-3 rounded-lg border flex items-center justify-between transition-all ${isCurrent ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
-                      >
-                        <div className="flex flex-col">
-                          <span className={`text-sm font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{(planet.id || '').toUpperCase()}</span>
-                          <span className="text-[10px] text-zinc-500">Radius: {planet.radius.toFixed(1)}</span>
+                      <div key={planet.id} className="flex flex-col gap-2">
+                        <div className={`p-3 rounded-lg border flex items-center justify-between transition-all ${isCurrent ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}>
+                          <div className="flex flex-col">
+                            <span className={`text-sm font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{(planet.id || '').toUpperCase()}</span>
+                            <span className="text-[10px] text-zinc-500">Radius: {planet.radius.toFixed(1)} · {planet.moons.length} moon{planet.moons.length === 1 ? '' : 's'}</span>
+                          </div>
+                          {!isCurrent && (
+                            <button className="p-1.5 bg-white/10 hover:bg-cyan-500/40 rounded-md transition-colors" onClick={() => setLockedTarget({ id: planet.id, type: 'planet' })}>
+                              <Target size={14} className={lockedTarget?.id === planet.id ? 'text-cyan-400' : 'text-white'} />
+                            </button>
+                          )}
                         </div>
-                        {!isCurrent && (
-                          <button 
-                            className="p-1.5 bg-white/10 hover:bg-cyan-500/40 rounded-md transition-colors"
-                            onClick={() => setLockedTarget({ id: planet.id, type: 'planet' })}
-                          >
-                            <Target size={14} className={lockedTarget?.id === planet.id ? 'text-cyan-400' : 'text-white'} />
-                          </button>
+                        {planet.moons.length > 0 && (
+                          <div className="ml-3 flex flex-col gap-1">
+                            {planet.moons.map((moon) => (
+                              <button
+                                key={moon.id}
+                                className={`w-full text-left px-3 py-2 rounded-lg border flex items-center justify-between ${lockedTarget?.id === moon.id ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                                onClick={() => {
+                                  if (setCurrentPlanetId) setCurrentPlanetId(planet.id);
+                                  setLockedTarget({ id: moon.id, type: 'moon', parentPlanetId: planet.id });
+                                }}
+                              >
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-bold text-zinc-100">{moon.id.toUpperCase()}</span>
+                                  <span className="text-[10px] text-zinc-500">Moon orbit target</span>
+                                </div>
+                                <Target size={12} className={lockedTarget?.id === moon.id ? 'text-cyan-400' : 'text-white'} />
+                              </button>
+                            ))}
+                          </div>
                         )}
                       </div>
                     );
@@ -369,13 +385,17 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
               {planets.map(planet => {
                 const isCurrent = planet.id === currentPlanetId;
                 return (
-                  <div 
-                    key={planet.id} 
-                    className={`p-2 rounded-lg border flex items-center justify-between ${isCurrent ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10'}`}
-                    onClick={() => !isCurrent && setLockedTarget({ id: planet.id, type: 'planet' })}
-                  >
-                    <span className={`text-xs font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{(planet.id || '').toUpperCase()}</span>
-                    {lockedTarget?.id === planet.id && <Target size={12} className="text-cyan-400" />}
+                  <div key={planet.id} className="flex flex-col gap-1">
+                    <div className={`p-2 rounded-lg border flex items-center justify-between ${isCurrent ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10'}`} onClick={() => !isCurrent && setLockedTarget({ id: planet.id, type: 'planet' })}>
+                      <span className={`text-xs font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{(planet.id || '').toUpperCase()}</span>
+                      {lockedTarget?.id === planet.id && <Target size={12} className="text-cyan-400" />}
+                    </div>
+                    {planet.moons.map((moon) => (
+                      <div key={moon.id} className={`ml-3 p-2 rounded-lg border flex items-center justify-between ${lockedTarget?.id === moon.id ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10'}`} onClick={() => { if (setCurrentPlanetId) setCurrentPlanetId(planet.id); setLockedTarget({ id: moon.id, type: 'moon', parentPlanetId: planet.id }); }}>
+                        <span className="text-[11px] font-bold text-zinc-100">{moon.id.toUpperCase()}</span>
+                        {lockedTarget?.id === moon.id && <Target size={12} className="text-cyan-400" />}
+                      </div>
+                    ))}
                   </div>
                 );
               })}

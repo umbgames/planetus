@@ -16,6 +16,8 @@ interface CachedGeographyData {
   displacementMap: THREE.CanvasTexture;
 }
 
+type TextureDetail = 'standard' | 'enhanced';
+
 type BiomeName = 'tundra' | 'snow_forest' | 'grassland' | 'forest' | 'desert' | 'jungle';
 
 const geometryCache = new Map<string, CachedGeographyData>();
@@ -32,6 +34,7 @@ export class GeographyManager {
   private noise3D: (x: number, y: number, z: number) => number;
   private humidityNoise3D: (x: number, y: number, z: number) => number;
   private seed = 'default';
+  private textureDetail: TextureDetail = 'enhanced';
 
   constructor() {
     this.prng = createPRNG(this.seed);
@@ -39,16 +42,17 @@ export class GeographyManager {
     this.humidityNoise3D = createNoise3D(createPRNG(hashCombine(this.seed, 'humidity')));
   }
 
-  private getCacheKey(seed = this.seed, noiseScale = this.noiseScale, landThreshold = this.landThreshold) {
-    return `${seed}|${noiseScale}|${landThreshold}`;
+  private getCacheKey(seed = this.seed, noiseScale = this.noiseScale, landThreshold = this.landThreshold, textureDetail = this.textureDetail) {
+    return `${seed}|${noiseScale}|${landThreshold}|${textureDetail}`;
   }
 
-  setSeed(seed: string, noiseScale: number = 1.5, landThreshold: number = 0.2) {
-    if (this.seed !== seed || this.noiseScale !== noiseScale || this.landThreshold !== landThreshold) {
+  setSeed(seed: string, noiseScale: number = 1.5, landThreshold: number = 0.2, textureDetail: TextureDetail = 'enhanced') {
+    if (this.seed !== seed || this.noiseScale !== noiseScale || this.landThreshold !== landThreshold || this.textureDetail !== textureDetail) {
       this.seed = seed;
       this.noiseScale = noiseScale;
       this.landThreshold = landThreshold;
       this.prng = createPRNG(seed);
+      this.textureDetail = textureDetail;
       this.noise3D = createNoise3D(this.prng);
       this.humidityNoise3D = createNoise3D(createPRNG(hashCombine(seed, 'humidity')));
       this.regions = [];
@@ -57,9 +61,9 @@ export class GeographyManager {
     }
   }
 
-  static warmCache(seed: string, noiseScale: number, landThreshold: number) {
+  static warmCache(seed: string, noiseScale: number, landThreshold: number, textureDetail: TextureDetail = 'enhanced') {
     const manager = new GeographyManager();
-    manager.setSeed(seed, noiseScale, landThreshold);
+    manager.setSeed(seed, noiseScale, landThreshold, textureDetail);
     manager.initializeTopicRegions();
     return manager;
   }
@@ -262,8 +266,8 @@ export class GeographyManager {
   dispImgData: ImageData | null = null;
 
   generateTexture() {
-    const width = 1024;
-    const height = 512;
+    const width = this.textureDetail === 'enhanced' ? 1536 : 1024;
+    const height = this.textureDetail === 'enhanced' ? 768 : 512;
 
     if (!this.canvas) {
       this.canvas = document.createElement('canvas');
@@ -319,6 +323,7 @@ export class GeographyManager {
         const base = palette[biome].clone();
         const region = this.getRegionForPoint(px, py, pz);
         const detail = this.noise3D(px * 28, py * 28, pz * 28) * 0.08;
+        const micro = this.noise3D(px * 54, py * 54, pz * 54) * 0.05 + this.noise3D(px * 92, py * 92, pz * 92) * 0.02;
         const humidity = this.getHumidityAtPoint(px, py, pz);
         const temperature = this.getTemperatureAtPoint(px, py, pz);
 
@@ -334,8 +339,13 @@ export class GeographyManager {
         if (region) {
           base.lerp(region.color, region.resourceZone === 'high' ? 0.12 : region.resourceZone === 'mid' ? 0.07 : 0.04);
         }
+        base.offsetHSL(
+          this.noise3D(px * 8, py * 8, pz * 8) * 0.015,
+          this.noise3D(px * 12, py * 12, pz * 12) * 0.035,
+          micro
+        );
 
-        const shade = 0.95 + elevation * 0.85 + humidity * 0.06 - (1 - temperature) * 0.04 + detail;
+        const shade = 0.95 + elevation * 0.85 + humidity * 0.06 - (1 - temperature) * 0.04 + detail + micro;
         data[idx] = Math.max(0, Math.min(255, Math.round(base.r * 255 * shade)));
         data[idx + 1] = Math.max(0, Math.min(255, Math.round(base.g * 255 * shade)));
         data[idx + 2] = Math.max(0, Math.min(255, Math.round(base.b * 255 * shade)));

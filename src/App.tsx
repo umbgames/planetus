@@ -19,7 +19,7 @@ import { useShipStore } from './services/shipStore';
 import { generateSolarSystem, SolarSystemData, PlanetData } from './services/solarSystem';
 import { createPRNG, hashCombine } from './utils/random';
 import { SolarSystemView } from './components/SolarSystemView';
-import { getScaledStarRadius } from './services/orbitUtils';
+import { getScaledPlanetRadius, getScaledStarRadius } from './services/orbitUtils';
 
 export const planetRotationRef = { current: 0 };
 
@@ -271,7 +271,7 @@ export default function App() {
     if (!solarSystem) return PLANET_RADIUS;
     if (!currentPlanetId) return getScaledStarRadius(solarSystem.starRadius);
     const planet = solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData;
-    return planet ? planet.radius * 0.9 : PLANET_RADIUS;
+    return planet ? getScaledPlanetRadius(planet.radius) : PLANET_RADIUS;
   }, [solarSystem, currentPlanetId]);
 
   useEffect(() => {
@@ -299,7 +299,7 @@ export default function App() {
         });
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() => {
-            GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold);
+            GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold, 'enhanced');
             resolve();
           });
         });
