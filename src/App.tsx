@@ -652,7 +652,7 @@ export default function App() {
       const altitude = dist - PLANET_RADIUS;
 
       if (!isShipMode) {
-        setCanSpawnShip(altitude < 4 && altitude > 0.5);
+        setCanSpawnShip(Boolean(currentPlanetId) || (altitude < 8 && altitude > 0.25));
       } else {
         // In ship mode, check for nearby bases and zones
         if (altitude < 0.5) {
@@ -784,6 +784,9 @@ export default function App() {
               <MonitorPlay size={12} className="text-violet-400" />
               <span>{currentSystemSeed.replaceAll('|', ' ').toUpperCase()}</span>
             </div>
+          </div>
+          <div className="mt-3 text-[11px] text-zinc-400 max-w-md">
+            Distant stars are selectable in both solar and ship view. Click one and the camera will smoothly transfer into its generated system.
           </div>
         </div>
         

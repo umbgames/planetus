@@ -16,6 +16,13 @@ interface CachedGeographyData {
   displacementMap: THREE.CanvasTexture;
 }
 
+export interface PlanetVisualProfile {
+  key: 'lush' | 'oceanic' | 'desert' | 'arid' | 'barren' | 'volcanic' | 'icy';
+  atmosphereColor: string;
+  proxyColor: string;
+  hasWater: boolean;
+}
+
 type TextureDetail = 'standard' | 'enhanced';
 
 type BiomeName = 'tundra' | 'snow_forest' | 'grassland' | 'forest' | 'desert' | 'jungle';
@@ -35,6 +42,7 @@ export class GeographyManager {
   private humidityNoise3D: (x: number, y: number, z: number) => number;
   private seed = 'default';
   private textureDetail: TextureDetail = 'enhanced';
+  private visualProfile: PlanetVisualProfile = this.computeVisualProfile(this.seed);
 
   constructor() {
     this.prng = createPRNG(this.seed);
@@ -53,6 +61,7 @@ export class GeographyManager {
       this.landThreshold = landThreshold;
       this.prng = createPRNG(seed);
       this.textureDetail = textureDetail;
+      this.visualProfile = this.computeVisualProfile(seed);
       this.noise3D = createNoise3D(this.prng);
       this.humidityNoise3D = createNoise3D(createPRNG(hashCombine(seed, 'humidity')));
       this.regions = [];
@@ -66,6 +75,25 @@ export class GeographyManager {
     manager.setSeed(seed, noiseScale, landThreshold, textureDetail);
     manager.initializeTopicRegions();
     return manager;
+  }
+
+  getSeed() {
+    return this.seed;
+  }
+
+  getVisualProfile() {
+    return this.visualProfile;
+  }
+
+  private computeVisualProfile(seed: string): PlanetVisualProfile {
+    const roll = hashToUnitFloat(hashCombine(seed, 'visualProfile'));
+    if (roll < 0.14) return { key: 'oceanic', atmosphereColor: '#6aa7ff', proxyColor: '#1d4ed8', hasWater: true };
+    if (roll < 0.28) return { key: 'desert', atmosphereColor: '#f3b36b', proxyColor: '#b45309', hasWater: false };
+    if (roll < 0.42) return { key: 'arid', atmosphereColor: '#b98962', proxyColor: '#7c4a2d', hasWater: false };
+    if (roll < 0.58) return { key: 'barren', atmosphereColor: '#9ca3af', proxyColor: '#6b7280', hasWater: false };
+    if (roll < 0.72) return { key: 'icy', atmosphereColor: '#b6e2ff', proxyColor: '#93c5fd', hasWater: true };
+    if (roll < 0.84) return { key: 'volcanic', atmosphereColor: '#ff7a45', proxyColor: '#7f1d1d', hasWater: false };
+    return { key: 'lush', atmosphereColor: '#7cc7ff', proxyColor: '#22c55e', hasWater: true };
   }
 
   getTerrain(x: number, y: number, z: number) {
@@ -299,7 +327,7 @@ export class GeographyManager {
 
         if (!this.isLand(px, py, pz)) {
           const coastFactor = THREE.MathUtils.clamp((this.getTerrain(px, py, pz) - this.landThreshold + 0.12) / 0.12, 0, 1);
-          const color = palette.waterDeep.clone().lerp(palette.waterShallow, coastFactor);
+          const color = (this.visualProfile.hasWater ? palette.waterDeep.clone().lerp(palette.waterShallow, coastFactor) : palette.basin.clone().lerp(palette.shoreline, coastFactor * 0.35));
           const wave = this.noise3D(px * 14, py * 14, pz * 14) * 0.05;
           color.offsetHSL(0, 0, wave);
           data[idx] = Math.round(color.r * 255);
@@ -336,8 +364,14 @@ export class GeographyManager {
         if (elevation < 0.04) {
           base.lerp(palette.shoreline, 0.45 - elevation * 6);
         }
-        if (region) {
+        if (region && this.visualProfile.key !== 'barren' && this.visualProfile.key !== 'volcanic') {
           base.lerp(region.color, region.resourceZone === 'high' ? 0.12 : region.resourceZone === 'mid' ? 0.07 : 0.04);
+        }
+        if (this.visualProfile.key === 'volcanic') {
+          const lavaMask = this.noise3D(px * 20, py * 20, pz * 20) * 0.5 + this.noise3D(px * 44, py * 44, pz * 44) * 0.5;
+          if (lavaMask > 0.42 && elevation < 0.22) {
+            base.lerp(new THREE.Color('#ff5a1f'), THREE.MathUtils.clamp((lavaMask - 0.42) * 1.9, 0, 0.75));
+          }
         }
         base.offsetHSL(
           this.noise3D(px * 8, py * 8, pz * 8) * 0.015,

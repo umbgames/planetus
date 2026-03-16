@@ -144,6 +144,7 @@ const Clouds = memo(function Clouds({ radius, isMobile = false, seed, serverTime
 });
 
 interface PlanetProps {
+  atmosphereColor?: string;
   radius: number;
   isMobile?: boolean;
   seed: string;
@@ -169,6 +170,7 @@ export const Planet = memo(function Planet({
   cloudSpeed = 0.02,
   cloudRotationSpeed = 0.02,
   textureDetail = 'enhanced',
+  atmosphereColor,
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
   const { camera } = useThree();
@@ -176,10 +178,12 @@ export const Planet = memo(function Planet({
   const [displacementMap, setDisplacementMap] = useState<THREE.CanvasTexture | null>(null);
   const [segments, setSegments] = useState(isMobile ? 64 : 128);
   const [geographyManager] = useState(() => new GeographyManager());
+  const [resolvedAtmosphereColor, setResolvedAtmosphereColor] = useState('#5e93ff');
 
   useEffect(() => {
     geographyManager.setSeed(seed, noiseScale, landThreshold, textureDetail);
     geographyManager.initializeTopicRegions();
+    setResolvedAtmosphereColor(atmosphereColor ?? geographyManager.getVisualProfile().atmosphereColor);
 
     const nextTexture = geographyManager.texture ?? null;
     const nextDisplacement = geographyManager.displacementMap ?? null;
@@ -206,7 +210,7 @@ export const Planet = memo(function Planet({
     return () => {
       geographyManager.onTextureUpdate = null;
     };
-  }, [geographyManager, seed, noiseScale, landThreshold, textureDetail]);
+  }, [geographyManager, seed, noiseScale, landThreshold, textureDetail, atmosphereColor]);
 
   useFrame(() => {
     if (!planetRef.current) return;
@@ -240,7 +244,7 @@ export const Planet = memo(function Planet({
       <mesh frustumCulled>
         <sphereGeometry args={[radius * 1.15, atmosphereSegments, atmosphereSegments]} />
         <meshBasicMaterial
-          color="#5e93ff"
+          color={resolvedAtmosphereColor}
           transparent
           opacity={0.07}
           side={THREE.BackSide}
