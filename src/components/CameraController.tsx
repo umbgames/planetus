@@ -3,7 +3,21 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 
-import { SolarSystemData, PlanetData, getPlanetAtmosphereProfile } from '../services/solarSystem';
+import { SolarSystemData, PlanetData, PlanetVisualClass } from '../services/solarSystem';
+
+
+function getAtmosphereColor(visualClass: PlanetVisualClass | null) {
+  switch (visualClass) {
+    case 'lush': return new THREE.Color('#86efac');
+    case 'oceanic': return new THREE.Color('#7dd3fc');
+    case 'desert': return new THREE.Color('#fdba74');
+    case 'arid_rocky': return new THREE.Color('#c08457');
+    case 'barren_gray': return new THREE.Color('#9ca3af');
+    case 'icy': return new THREE.Color('#dbeafe');
+    case 'volcanic': return new THREE.Color('#fb7185');
+    default: return new THREE.Color('#cda077');
+  }
+}
 
 interface CameraControllerProps {
   trackedSatellite: any | null;
@@ -25,8 +39,7 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
   const targetPos = useMemo(() => new THREE.Vector3(), []);
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 0, 0), []);
   const spaceColor = useMemo(() => new THREE.Color('#000000'), []);
-  const dynamicSkyColor = useMemo(() => new THREE.Color('#cda077'), []);
-  const dynamicFogColor = useMemo(() => new THREE.Color('#cda077'), []);
+  const skyColor = useMemo(() => new THREE.Color('#cda077'), []);
   
   useFrame((state) => {
     const planetCenter = new THREE.Vector3();
@@ -44,12 +57,10 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
     
     targetPos.copy(planetCenter);
 
-    const currentPlanet = currentPlanetId && solarSystem
-      ? (solarSystem.bodies.find((b) => b.id === currentPlanetId) as PlanetData | undefined)
-      : undefined;
-    const atmosphere = currentPlanet ? getPlanetAtmosphereProfile(currentPlanet.visualClass) : null;
-    dynamicSkyColor.set(atmosphere?.sky ?? '#cda077');
-    dynamicFogColor.set(atmosphere?.fog ?? atmosphere?.sky ?? '#cda077');
+    const selectedPlanet = currentPlanetId && solarSystem
+      ? solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId) ?? null
+      : null;
+    skyColor.copy(getAtmosphereColor(selectedPlanet?.visualClass ?? null));
 
     const dist = camera.position.distanceTo(planetCenter);
     const R = planetRadius; // Planet radius or Sun radius
@@ -74,14 +85,14 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
     if (!scene.background) {
       scene.background = new THREE.Color('#000000');
     }
-    (scene.background as THREE.Color).copy(spaceColor).lerp(dynamicSkyColor, tiltFactor);
+    (scene.background as THREE.Color).copy(spaceColor).lerp(skyColor, tiltFactor);
 
     // Dynamic Fog
     if (!scene.fog) {
       scene.fog = new THREE.Fog('#cda077', 100, 200);
     }
     const fog = scene.fog as THREE.Fog;
-    fog.color.copy(dynamicFogColor);
+    fog.color.copy(skyColor);
     
     // Use exponential curve for fog distances so it only comes in near the surface
     const fogNear = THREE.MathUtils.lerp(1000000, 0.5, Math.pow(tiltFactor, 4));

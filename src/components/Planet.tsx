@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { BaseManager } from './BaseManager';
 import { ResourceManager } from './ResourceManager';
 import { GeographyManager } from '../services/geography';
-import { PlanetVisualClass, getPlanetAtmosphereProfile } from '../services/solarSystem';
+import { PlanetVisualClass } from '../services/solarSystem';
 
 interface CloudsProps {
   radius: number;
@@ -184,6 +184,8 @@ interface PlanetProps {
   noiseScale: number;
   landThreshold: number;
   visualClass: PlanetVisualClass;
+  includeGameplayObjects?: boolean;
+  includeClouds?: boolean;
 }
 
 export const Planet = memo(function Planet({
@@ -193,14 +195,16 @@ export const Planet = memo(function Planet({
   noiseScale,
   landThreshold,
   visualClass,
+  includeGameplayObjects = true,
+  includeClouds = true,
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
   const worldPosRef = useRef(new THREE.Vector3());
-  const materialRef = useRef<THREE.MeshStandardMaterial>(null);
 
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
   const [displacementMap, setDisplacementMap] = useState<THREE.CanvasTexture | null>(null);
   const [planetSegments, setPlanetSegments] = useState(isMobile ? 64 : 128);
+  const [textureResolution, setTextureResolution] = useState<{ width: number; height: number }>(() => isMobile ? { width: 512, height: 256 } : { width: 1024, height: 512 });
 
   const frameCount = useRef(0);
 
@@ -225,40 +229,23 @@ export const Planet = memo(function Planet({
     if (targetSegments !== planetSegments) {
       setPlanetSegments(targetSegments);
     }
+
+    const targetResolution = dist < radius * 2.4
+      ? (isMobile ? { width: 1024, height: 512 } : { width: 2048, height: 1024 })
+      : dist < radius * 6
+        ? (isMobile ? { width: 768, height: 384 } : { width: 1536, height: 768 })
+        : (isMobile ? { width: 512, height: 256 } : { width: 1024, height: 512 });
+
+    if (targetResolution.width !== textureResolution.width || targetResolution.height !== textureResolution.height) {
+      setTextureResolution(targetResolution);
+    }
   });
 
   // Stable instance across renders
   const [geographyManager] = useState(() => new GeographyManager());
 
   useEffect(() => {
-    let cancelled = false;
-    let raf1 = 0;
-    let raf2 = 0;
-
-    const applyGeneratedTextures = () => {
-      if (cancelled) return;
-
-      const nextTexture = geographyManager.texture ?? null;
-      const nextDisplacement = geographyManager.displacementMap ?? null;
-
-      if (nextTexture) {
-        setTexture((prev) => {
-          if (prev && prev !== nextTexture) prev.dispose();
-          return nextTexture;
-        });
-      }
-
-      if (nextDisplacement) {
-        setDisplacementMap((prev) => {
-          if (prev && prev !== nextDisplacement) prev.dispose();
-          return nextDisplacement;
-        });
-      }
-    };
-
     geographyManager.onTextureUpdate = (newTexture, newDisplacementMap) => {
-      if (cancelled) return;
-
       setTexture((prev) => {
         if (prev && prev !== newTexture) prev.dispose();
         return newTexture;
@@ -271,27 +258,32 @@ export const Planet = memo(function Planet({
     };
 
     geographyManager.setSeed(seed, noiseScale, landThreshold, visualClass);
+    geographyManager.setTextureResolution(textureResolution.width, textureResolution.height);
     geographyManager.initializeTopicRegions();
-    applyGeneratedTextures();
+    geographyManager.generateTexture();
+    requestAnimationFrame(() => geographyManager.generateTexture());
 
-    // Re-run generation on the next paint and then force a late re-apply.
-    raf1 = requestAnimationFrame(() => {
-      geographyManager.generateTexture();
-      applyGeneratedTextures();
+    const nextTexture = geographyManager.texture ?? null;
+    const nextDisplacement = geographyManager.displacementMap ?? null;
 
-      raf2 = requestAnimationFrame(() => {
-        geographyManager.generateTexture();
-        applyGeneratedTextures();
+    if (nextTexture) {
+      setTexture((prev) => {
+        if (prev && prev !== nextTexture) prev.dispose();
+        return nextTexture;
       });
-    });
+    }
+
+    if (nextDisplacement) {
+      setDisplacementMap((prev) => {
+        if (prev && prev !== nextDisplacement) prev.dispose();
+        return nextDisplacement;
+      });
+    }
 
     return () => {
-      cancelled = true;
       geographyManager.onTextureUpdate = null;
-      if (raf1) cancelAnimationFrame(raf1);
-      if (raf2) cancelAnimationFrame(raf2);
     };
-  }, [geographyManager, seed, noiseScale, landThreshold, visualClass]);
+  }, [geographyManager, seed, noiseScale, landThreshold, visualClass, textureResolution]);
 
   useEffect(() => {
     return () => {
@@ -300,20 +292,29 @@ export const Planet = memo(function Planet({
     };
   }, [texture, displacementMap]);
 
-  useEffect(() => {
-    if (!materialRef.current) return;
-
-    materialRef.current.map = texture;
-    materialRef.current.displacementMap = displacementMap;
-    materialRef.current.bumpMap = displacementMap;
-    materialRef.current.needsUpdate = true;
-  }, [texture, displacementMap]);
-
   const atmosphereSegments = useMemo(() => {
     return isMobile ? 24 : 32;
   }, [isMobile]);
 
-  const atmosphereProfile = useMemo(() => getPlanetAtmosphereProfile(visualClass), [visualClass]);
+  const atmosphereColor = useMemo(() => {
+    switch (visualClass) {
+      case 'lush':
+      case 'oceanic':
+        return '#4488ff';
+      case 'desert':
+        return '#ffcc44';
+      case 'arid_rocky':
+        return '#8b4513';
+      case 'barren_gray':
+        return '#aaaaaa';
+      case 'icy':
+        return '#aaccff';
+      case 'volcanic':
+        return '#ff4400';
+      default:
+        return '#4488ff';
+    }
+  }, [visualClass]);
 
   const materialProps = useMemo(
     () => ({
@@ -332,13 +333,13 @@ export const Planet = memo(function Planet({
     <group>
       <mesh ref={planetRef} castShadow receiveShadow frustumCulled>
         <sphereGeometry args={[radius, planetSegments, planetSegments]} />
-        <meshStandardMaterial ref={materialRef} {...materialProps} />
+        <meshStandardMaterial {...materialProps} />
       </mesh>
 
       <mesh frustumCulled>
         <sphereGeometry args={[radius * 1.15, atmosphereSegments, atmosphereSegments]} />
         <meshBasicMaterial
-          color={atmosphereProfile.glow}
+          color={atmosphereColor}
           transparent
           opacity={0.05}
           side={THREE.BackSide}
@@ -347,14 +348,16 @@ export const Planet = memo(function Planet({
         />
       </mesh>
 
-      <Clouds radius={radius} isMobile={isMobile} planetSeed={seed} />
-      <BaseManager planetRadius={radius} geographyManager={geographyManager} />
-      <ResourceManager
-        planetRadius={radius}
-        isMobile={isMobile}
-        geographyManager={geographyManager}
-        planetSeed={seed}
-      />
+      {includeClouds && <Clouds radius={radius} isMobile={isMobile} planetSeed={seed} />}
+      {includeGameplayObjects && <BaseManager planetRadius={radius} geographyManager={geographyManager} />}
+      {includeGameplayObjects && (
+        <ResourceManager
+          planetRadius={radius}
+          isMobile={isMobile}
+          geographyManager={geographyManager}
+          planetSeed={seed}
+        />
+      )}
     </group>
   );
 });

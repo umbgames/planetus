@@ -1,7 +1,7 @@
 import React, { useRef, useMemo, useState, memo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { SolarSystemData, PlanetData, AsteroidBeltData } from '../services/solarSystem';
+import { SolarSystemData, PlanetData, AsteroidBeltData, MoonData } from '../services/solarSystem';
 import { Planet } from './Planet';
 import { Sun } from './Sun';
 import { createPRNG } from '../utils/random';
@@ -19,17 +19,23 @@ interface SolarSystemViewProps {
  * They only remap sizes/distances for presentation.
  */
 export const VISUAL_SCALE = {
-  STAR_RADIUS_MULTIPLIER: 4.5,      // makes sun feel dominant
-  PLANET_RADIUS_MULTIPLIER: 0.9,    // slightly reduce planets if they feel too big
-  ORBIT_DISTANCE_MULTIPLIER: 2.8,   // spreads planets farther apart
-  MIN_ORBIT_GAP: 18,                // minimum spacing between consecutive orbit bands
+  STAR_RADIUS_MULTIPLIER: 4.5,
+  PLANET_RADIUS_MULTIPLIER: 0.9,
+  ORBIT_DISTANCE_MULTIPLIER: 2.8,
+  MIN_ORBIT_GAP: 18,
   ASTEROID_DISTANCE_MULTIPLIER: 2.8,
   ASTEROID_WIDTH_MULTIPLIER: 1.4,
   PLANET_LOD_DISTANCE_MULTIPLIER: 1.8,
+  MOON_RADIUS_MULTIPLIER: 0.85,
+  MOON_ORBIT_MULTIPLIER: 1.15,
 };
 
 export function getScaledPlanetRadius(radius: number) {
   return radius * VISUAL_SCALE.PLANET_RADIUS_MULTIPLIER;
+}
+
+function getScaledMoonRadius(radius: number) {
+  return Math.max(0.4, radius * VISUAL_SCALE.MOON_RADIUS_MULTIPLIER);
 }
 
 function buildOrbitMap(bodies: SolarSystemData['bodies']) {
@@ -70,6 +76,67 @@ function buildOrbitMap(bodies: SolarSystemData['bodies']) {
   return scaledOrbitMap;
 }
 
+const MoonOrbit = memo(function MoonOrbit({
+  moon,
+  parentRadius,
+  isMobile,
+}: {
+  moon: MoonData;
+  parentRadius: number;
+  isMobile: boolean;
+}) {
+  const moonRef = useRef<THREE.Group>(null);
+  const [isActive, setIsActive] = useState(false);
+  const { camera } = useThree();
+  const moonWorld = useMemo(() => new THREE.Vector3(), []);
+  const moonRadius = useMemo(() => getScaledMoonRadius(moon.radius), [moon.radius]);
+  const orbitDistance = useMemo(
+    () => Math.max(parentRadius * 2.2, moon.orbitDistance * VISUAL_SCALE.MOON_ORBIT_MULTIPLIER),
+    [moon.orbitDistance, parentRadius]
+  );
+
+  useFrame((state) => {
+    if (!moonRef.current) return;
+
+    const time = state.clock.getElapsedTime();
+    const angle = moon.initialAngle + time * moon.orbitSpeed;
+    const x = Math.cos(angle) * orbitDistance;
+    const z = Math.sin(angle) * orbitDistance;
+    const y = x * Math.sin(moon.orbitTiltZ) + z * Math.sin(moon.orbitTiltX);
+
+    moonRef.current.position.set(x, y, z);
+    moonRef.current.rotation.y += 0.008;
+
+    moonRef.current.getWorldPosition(moonWorld);
+    const dist = camera.position.distanceTo(moonWorld);
+    const activationDistance = Math.max(25, moonRadius * 30);
+    if (dist < activationDistance && !isActive) setIsActive(true);
+    if (dist >= activationDistance && isActive) setIsActive(false);
+  });
+
+  return (
+    <group ref={moonRef} name={moon.id}>
+      {isActive ? (
+        <Planet
+          radius={moonRadius}
+          isMobile={isMobile}
+          seed={moon.id}
+          noiseScale={moon.noiseScale}
+          landThreshold={moon.landThreshold}
+          visualClass={moon.visualClass}
+          includeGameplayObjects={false}
+          includeClouds={false}
+        />
+      ) : (
+        <mesh>
+          <sphereGeometry args={[moonRadius, 12, 12]} />
+          <meshStandardMaterial color="#9ca3af" roughness={1} />
+        </mesh>
+      )}
+    </group>
+  );
+});
+
 interface OrbitingPlanetProps {
   planet: PlanetData;
   isMobile: boolean;
@@ -107,17 +174,11 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
     const x = Math.cos(angle) * scaledOrbitDistance;
     const z = Math.sin(angle) * scaledOrbitDistance;
 
-    // Preserve orbital tilt look
-    const y =
-      x * Math.sin(planet.orbitTiltZ) +
-      z * Math.sin(planet.orbitTiltX);
+    const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
 
     groupRef.current.position.set(x, y, z);
-
-    // axial spin
     groupRef.current.rotation.y += 0.005;
 
-    // LOD activation distance should scale with planet size and orbital presentation
     groupRef.current.getWorldPosition(worldPos);
     const dist = camera.position.distanceTo(worldPos);
     const activationDistance = Math.max(
@@ -130,7 +191,7 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
     } else if (dist >= activationDistance && isActive) {
       setIsActive(false);
     }
-    
+
     if (ringRef.current && isSelected) {
       const scale = 1 + Math.sin(time * 4) * 0.05;
       ringRef.current.scale.set(scale, scale, scale);
@@ -181,7 +242,16 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
           <meshStandardMaterial color={proxyColor} roughness={1} />
         </mesh>
       )}
-      
+
+      {planet.moons.map((moon) => (
+        <MoonOrbit
+          key={moon.id}
+          moon={moon}
+          parentRadius={scaledRadius}
+          isMobile={isMobile}
+        />
+      ))}
+
       {isSelected && (
         <mesh ref={ringRef}>
           <ringGeometry args={[scaledRadius * 1.2, scaledRadius * 1.3, 64]} />

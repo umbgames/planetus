@@ -2,37 +2,17 @@ import { createPRNG, cyrb128 } from '../utils/random';
 
 export type PlanetVisualClass = 'lush' | 'oceanic' | 'desert' | 'arid_rocky' | 'barren_gray' | 'icy' | 'volcanic';
 
-
-export interface PlanetAtmosphereProfile {
-  sky: string;
-  fog: string;
-  glow: string;
-  haze: string;
-}
-
-export function getPlanetAtmosphereProfile(visualClass: PlanetVisualClass): PlanetAtmosphereProfile {
-  switch (visualClass) {
-    case 'lush':
-      return { sky: '#7fc8ff', fog: '#a7dfff', glow: '#57a8ff', haze: '#d5f0ff' };
-    case 'oceanic':
-      return { sky: '#4ea1ff', fog: '#7fc6ff', glow: '#2b7fff', haze: '#cbe8ff' };
-    case 'desert':
-      return { sky: '#d89b52', fog: '#e8bc7a', glow: '#ffcc77', haze: '#f7dec0' };
-    case 'arid_rocky':
-      return { sky: '#8f6245', fog: '#b08262', glow: '#b66a3d', haze: '#d7b095' };
-    case 'barren_gray':
-      return { sky: '#5f6675', fog: '#858da0', glow: '#9ba3b5', haze: '#c6ccd9' };
-    case 'icy':
-      return { sky: '#a6d8ff', fog: '#d6eeff', glow: '#8ecaff', haze: '#eff8ff' };
-    case 'volcanic':
-      return { sky: '#4c2420', fog: '#7a3228', glow: '#ff6a33', haze: '#d67148' };
-    default:
-      return { sky: '#7fc8ff', fog: '#a7dfff', glow: '#57a8ff', haze: '#d5f0ff' };
-  }
-}
-
-export function getPlanetAtmosphereColor(visualClass: PlanetVisualClass) {
-  return getPlanetAtmosphereProfile(visualClass).glow;
+export interface MoonData {
+  id: string;
+  radius: number;
+  orbitDistance: number;
+  orbitSpeed: number;
+  orbitTiltX: number;
+  orbitTiltZ: number;
+  initialAngle: number;
+  noiseScale: number;
+  landThreshold: number;
+  visualClass: PlanetVisualClass;
 }
 
 export interface PlanetData {
@@ -48,6 +28,7 @@ export interface PlanetData {
   landThreshold: number;
   colorSeed: number;
   visualClass: PlanetVisualClass;
+  moons: MoonData[];
 }
 
 export interface AsteroidBeltData {
@@ -128,10 +109,31 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
         visualClass = 'icy';
       }
 
+      const radius = bodyPrng() * 6 + 4;
+      const moonCount = Math.max(1, Math.floor(bodyPrng() * 3) + (radius > 7 ? 1 : 0));
+      const moonClasses: PlanetVisualClass[] = ['barren_gray', 'icy', 'arid_rocky'];
+      const moons: MoonData[] = Array.from({ length: moonCount }, (_, moonIndex) => {
+        const moonSeed = hashString(`${bodySeed}_moon_${moonIndex}`);
+        const moonPrng = createPRNG(moonSeed);
+        const moonVisualClass = moonClasses[Math.floor(moonPrng() * moonClasses.length)] ?? 'barren_gray';
+        return {
+          id: `moon_${i}_${moonIndex}`,
+          radius: Math.max(0.8, radius * (0.12 + moonPrng() * 0.12)),
+          orbitDistance: radius * (2.2 + moonIndex * 0.9 + moonPrng() * 0.8),
+          orbitSpeed: (moonPrng() * 0.45 + 0.15) * (moonPrng() > 0.5 ? 1 : -1),
+          orbitTiltX: (moonPrng() - 0.5) * 0.8,
+          orbitTiltZ: (moonPrng() - 0.5) * 0.8,
+          initialAngle: moonPrng() * Math.PI * 2,
+          noiseScale: moonPrng() * 1.2 + 1.2,
+          landThreshold: 0.15 + moonPrng() * 0.25,
+          visualClass: moonVisualClass,
+        };
+      });
+
       bodies.push({
         id: `planet_${i}`,
         type: 'planet',
-        radius: bodyPrng() * 6 + 4, // 4 to 10
+        radius,
         orbitDistance: orbitDistance,
         orbitSpeed: (bodyPrng() * 0.05 + 0.01) * (bodyPrng() > 0.5 ? 1 : -1),
         orbitTiltX: (bodyPrng() - 0.5) * 0.5,
@@ -141,6 +143,7 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
         landThreshold: bodyPrng() * 0.4 + 0.1,
         colorSeed: bodyPrng(),
         visualClass,
+        moons,
       });
     }
   }

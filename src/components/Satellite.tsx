@@ -93,7 +93,7 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
     }
   });
 
-  const scale = Math.max(0.28, Math.min(0.85, tag.bases / 14));
+  const scale = Math.max(0.4, Math.min(1.2, tag.bases / 10));
   
   // Orient the satellite based on its direction of travel
   const satRotationY = tag.speed > 0 ? Math.PI : 0;
@@ -127,7 +127,7 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
             onPointerOver={() => document.body.style.cursor = 'pointer'}
             onPointerOut={() => document.body.style.cursor = 'auto'}
           >
-            <group scale={[0.24, 0.24, 0.24]}>
+            <group scale={[0.4, 0.4, 0.4]}>
               {/* Main body */}
               <mesh rotation={[Math.PI / 2, 0, 0]}>
                 <cylinderGeometry args={[0.2, 0.2, 0.8, 16]} />
@@ -162,7 +162,7 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
             {/* Player Name Text */}
             <Billboard position={[0, 0.6, 0]}>
               <Text
-                fontSize={0.48 * scale}
+                fontSize={0.8 * scale}
                 color="#ffffff"
                 anchorX="center"
                 anchorY="middle"

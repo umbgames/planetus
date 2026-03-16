@@ -62,7 +62,7 @@ function Resource({ data, isMobile }: { data: ResourceNode, isMobile: boolean })
   const { camera } = useThree();
   
   const isCommon = data.type === 'common';
-  const scale = isCommon ? 0.09 : 0.075;
+  const scale = isCommon ? 0.15 : 0.12;
   
   useEffect(() => {
     if (groupRef.current) {

@@ -266,6 +266,20 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
               </div>
             </div>
           )}
+          {lockedTarget.shieldHealth !== undefined && lockedTarget.shieldHealth > 0 && (
+            <div className="mt-2">
+              <div className="flex justify-between text-[8px] text-cyan-400/80 mb-1">
+                <span>SHIELD</span>
+                <span>{Math.round(lockedTarget.shieldHealth)}%</span>
+              </div>
+              <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-cyan-400 transition-all duration-300"
+                  style={{ width: `${lockedTarget.shieldHealth}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 

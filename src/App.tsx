@@ -8,12 +8,17 @@ import { BaseManager } from './components/BaseManager';
 import { Satellite } from './components/Satellite';
 import { CameraController } from './components/CameraController';
 import { Ship } from './components/Ship';
+import { Minimap } from './components/Minimap';
+import { ClanUI } from './components/ClanUI';
+import { ShipUpgradeUI } from './components/ShipUpgradeUI';
+import { OtherPlayers } from './components/OtherPlayers';
+import { SpaceStations } from './components/SpaceStations';
 import { ShipUI } from './components/ShipUI';
 import { MarketUI } from './components/MarketUI';
 import { SolarSystemView, getScaledPlanetRadius, VISUAL_SCALE } from './components/SolarSystemView';
-import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp, ArrowRightLeft, MonitorPlay } from 'lucide-react';
+import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp, ArrowRightLeft, MonitorPlay, Users, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { gameManager, UserData, BaseData } from './services/gameManager';
+import { gameManager, UserData, BaseData, Clan, SpaceStation } from './services/gameManager';
 import { auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { geographyManager } from './services/geography';
@@ -66,7 +71,19 @@ export default function App() {
   
   // Game State
   const [userData, setUserData] = useState<UserData | null>(null);
+  const [activePlayers, setActivePlayers] = useState<UserData[]>([]);
+  const [clans, setClans] = useState<Clan[]>([]);
+  const [spaceStations, setSpaceStations] = useState<SpaceStation[]>([]);
+  const [showClanUI, setShowClanUI] = useState(false);
+  const [showShipyardUI, setShowShipyardUI] = useState(false);
+  const [targetId, setTargetId] = useState<string | null>(null);
+
+  const targetPlayer = useMemo(() => 
+    activePlayers.find(p => p.uid === targetId), 
+    [activePlayers, targetId]
+  );
   const [bases, setBases] = useState<BaseData[]>([]);
+  const [planetStates, setPlanetStates] = useState<Record<string, any>>({});
   const [nearbyBase, setNearbyBase] = useState<BaseData | null>(null);
   const [currentZone, setCurrentZone] = useState<'high' | 'mid' | 'low' | null>(null);
   const [shipPosition, setShipPosition] = useState<THREE.Vector3 | null>(null);
@@ -192,7 +209,19 @@ export default function App() {
         setIsShipMode(true);
       }
     };
+    gameManager.onActivePlayersUpdate = (players) => {
+      setActivePlayers(players);
+    };
+
+    gameManager.onClansUpdate = (clans) => {
+      setClans(clans);
+    };
+
+    gameManager.onSpaceStationsUpdate = (stations) => {
+      setSpaceStations(stations);
+    };
     gameManager.onBasesUpdate = (data) => setBases(data);
+    gameManager.onPlanetStatesUpdate = (states) => setPlanetStates(states);
     gameManager.onSatelliteUsersUpdate = (users) => {
       // Combine with mock players for now to ensure there are always some satellites
       setSatelliteUsers([...MOCK_PLAYERS, ...users]);
@@ -200,7 +229,9 @@ export default function App() {
     
     return () => {
       gameManager.onUserDataUpdate = null;
+      gameManager.onActivePlayersUpdate = null;
       gameManager.onBasesUpdate = null;
+      gameManager.onPlanetStatesUpdate = null;
       gameManager.onSatelliteUsersUpdate = null;
     };
   }, []);
@@ -291,6 +322,61 @@ export default function App() {
       try {
         const result = await gameManager.claimMinerResources(nearbyBase.id);
         showToast(`Claimed ${result.common} Common, ${result.rare} Aetherium!`);
+      } catch (e: any) {
+        showToast(e.message);
+      }
+    }
+  };
+
+  const handleBuyShield = async () => {
+    if (nearbyBase) {
+      try {
+        await gameManager.buyShield(nearbyBase.id);
+        showToast("Shield Generator installed!");
+      } catch (e: any) {
+        showToast(e.message);
+      }
+    }
+  };
+
+  const handleBuyMissileBattery = async () => {
+    if (nearbyBase) {
+      try {
+        await gameManager.buyMissileBattery(nearbyBase.id);
+        showToast("Missile Battery installed!");
+      } catch (e: any) {
+        showToast(e.message);
+      }
+    }
+  };
+
+  const handleBuyTaxOffice = async () => {
+    if (nearbyBase) {
+      try {
+        await gameManager.buyTaxOffice(nearbyBase.id);
+        showToast("Tax Office established!");
+      } catch (e: any) {
+        showToast(e.message);
+      }
+    }
+  };
+
+  const handleSetTaxRate = async (rate: number, active: boolean) => {
+    if (currentPlanetId) {
+      try {
+        await gameManager.setTaxRate(currentPlanetId, rate, active ? 'active' : 'inactive');
+        showToast(`Tax rate set to ${rate}%`);
+      } catch (e: any) {
+        showToast(e.message);
+      }
+    }
+  };
+
+  const handleAcceptTax = async (accept: boolean) => {
+    if (currentPlanetId) {
+      try {
+        await gameManager.acceptTax(currentPlanetId, accept);
+        showToast(accept ? "Tax agreement accepted" : "Tax agreement declined");
       } catch (e: any) {
         showToast(e.message);
       }
@@ -473,6 +559,25 @@ export default function App() {
         
         <Satellite satellites={topSatellites} onSatelliteClick={handleSatelliteClick} solarSystem={solarSystem} currentPlanetId={currentPlanetId} />
         
+        <OtherPlayers 
+          players={activePlayers} 
+          localUserId={userData?.uid} 
+          currentPlanetId={currentPlanetId} 
+          solarSystem={solarSystem} 
+          onTargetPlayer={setTargetId}
+          targetId={targetId}
+        />
+
+        <SpaceStations 
+          stations={spaceStations} 
+          currentPlanetId={currentPlanetId}
+          onPilot={(station) => {
+            if (station.ownerId === userData?.uid) {
+              setTargetId(station.id);
+            }
+          }}
+        />
+        
         {!isShipMode && (
           <CameraController 
             trackedSatellite={trackedSatellite} 
@@ -490,6 +595,7 @@ export default function App() {
             bases={bases} 
             userData={userData} 
             satellites={topSatellites} 
+            activePlayers={activePlayers}
             initialPosition={currentPlanetId === userData?.playerSave?.lastPlanetID ? userData?.playerSave?.position : undefined}
             initialRotation={currentPlanetId === userData?.playerSave?.lastPlanetID ? userData?.playerSave?.rotation : undefined}
             currentPlanetId={currentPlanetId}
@@ -643,6 +749,93 @@ export default function App() {
                     </button>
                   )}
                 </div>
+                <div className="flex gap-2 justify-center">
+                  {!nearbyBase.shieldActive && (
+                    <button 
+                      onClick={handleBuyShield}
+                      disabled={userData.commonResources < 300 || userData.rareResources < 50}
+                      className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 text-white font-bold py-2 px-4 rounded-full shadow-lg shadow-blue-500/50 flex items-center gap-2 transition-all text-xs"
+                    >
+                      <Shield size={14} />
+                      Shield (300C/50A)
+                    </button>
+                  )}
+                  {!nearbyBase.hasMissileBattery && (
+                    <button 
+                      onClick={handleBuyMissileBattery}
+                      disabled={userData.commonResources < 500 || userData.rareResources < 100}
+                      className="bg-red-600 hover:bg-red-500 disabled:bg-zinc-700 text-white font-bold py-2 px-4 rounded-full shadow-lg shadow-red-500/50 flex items-center gap-2 transition-all text-xs"
+                    >
+                      <Rocket size={14} />
+                      Missile (500C/100A)
+                    </button>
+                  )}
+                  {!nearbyBase.hasTaxOffice && (
+                    <button 
+                      onClick={handleBuyTaxOffice}
+                      disabled={userData.commonResources < 1000 || userData.rareResources < 200}
+                      className="bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-700 text-white font-bold py-2 px-4 rounded-full shadow-lg shadow-amber-500/50 flex items-center gap-2 transition-all text-xs"
+                    >
+                      <RadioTower size={14} />
+                      Tax Office (1kC/200A)
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Hegemony & Tax Panel */}
+            {currentPlanetId && planetStates[currentPlanetId] && (
+              <div className="absolute top-24 left-6 bg-black/60 backdrop-blur-md border border-white/10 p-4 rounded-xl w-64 pointer-events-auto">
+                <div className="text-[10px] font-bold text-zinc-500 tracking-widest uppercase mb-2">Planet Hegemony</div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-sm font-bold text-white">
+                    {planetStates[currentPlanetId].hegemonId === userData?.uid ? 'YOU ARE HEGEMON' : (planetStates[currentPlanetId].hegemonId ? 'HEGEMON ACTIVE' : 'NO HEGEMON')}
+                  </div>
+                  <RadioTower size={16} className={planetStates[currentPlanetId].hegemonId ? 'text-amber-400' : 'text-zinc-600'} />
+                </div>
+
+                {planetStates[currentPlanetId].hegemonId === userData?.uid ? (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-zinc-400">Tax Rate: {planetStates[currentPlanetId].taxRate}%</span>
+                      <input 
+                        type="range" 
+                        min="1" 
+                        max="20" 
+                        value={planetStates[currentPlanetId].taxRate} 
+                        onChange={(e) => handleSetTaxRate(parseInt(e.target.value), planetStates[currentPlanetId].taxActive)}
+                        className="w-24 accent-amber-500"
+                      />
+                    </div>
+                    <button 
+                      onClick={() => handleSetTaxRate(planetStates[currentPlanetId].taxRate, !planetStates[currentPlanetId].taxActive)}
+                      className={`w-full py-2 rounded-lg text-xs font-bold transition-all ${planetStates[currentPlanetId].taxActive ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-zinc-400'}`}
+                    >
+                      {planetStates[currentPlanetId].taxActive ? 'TAXATION ACTIVE' : 'ACTIVATE TAXES'}
+                    </button>
+                  </div>
+                ) : planetStates[currentPlanetId].taxActive ? (
+                  <div className="flex flex-col gap-2">
+                    <div className="text-[10px] text-amber-400 font-bold">TAX PROTECTION OFFERED: {planetStates[currentPlanetId].taxRate}%</div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleAcceptTax(true)}
+                        className={`flex-1 py-1.5 rounded text-[10px] font-bold ${userData?.taxAgreements?.[currentPlanetId] ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-white'}`}
+                      >
+                        ACCEPT
+                      </button>
+                      <button 
+                        onClick={() => handleAcceptTax(false)}
+                        className={`flex-1 py-1.5 rounded text-[10px] font-bold ${userData?.taxAgreements?.[currentPlanetId] === false ? 'bg-red-500 text-black' : 'bg-zinc-800 text-white'}`}
+                      >
+                        DECLINE
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-zinc-500 italic">No tax system active on this planet.</div>
+                )}
               </div>
             )}
             
@@ -755,6 +948,72 @@ export default function App() {
       </AnimatePresence>
 
       {/* Ship Controls Info */}
+      {/* Minimap */}
+      <Minimap 
+        solarSystem={solarSystem}
+        currentPlanetId={currentPlanetId}
+        shipPosition={shipPosition || new THREE.Vector3()}
+      />
+
+      {/* Targeting UI */}
+      {targetPlayer && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur border border-red-500/30 rounded-xl p-4 flex items-center gap-4 animate-in fade-in slide-in-from-top-4 pointer-events-auto z-50">
+          <div className="w-12 h-12 bg-red-500/20 rounded-lg flex items-center justify-center border border-red-500/40">
+            <Rocket className="text-red-400" size={24} />
+          </div>
+          <div>
+            <div className="text-xs text-red-400 font-bold uppercase tracking-widest mb-1">Target Locked</div>
+            <div className="text-lg font-bold text-white">{targetPlayer.displayName}</div>
+            <div className="w-48 h-1.5 bg-zinc-800 rounded-full mt-2 overflow-hidden">
+              <div 
+                className="h-full bg-red-500 transition-all duration-300" 
+                style={{ width: `${(targetPlayer.shipConfig?.health || 100) / (targetPlayer.shipConfig?.maxHealth || 100) * 100}%` }}
+              />
+            </div>
+          </div>
+          <button 
+            onClick={() => setTargetId(null)}
+            className="p-2 hover:bg-white/10 rounded-lg transition-colors text-zinc-400 hover:text-white"
+          >
+            <Plus className="rotate-45" size={20} />
+          </button>
+        </div>
+      )}
+
+      {/* Clan and Shipyard Buttons */}
+      <div className="absolute top-6 right-6 flex flex-col gap-2 pointer-events-auto z-40">
+        <button 
+          onClick={() => setShowClanUI(true)}
+          className="p-3 bg-black/60 backdrop-blur border border-white/10 rounded-xl text-white hover:bg-white/10 transition-all flex items-center gap-2 group"
+        >
+          <Users size={20} className="text-blue-400 group-hover:scale-110 transition-transform" />
+          <span className="text-xs font-bold uppercase tracking-wider">Clan</span>
+        </button>
+        <button 
+          onClick={() => setShowShipyardUI(true)}
+          className="p-3 bg-black/60 backdrop-blur border border-white/10 rounded-xl text-white hover:bg-white/10 transition-all flex items-center gap-2 group"
+        >
+          <Rocket size={20} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+          <span className="text-xs font-bold uppercase tracking-wider">Shipyard</span>
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {showClanUI && (
+          <ClanUI 
+            userData={userData}
+            clans={clans}
+            onClose={() => setShowClanUI(false)}
+          />
+        )}
+        {showShipyardUI && (
+          <ShipUpgradeUI 
+            userData={userData}
+            onClose={() => setShowShipyardUI(false)}
+          />
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {isShipMode && (
           <motion.div

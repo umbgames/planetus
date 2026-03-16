@@ -19,6 +19,7 @@ export class GeographyManager {
   texture: THREE.CanvasTexture | null = null;
   displacementMap: THREE.CanvasTexture | null = null;
   onTextureUpdate: ((texture: THREE.CanvasTexture, displacementMap: THREE.CanvasTexture) => void) | null = null;
+  textureResolution: { width: number; height: number } = { width: 1024, height: 512 };
   
   private prng: () => number;
   private noise3D: (x: number, y: number, z: number) => number;
@@ -46,6 +47,12 @@ export class GeographyManager {
       this.regions = [];
       this.texture = null;
       this.displacementMap = null;
+      this.canvas = null;
+      this.ctx = null;
+      this.imgData = null;
+      this.dispCanvas = null;
+      this.dispCtx = null;
+      this.dispImgData = null;
     }
   }
 
@@ -226,6 +233,25 @@ export class GeographyManager {
     return [radius, 0, 0];
   }
 
+
+  setTextureResolution(width: number, height: number) {
+    const nextWidth = Math.max(256, Math.floor(width));
+    const nextHeight = Math.max(128, Math.floor(height));
+
+    if (this.textureResolution.width === nextWidth && this.textureResolution.height === nextHeight) {
+      return false;
+    }
+
+    this.textureResolution = { width: nextWidth, height: nextHeight };
+    this.canvas = null;
+    this.ctx = null;
+    this.imgData = null;
+    this.dispCanvas = null;
+    this.dispCtx = null;
+    this.dispImgData = null;
+    return true;
+  }
+
   canvas: HTMLCanvasElement | null = null;
   ctx: CanvasRenderingContext2D | null = null;
   imgData: ImageData | null = null;
@@ -235,8 +261,7 @@ export class GeographyManager {
   dispImgData: ImageData | null = null;
 
   generateTexture() {
-    const width = 1024;
-    const height = 512;
+    const { width, height } = this.textureResolution;
     
     if (!this.canvas) {
       try {
@@ -397,12 +422,16 @@ export class GeographyManager {
     if (!this.texture) {
       this.texture = new THREE.CanvasTexture(this.canvas);
       this.texture.colorSpace = THREE.SRGBColorSpace;
-      this.texture.minFilter = THREE.LinearFilter;
+      this.texture.minFilter = THREE.LinearMipmapLinearFilter;
       this.texture.magFilter = THREE.LinearFilter;
+      this.texture.generateMipmaps = true;
+      this.texture.anisotropy = 8;
       
       this.displacementMap = new THREE.CanvasTexture(this.dispCanvas);
-      this.displacementMap.minFilter = THREE.LinearFilter;
+      this.displacementMap.minFilter = THREE.LinearMipmapLinearFilter;
       this.displacementMap.magFilter = THREE.LinearFilter;
+      this.displacementMap.generateMipmaps = true;
+      this.displacementMap.anisotropy = 8;
     }
     
     this.texture.needsUpdate = true;
