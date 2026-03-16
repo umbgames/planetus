@@ -5,21 +5,7 @@ import * as THREE from 'three';
 import { geographyManager } from '../services/geography';
 import { BaseData, UserData, gameManager } from '../services/gameManager';
 import { useShipStore } from '../services/shipStore';
-import { SolarSystemData, PlanetData, PlanetVisualClass } from '../services/solarSystem';
-
-
-function getAtmosphereColor(visualClass: PlanetVisualClass | null) {
-  switch (visualClass) {
-    case 'lush': return new THREE.Color('#86efac');
-    case 'oceanic': return new THREE.Color('#7dd3fc');
-    case 'desert': return new THREE.Color('#fdba74');
-    case 'arid_rocky': return new THREE.Color('#c08457');
-    case 'barren_gray': return new THREE.Color('#9ca3af');
-    case 'icy': return new THREE.Color('#dbeafe');
-    case 'volcanic': return new THREE.Color('#fb7185');
-    default: return new THREE.Color('#cda077');
-  }
-}
+import { SolarSystemData, PlanetData } from '../services/solarSystem';
 
 interface ShipProps {
   planetRadius: number;
@@ -33,7 +19,6 @@ interface ShipProps {
   currentPlanetId?: string | null;
   setCurrentPlanetId?: (id: string | null) => void;
   solarSystem?: SolarSystemData | null;
-  onShipHeadingChange?: (heading: number) => void;
 }
 
 export function Ship({ 
@@ -47,8 +32,7 @@ export function Ship({
   initialRotation, 
   currentPlanetId, 
   setCurrentPlanetId, 
-  solarSystem,
-  onShipHeadingChange 
+  solarSystem 
 }: ShipProps) {
   // 1️⃣ Updated useThree to access the scene
   const { camera, gl, scene } = useThree();
@@ -65,6 +49,7 @@ export function Ship({
   const touchLook = useRef({ x: 0, y: 0 });
   const rightTouchId = useRef<number | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera>(null);
+
   const cameraRigRef = useRef<THREE.Group>(null);
   const shipModelRef = useRef<THREE.Group>(null);
 
@@ -269,10 +254,6 @@ export function Ship({
     };
 
     const currentPlanetPos = getPlanetPos(currentPlanetId);
-    const currentPlanet = currentPlanetId && solarSystem
-      ? solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId) ?? null
-      : null;
-    skyColor.current.copy(getAtmosphereColor(currentPlanet?.visualClass ?? null));
     
     if (!initialized.current) {
       position.current.add(currentPlanetPos);
@@ -290,7 +271,6 @@ export function Ship({
       setVelocity(velocity.current.length());
       setAltitude(Math.max(0, localPos.length() - planetRadius));
       setBoostEnergy(boostEnergy.current);
-      onShipHeadingChange?.(rotation.current.y);
     }
 
     if (prevPlanetId.current !== currentPlanetId && solarSystem) {
@@ -298,26 +278,35 @@ export function Ship({
       // localPos is already recalculated at the top of useFrame
     }
 
-    // Automatic planet context switching without forcing a camera snap
+    // Automatic Planet Switching
     if (!isJumping && solarSystem && frameCount.current % 30 === 0) {
-      let closestPlanetId = currentPlanetId;
-      let closestScore = Infinity;
-
+      // Check for planets
+      let switched = false;
       for (const body of solarSystem.bodies) {
-        if (body.type !== 'planet') continue;
-        const planetPos = getPlanetPos(body.id);
-        const distToPlanet = position.current.distanceTo(planetPos);
-        const atmosphereRadius = (body as PlanetData).radius * 8;
-        const normalizedScore = distToPlanet / atmosphereRadius;
-
-        if (normalizedScore < 1 && normalizedScore < closestScore) {
-          closestScore = normalizedScore;
-          closestPlanetId = body.id;
+        if (body.type === 'planet' && body.id !== currentPlanetId) {
+          const planetPos = getPlanetPos(body.id);
+          const distToPlanet = position.current.distanceTo(planetPos);
+          
+          if (distToPlanet < (body as PlanetData).radius * 10) {
+            if (setCurrentPlanetId) {
+              setCurrentPlanetId(body.id);
+            }
+            switched = true;
+            break;
+          }
         }
       }
 
-      if (closestPlanetId !== currentPlanetId) {
-        setCurrentPlanetId?.(closestPlanetId ?? null);
+      // Check for Sun if not already switched
+      if (!switched && currentPlanetId !== null) {
+        const sunPos = new THREE.Vector3(0, 0, 0);
+        const distToSun = position.current.distanceTo(sunPos);
+        
+        if (distToSun < solarSystem.starRadius * 5) {
+          if (setCurrentPlanetId) {
+            setCurrentPlanetId(null);
+          }
+        }
       }
     }
 
@@ -342,7 +331,7 @@ export function Ship({
         // Distance to target
         const distToTarget = position.current.distanceTo(targetPlanetPos);
         
-        if (distToTarget < (targetPlanet as PlanetData).radius * 8) {
+        if (distToTarget < (targetPlanet as PlanetData).radius * 5) {
           // Arrived!
           if (setCurrentPlanetId) {
             setCurrentPlanetId(targetPlanet.id);

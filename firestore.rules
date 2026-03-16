@@ -129,7 +129,7 @@ service cloud.firestore {
     }
 
     function isValidSpaceStation(data) {
-      return hasOnlyAllowedFields(['id', 'ownerId', 'ownerName', 'clanId', 'planetId', 'position', 'orbitRadius', 'orbitSpeed', 'initialAngle', 'health', 'maxHealth', 'isControlled', 'controlledBy', 'createdAt']) &&
+      return hasOnlyAllowedFields(['id', 'ownerId', 'clanId', 'planetId', 'position', 'orbitRadius', 'orbitSpeed', 'initialAngle', 'health', 'maxHealth', 'isControlled', 'controlledBy', 'createdAt']) &&
              data.id is string &&
              data.ownerId is string &&
              (!('clanId' in data) || data.clanId == null || data.clanId is string) &&
@@ -164,7 +164,7 @@ service cloud.firestore {
              data.offerType in ['sell_common', 'sell_rare'] &&
              data.amountOffered is number && data.amountOffered > 0 &&
              data.amountRequested is number && data.amountRequested > 0 &&
-             data.status in ['active', 'fulfilled', 'claimed'] &&
+             data.status in ['active', 'fulfilled'] &&
              (!('buyerId' in data) || data.buyerId is string) &&
              isValidDateString(data.createdAt);
     }

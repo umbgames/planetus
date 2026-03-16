@@ -138,18 +138,6 @@ class GameManager {
   needsNPCBases: boolean = false;
   needsResources: boolean = false;
 
-
-  private handleSnapshotError(scope: string, error: unknown) {
-    const code = typeof error === 'object' && error && 'code' in error ? String((error as any).code) : '';
-    const message = error instanceof Error ? error.message : String(error);
-
-    if (code === 'permission-denied' || message.includes('permission-denied')) {
-      console.warn(`[Firestore] ${scope} listener disabled due to insufficient permissions.`);
-    } else {
-      console.error(`[Firestore] ${scope} listener error`, error);
-    }
-  }
-
   async testConnection() {
     try {
       const { getDocFromServer } = await import('firebase/firestore');
@@ -228,7 +216,7 @@ class GameManager {
     this.unsubscribeUser = onSnapshot(doc(db, 'users', uid), (doc) => {
       if (doc.exists()) {
         const data = doc.data() as UserData;
-
+        
         // Apply pending updates to prevent jitter
         if (this.pendingAmmoUpdates.mg > 0) {
           data.machineGunAmmo = Math.max(0, data.machineGunAmmo - this.pendingAmmoUpdates.mg);
@@ -236,11 +224,11 @@ class GameManager {
         if (this.pendingAmmoUpdates.missile > 0) {
           data.missileAmmo = Math.max(0, data.missileAmmo - this.pendingAmmoUpdates.missile);
         }
-
+        
         this.userData = data;
         if (this.onUserDataUpdate) this.onUserDataUpdate(this.userData);
       }
-    }, (error) => this.handleSnapshotError('users/self', error));
+    });
   }
 
   listenToBases() {
@@ -248,7 +236,7 @@ class GameManager {
     
     this.unsubscribeBases = onSnapshot(collection(db, 'bases'), (snapshot) => {
       this.bases = snapshot.docs.map(doc => doc.data() as BaseData);
-
+      
       if (snapshot.empty) {
         if (auth.currentUser) {
           this.initializeNPCBases();
@@ -256,10 +244,10 @@ class GameManager {
           this.needsNPCBases = true;
         }
       }
-
+      
       if (this.onBasesUpdate) this.onBasesUpdate(this.bases);
-      this.updateHegemony();
-    }, (error) => this.handleSnapshotError('bases', error));
+      this.updateHegemony(); // Recalculate hegemon when bases change
+    });
   }
 
   listenToPlanetStates() {
@@ -272,7 +260,7 @@ class GameManager {
       this.planetStates = states;
       if (this.onPlanetStatesUpdate) this.onPlanetStatesUpdate(states);
       this.processTaxes();
-    }, (error) => this.handleSnapshotError('planet_states', error));
+    });
   }
 
   private hegemonyInterval: any = null;
@@ -391,7 +379,7 @@ class GameManager {
     this.unsubscribeMarket = onSnapshot(collection(db, 'market_offers'), (snapshot) => {
       this.marketOffers = snapshot.docs.map(doc => doc.data() as MarketOffer);
       if (this.onMarketOffersUpdate) this.onMarketOffersUpdate(this.marketOffers);
-    }, (error) => this.handleSnapshotError('market_offers', error));
+    });
   }
 
   listenToSatellites() {
@@ -413,7 +401,7 @@ class GameManager {
       });
       this.satelliteUsers = satUsers;
       if (this.onSatelliteUsersUpdate) this.onSatelliteUsersUpdate(satUsers);
-    }, (error) => this.handleSnapshotError('users/satellites', error));
+    });
   }
 
   addResourceListener(listener: (resources: ResourceNode[]) => void) {
@@ -431,7 +419,7 @@ class GameManager {
     this.unsubscribeResources = onSnapshot(collection(db, 'resources'), (snapshot) => {
       this.resources = snapshot.docs.map(doc => doc.data() as ResourceNode);
       this.resourceListeners.forEach(listener => listener(this.resources));
-    }, (error) => this.handleSnapshotError('resources', error));
+    });
   }
 
   async initializeNPCBases() {
@@ -600,11 +588,11 @@ class GameManager {
           if (!u.lastActiveAt || !u.playerSave) return false;
           const lastActive = new Date(u.lastActiveAt);
           const diffMs = now.getTime() - lastActive.getTime();
-          return diffMs < 300000;
+          return diffMs < 300000; // 5 minutes
         });
-
+      
       if (this.onActivePlayersUpdate) this.onActivePlayersUpdate(players);
-    }, (error) => this.handleSnapshotError('users/active', error));
+    });
   }
 
   listenToSpaceStations() {
@@ -612,7 +600,7 @@ class GameManager {
     this.unsubscribeSpaceStations = onSnapshot(collection(db, 'space_stations'), (snapshot) => {
       this.spaceStations = snapshot.docs.map(doc => doc.data() as SpaceStation);
       if (this.onSpaceStationsUpdate) this.onSpaceStationsUpdate(this.spaceStations);
-    }, (error) => this.handleSnapshotError('space_stations', error));
+    });
   }
 
   listenToClans() {
@@ -620,7 +608,7 @@ class GameManager {
     this.unsubscribeClans = onSnapshot(collection(db, 'clans'), (snapshot) => {
       this.clans = snapshot.docs.map(doc => doc.data() as Clan);
       if (this.onClansUpdate) this.onClansUpdate(this.clans);
-    }, (error) => this.handleSnapshotError('clans', error));
+    });
   }
 
   async createClan(name: string) {

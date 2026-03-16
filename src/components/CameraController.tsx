@@ -3,21 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 
-import { SolarSystemData, PlanetData, PlanetVisualClass } from '../services/solarSystem';
-
-
-function getAtmosphereColor(visualClass: PlanetVisualClass | null) {
-  switch (visualClass) {
-    case 'lush': return new THREE.Color('#86efac');
-    case 'oceanic': return new THREE.Color('#7dd3fc');
-    case 'desert': return new THREE.Color('#fdba74');
-    case 'arid_rocky': return new THREE.Color('#c08457');
-    case 'barren_gray': return new THREE.Color('#9ca3af');
-    case 'icy': return new THREE.Color('#dbeafe');
-    case 'volcanic': return new THREE.Color('#fb7185');
-    default: return new THREE.Color('#cda077');
-  }
-}
+import { SolarSystemData, PlanetData } from '../services/solarSystem';
 
 interface CameraControllerProps {
   trackedSatellite: any | null;
@@ -56,11 +42,6 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
     }
     
     targetPos.copy(planetCenter);
-
-    const selectedPlanet = currentPlanetId && solarSystem
-      ? solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId) ?? null
-      : null;
-    skyColor.copy(getAtmosphereColor(selectedPlanet?.visualClass ?? null));
 
     const dist = camera.position.distanceTo(planetCenter);
     const R = planetRadius; // Planet radius or Sun radius

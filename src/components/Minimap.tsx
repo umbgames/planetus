@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
 import { SolarSystemData, PlanetData } from '../services/solarSystem';
 import * as THREE from 'three';
 
@@ -6,144 +6,130 @@ interface MinimapProps {
   solarSystem: SolarSystemData | null;
   currentPlanetId: string | null;
   shipPosition: THREE.Vector3;
-  shipHeading?: number;
-  onSelectPlanet?: (planetId: string) => void;
 }
 
-function getPlanetWorldPosition(planet: PlanetData, elapsedSeconds: number) {
-  const angle = planet.initialAngle + elapsedSeconds * planet.orbitSpeed;
-  const x = Math.cos(angle) * planet.orbitDistance;
-  const z = Math.sin(angle) * planet.orbitDistance;
-  const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
-  return new THREE.Vector3(x, y, z);
-}
-
-export const Minimap: React.FC<MinimapProps> = ({
-  solarSystem,
-  currentPlanetId,
-  shipPosition,
-  shipHeading = 0,
-  onSelectPlanet,
-}) => {
-  const size = 220;
-  const padding = 18;
+export const Minimap: React.FC<MinimapProps> = ({ solarSystem, currentPlanetId, shipPosition }) => {
+  const size = 200;
+  const padding = 20;
   const innerSize = size - padding * 2;
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-
-  useEffect(() => {
-    let frameId = 0;
-    const startedAt = performance.now();
-    const tick = () => {
-      setElapsedSeconds((performance.now() - startedAt) / 1000);
-      frameId = requestAnimationFrame(tick);
-    };
-    tick();
-    return () => cancelAnimationFrame(frameId);
-  }, []);
 
   const mapData = useMemo(() => {
     if (!solarSystem) return null;
 
-    const planets = solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet');
-    const maxDist = Math.max(...planets.map((p) => p.orbitDistance), 1);
-    const scale = innerSize / (maxDist * 2.4);
+    // Find max distance for scaling
+    const maxDist = Math.max(...solarSystem.bodies.map(b => b.orbitDistance), 1);
+    const scale = innerSize / (maxDist * 2.2);
 
-    const plottedPlanets = planets.map((planet) => {
-      let color = '#ffffff';
-      switch (planet.visualClass) {
-        case 'lush': color = '#10b981'; break;
-        case 'oceanic': color = '#3b82f6'; break;
-        case 'desert': color = '#fbbf24'; break;
-        case 'arid_rocky': color = '#d97706'; break;
-        case 'barren_gray': color = '#9ca3af'; break;
-        case 'icy': color = '#60a5fa'; break;
-        case 'volcanic': color = '#ef4444'; break;
-      }
+    return {
+      scale,
+      planets: solarSystem.bodies.map(b => {
+        let color = "#ffffff";
+        if (b.type === 'planet') {
+          switch (b.visualClass) {
+            case 'lush': color = "#10b981"; break;
+            case 'oceanic': color = "#3b82f6"; break;
+            case 'desert': color = "#fbbf24"; break;
+            case 'arid_rocky': color = "#d97706"; break;
+            case 'barren_gray': color = "#9ca3af"; break;
+            case 'icy': color = "#60a5fa"; break;
+            case 'volcanic': color = "#ef4444"; break;
+          }
+        } else {
+          color = "#4b5563"; // Asteroid belt
+        }
 
-      const worldPos = getPlanetWorldPosition(planet, elapsedSeconds);
-      return {
-        id: planet.id,
-        color,
-        x: size / 2 + worldPos.x * scale,
-        y: size / 2 + worldPos.z * scale,
-        radius: planet.id === currentPlanetId ? 4.5 : 3,
-      };
-    });
-
-    const shipMarker = {
-      x: size / 2 + shipPosition.x * scale,
-      y: size / 2 + shipPosition.z * scale,
+        return {
+          id: b.id,
+          name: b.type === 'planet' ? `Planet ${b.id.split('_')[1]}` : 'Asteroid Belt',
+          color,
+          orbitDistance: b.orbitDistance,
+          type: b.type
+        };
+      })
     };
-
-    return { scale, planets: plottedPlanets, shipMarker };
-  }, [solarSystem, innerSize, size, elapsedSeconds, currentPlanetId, shipPosition]);
+  }, [solarSystem, innerSize]);
 
   if (!mapData) return null;
 
   return (
-    <div
-      className="absolute bottom-6 right-6 bg-black/70 backdrop-blur border border-cyan-400/20 rounded-full overflow-hidden shadow-2xl pointer-events-auto"
+    <div 
+      className="absolute bottom-6 right-6 bg-black/60 backdrop-blur border border-white/20 rounded-full overflow-hidden shadow-2xl"
       style={{ width: size, height: size }}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <g transform={`rotate(${(-shipHeading * 180) / Math.PI}, ${size / 2}, ${size / 2})`}>
-          {solarSystem?.bodies.filter((b): b is PlanetData => b.type === 'planet').map((planet) => (
-            <circle
-              key={`orbit-${planet.id}`}
+        {/* Orbits */}
+        {mapData.planets.map(p => (
+          p.type === 'planet' && (
+            <circle 
+              key={`orbit-${p.id}`}
               cx={size / 2}
               cy={size / 2}
-              r={planet.orbitDistance * mapData.scale}
+              r={p.orbitDistance * mapData.scale}
               fill="none"
-              stroke="rgba(255,255,255,0.08)"
+              stroke="rgba(255,255,255,0.1)"
               strokeWidth="1"
             />
-          ))}
+          )
+        ))}
 
-          <circle cx={size / 2} cy={size / 2} r={5} fill="#fbbf24" className="animate-pulse" />
+        {/* Sun */}
+        <circle 
+          cx={size / 2}
+          cy={size / 2}
+          r={4}
+          fill="#fbbf24"
+          className="animate-pulse"
+        />
 
-          {mapData.planets.map((planet) => (
-            <g
-              key={`planet-${planet.id}`}
-              className="cursor-pointer"
-              onClick={() => onSelectPlanet?.(planet.id)}
-            >
-              <circle cx={planet.x} cy={planet.y} r={Math.max(10, planet.radius + 5)} fill="transparent" />
-              <circle
-                cx={planet.x}
-                cy={planet.y}
-                r={planet.radius}
-                fill={planet.color}
-                stroke={planet.id === currentPlanetId ? '#ffffff' : 'transparent'}
-                strokeWidth={planet.id === currentPlanetId ? 1.5 : 0}
+        {/* Planets */}
+        {mapData.planets.map(p => {
+          // For simplicity, we'll just place them at an angle based on their ID hash
+          const hash = p.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+          const angle = (hash % 360) * (Math.PI / 180);
+          const x = size / 2 + Math.cos(angle) * p.orbitDistance * mapData.scale;
+          const y = size / 2 + Math.sin(angle) * p.orbitDistance * mapData.scale;
+
+          return (
+            <g key={`planet-${p.id}`}>
+              <circle 
+                cx={x}
+                cy={y}
+                r={p.id === currentPlanetId ? 4 : 2}
+                fill={p.color}
+                className={p.id === currentPlanetId ? "stroke-white stroke-2" : ""}
               />
-              {planet.id === currentPlanetId && (
-                <circle
-                  cx={planet.x}
-                  cy={planet.y}
-                  r={9}
+              {p.id === currentPlanetId && (
+                <circle 
+                  cx={x}
+                  cy={y}
+                  r={8}
                   fill="none"
-                  stroke={planet.color}
+                  stroke={p.color}
                   strokeWidth="1"
                   className="animate-ping"
                 />
               )}
             </g>
-          ))}
-        </g>
+          );
+        })}
 
-        <g transform={`translate(${mapData.shipMarker.x}, ${mapData.shipMarker.y})`}>
-          <circle cx="0" cy="0" r="12" fill="rgba(34,211,238,0.12)" stroke="rgba(34,211,238,0.35)" strokeWidth="1" />
-          <path d="M 0,-7 L 5,6 L 0,3 L -5,6 Z" fill="#22d3ee" />
-        </g>
+        {/* Player Indicator (if in ship mode) */}
+        {/* This would need more accurate positioning relative to the sun/planets */}
+        <path 
+          d="M 0,-4 L 3,4 L 0,2 L -3,4 Z"
+          fill="#3b82f6"
+          transform={`translate(${size / 2}, ${size / 2}) rotate(0)`}
+          className="drop-shadow-glow"
+        />
       </svg>
-
+      
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
         <div className="w-full h-px bg-white/5" />
         <div className="h-full w-px bg-white/5" />
       </div>
 
-      <div className="absolute bottom-2 left-0 w-full text-center pointer-events-none">
-        <span className="text-[10px] font-mono text-white/50 uppercase tracking-widest">Navigation System</span>
+      <div className="absolute bottom-2 left-0 w-full text-center">
+        <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest">Navigation System</span>
       </div>
     </div>
   );

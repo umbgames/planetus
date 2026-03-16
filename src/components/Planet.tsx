@@ -184,8 +184,6 @@ interface PlanetProps {
   noiseScale: number;
   landThreshold: number;
   visualClass: PlanetVisualClass;
-  includeGameplayObjects?: boolean;
-  includeClouds?: boolean;
 }
 
 export const Planet = memo(function Planet({
@@ -195,8 +193,6 @@ export const Planet = memo(function Planet({
   noiseScale,
   landThreshold,
   visualClass,
-  includeGameplayObjects = true,
-  includeClouds = true,
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
   const worldPosRef = useRef(new THREE.Vector3());
@@ -204,7 +200,6 @@ export const Planet = memo(function Planet({
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
   const [displacementMap, setDisplacementMap] = useState<THREE.CanvasTexture | null>(null);
   const [planetSegments, setPlanetSegments] = useState(isMobile ? 64 : 128);
-  const [textureResolution, setTextureResolution] = useState<{ width: number; height: number }>(() => isMobile ? { width: 512, height: 256 } : { width: 1024, height: 512 });
 
   const frameCount = useRef(0);
 
@@ -229,16 +224,6 @@ export const Planet = memo(function Planet({
     if (targetSegments !== planetSegments) {
       setPlanetSegments(targetSegments);
     }
-
-    const targetResolution = dist < radius * 2.4
-      ? (isMobile ? { width: 1024, height: 512 } : { width: 2048, height: 1024 })
-      : dist < radius * 6
-        ? (isMobile ? { width: 768, height: 384 } : { width: 1536, height: 768 })
-        : (isMobile ? { width: 512, height: 256 } : { width: 1024, height: 512 });
-
-    if (targetResolution.width !== textureResolution.width || targetResolution.height !== textureResolution.height) {
-      setTextureResolution(targetResolution);
-    }
   });
 
   // Stable instance across renders
@@ -258,9 +243,7 @@ export const Planet = memo(function Planet({
     };
 
     geographyManager.setSeed(seed, noiseScale, landThreshold, visualClass);
-    geographyManager.setTextureResolution(textureResolution.width, textureResolution.height);
     geographyManager.initializeTopicRegions();
-    geographyManager.generateTexture();
 
     const nextTexture = geographyManager.texture ?? null;
     const nextDisplacement = geographyManager.displacementMap ?? null;
@@ -282,7 +265,7 @@ export const Planet = memo(function Planet({
     return () => {
       geographyManager.onTextureUpdate = null;
     };
-  }, [geographyManager, seed, noiseScale, landThreshold, visualClass, textureResolution]);
+  }, [geographyManager, seed, noiseScale, landThreshold, visualClass]);
 
   useEffect(() => {
     return () => {
@@ -319,9 +302,9 @@ export const Planet = memo(function Planet({
     () => ({
       map: texture,
       displacementMap,
-      displacementScale: isMobile ? 0.28 : 0.4,
+      displacementScale: isMobile ? 0.45 : 0.65,
       bumpMap: displacementMap,
-      bumpScale: isMobile ? 0.08 : 0.12,
+      bumpScale: isMobile ? 0.12 : 0.18,
       roughness: 0.85,
       metalness: 0.05,
     }),
@@ -347,16 +330,14 @@ export const Planet = memo(function Planet({
         />
       </mesh>
 
-      {includeClouds && <Clouds radius={radius} isMobile={isMobile} planetSeed={seed} />}
-      {includeGameplayObjects && <BaseManager planetRadius={radius} geographyManager={geographyManager} />}
-      {includeGameplayObjects && (
-        <ResourceManager
-          planetRadius={radius}
-          isMobile={isMobile}
-          geographyManager={geographyManager}
-          planetSeed={seed}
-        />
-      )}
+      <Clouds radius={radius} isMobile={isMobile} planetSeed={seed} />
+      <BaseManager planetRadius={radius} geographyManager={geographyManager} />
+      <ResourceManager
+        planetRadius={radius}
+        isMobile={isMobile}
+        geographyManager={geographyManager}
+        planetSeed={seed}
+      />
     </group>
   );
 });

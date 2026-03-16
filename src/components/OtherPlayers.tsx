@@ -132,7 +132,7 @@ export function OtherPlayers({
   targetId
 }: OtherPlayersProps) {
   const otherPlayers = useMemo(() => {
-    return players.filter(p => p.uid !== localUserId && (p.currentPlanetId === currentPlanetId || p.playerSave?.lastPlanetID === currentPlanetId));
+    return players.filter(p => p.uid !== localUserId && p.currentPlanetId === currentPlanetId);
   }, [players, localUserId, currentPlanetId]);
 
   return (

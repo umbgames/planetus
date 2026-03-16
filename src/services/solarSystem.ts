@@ -2,19 +2,6 @@ import { createPRNG, cyrb128 } from '../utils/random';
 
 export type PlanetVisualClass = 'lush' | 'oceanic' | 'desert' | 'arid_rocky' | 'barren_gray' | 'icy' | 'volcanic';
 
-export interface MoonData {
-  id: string;
-  radius: number;
-  orbitDistance: number;
-  orbitSpeed: number;
-  orbitTiltX: number;
-  orbitTiltZ: number;
-  initialAngle: number;
-  noiseScale: number;
-  landThreshold: number;
-  visualClass: PlanetVisualClass;
-}
-
 export interface PlanetData {
   id: string;
   type: 'planet';
@@ -28,7 +15,6 @@ export interface PlanetData {
   landThreshold: number;
   colorSeed: number;
   visualClass: PlanetVisualClass;
-  moons: MoonData[];
 }
 
 export interface AsteroidBeltData {
@@ -109,31 +95,10 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
         visualClass = 'icy';
       }
 
-      const radius = bodyPrng() * 6 + 4;
-      const moonCount = Math.max(1, Math.floor(bodyPrng() * 3) + (radius > 7 ? 1 : 0));
-      const moonClasses: PlanetVisualClass[] = ['barren_gray', 'icy', 'arid_rocky'];
-      const moons: MoonData[] = Array.from({ length: moonCount }, (_, moonIndex) => {
-        const moonSeed = hashString(`${bodySeed}_moon_${moonIndex}`);
-        const moonPrng = createPRNG(moonSeed);
-        const moonVisualClass = moonClasses[Math.floor(moonPrng() * moonClasses.length)] ?? 'barren_gray';
-        return {
-          id: `moon_${i}_${moonIndex}`,
-          radius: Math.max(0.8, radius * (0.12 + moonPrng() * 0.12)),
-          orbitDistance: radius * (2.2 + moonIndex * 0.9 + moonPrng() * 0.8),
-          orbitSpeed: (moonPrng() * 0.04 + 0.01) * (moonPrng() > 0.5 ? 1 : -1),
-          orbitTiltX: (moonPrng() - 0.5) * 0.8,
-          orbitTiltZ: (moonPrng() - 0.5) * 0.8,
-          initialAngle: moonPrng() * Math.PI * 2,
-          noiseScale: moonPrng() * 1.2 + 1.2,
-          landThreshold: 0.15 + moonPrng() * 0.25,
-          visualClass: moonVisualClass,
-        };
-      });
-
       bodies.push({
         id: `planet_${i}`,
         type: 'planet',
-        radius,
+        radius: bodyPrng() * 6 + 4, // 4 to 10
         orbitDistance: orbitDistance,
         orbitSpeed: (bodyPrng() * 0.05 + 0.01) * (bodyPrng() > 0.5 ? 1 : -1),
         orbitTiltX: (bodyPrng() - 0.5) * 0.5,
@@ -143,7 +108,6 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
         landThreshold: bodyPrng() * 0.4 + 0.1,
         colorSeed: bodyPrng(),
         visualClass,
-        moons,
       });
     }
   }
