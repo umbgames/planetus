@@ -15,10 +15,10 @@ import { OtherPlayers } from './components/OtherPlayers';
 import { SpaceStations } from './components/SpaceStations';
 import { ShipUI } from './components/ShipUI';
 import { MarketUI } from './components/MarketUI';
-import { SolarSystemView } from './components/SolarSystemView';
-import { getScaledPlanetRadius, VISUAL_SCALE } from './services/solarSystem';
+import { SolarSystemView, getScaledPlanetRadius, VISUAL_SCALE } from './components/SolarSystemView';
 import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp, ArrowRightLeft, MonitorPlay, Users, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useProgress } from '@react-three/drei';
 import { gameManager, UserData, BaseData, Clan, SpaceStation } from './services/gameManager';
 import { auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
@@ -64,6 +64,34 @@ const MOCK_PLAYERS = [
   { name: 'NovaCorp', bases: 15, info: 'Corporate entity expanding its reach.' },
 ];
 
+
+function LoadingOverlay({ bootPhase }: { bootPhase: 'boot' | 'ready' }) {
+  const { progress, active, loaded, total } = useProgress();
+  const visible = bootPhase === 'boot' || active || progress < 100;
+
+  if (!visible) return null;
+
+  const pct = Math.max(8, Math.min(100, Math.round(progress || (bootPhase === 'boot' ? 15 : 100))));
+  const label = bootPhase === 'boot'
+    ? 'Booting low-graphics mode'
+    : active
+      ? `Streaming textures ${loaded}/${total || loaded}`
+      : 'Finalizing systems';
+
+  return (
+    <div className="absolute inset-0 z-[120] bg-black flex items-center justify-center">
+      <div className="w-[min(420px,85vw)]">
+        <div className="text-cyan-300 text-3xl font-black tracking-[0.35em] uppercase mb-3 text-center">Umb Orbit</div>
+        <div className="text-white/60 text-xs uppercase tracking-[0.4em] text-center mb-6">{label}</div>
+        <div className="h-2 rounded-full bg-white/10 overflow-hidden border border-white/10">
+          <div className="h-full bg-cyan-400 transition-all duration-300" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="mt-3 text-center text-white/40 text-sm font-mono">{pct}%</div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [trackedSatellite, setTrackedSatellite] = useState<any>(null);
   const [isShipMode, setIsShipMode] = useState(false);
@@ -97,6 +125,15 @@ export default function App() {
   const [currentPlanetId, setCurrentPlanetId] = useState<string | null>(null);
   const [solarSystem, setSolarSystem] = useState<SolarSystemData | null>(null);
   const [welcomeMessage, setWelcomeMessage] = useState<{ name: string, desc: string } | null>(null);
+  const [bootPhase, setBootPhase] = useState<'boot' | 'ready'>('boot');
+
+
+  useEffect(() => {
+    const lowGraphicsBoot = window.setTimeout(() => {
+      setBootPhase('ready');
+    }, 2200);
+    return () => window.clearTimeout(lowGraphicsBoot);
+  }, []);
 
   const currentPlanetRadius = useMemo(() => {
     if (!solarSystem) return getScaledPlanetRadius(PLANET_RADIUS);
@@ -129,7 +166,7 @@ export default function App() {
         geographyManager.initializeTopicRegions();
         
         // Show welcome message
-        const planetName = planet.name || planet.id.replace('planet_', 'PLANET-');
+        const planetName = planet.id.replace('planet_', 'PLANET-');
         const descriptions = [
           "Entering Orbital Sector",
           "Atmospheric Entry Confirmed",
@@ -548,8 +585,10 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      <LoadingOverlay bootPhase={bootPhase} />
+
       {/* 3D Canvas */}
-      <Canvas shadows={!isMobile} camera={{ position: [0, 0, 25], fov: 45, near: 0.0001, far: 1000000 } } dpr={isMobile ? [1, 1.5] : [1, 2]} performance={{ min: 0.5 }}>
+      <Canvas frameloop={bootPhase === 'boot' ? 'demand' : 'always'} shadows={!isMobile} camera={{ position: [0, 0, 25], fov: 45, near: 0.0001, far: 1000000 } } dpr={isMobile ? [0.8, 1.2] : [1, 1.5]} performance={{ min: 0.4 }}>
         <ambientLight intensity={0.2} />
         
         <Stars radius={1000000} depth={50} count={isMobile ? 1000 : 3000} factor={4} saturation={0} fade speed={1} />
@@ -906,19 +945,19 @@ export default function App() {
             exit={{ opacity: 0, scale: 1.2 }}
             className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
           >
-            <div className="px-12 py-8 text-center">
+            <div className="bg-black/40 backdrop-blur-md px-12 py-8 rounded-3xl border border-white/10 text-center">
               <motion.div
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.2 }}
               >
-                <div className="text-cyan-300/80 text-[11px] font-bold tracking-[0.45em] uppercase mb-3">
-                  Orbital Arrival
+                <div className="text-blue-400 text-xs font-bold tracking-[0.3em] uppercase mb-2">
+                  Welcome to
                 </div>
-                <h2 className="text-6xl font-black tracking-[0.08em] text-white uppercase drop-shadow-[0_0_18px_rgba(80,220,255,0.45)]">
+                <h2 className="text-6xl font-black tracking-tighter text-white uppercase italic">
                   {welcomeMessage.name}
                 </h2>
-                <div className="h-px w-40 bg-cyan-400/60 mx-auto mt-5 rounded-full" />
+                <div className="h-1 w-24 bg-blue-500 mx-auto mt-6 rounded-full" />
                 <p className="text-zinc-400 mt-6 text-sm font-medium tracking-widest uppercase">
                   {welcomeMessage.desc}
                 </p>

@@ -11,7 +11,7 @@ interface SpaceStationsProps {
 
 function SpaceStationMesh({ station, onPilot }: { station: SpaceStation, onPilot?: (station: SpaceStation) => void }) {
   return (
-    <group position={[station.position.x, station.position.y, station.position.z]} scale={[0.35, 0.35, 0.35]}>
+    <group position={[station.position.x, station.position.y, station.position.z]}>
       {/* Station Core */}
       <mesh>
         <cylinderGeometry args={[2, 2, 8, 8]} />

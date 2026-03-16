@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { SolarSystemData, PlanetData, buildScaledOrbitMap, getBodyWorldPosition } from '../services/solarSystem';
+import { SolarSystemData, PlanetData } from '../services/solarSystem';
 import * as THREE from 'three';
 
 interface MinimapProps {
@@ -8,21 +8,33 @@ interface MinimapProps {
   shipPosition: THREE.Vector3;
 }
 
+function getPlanetPosition(planet: PlanetData, time: number) {
+  const angle = planet.initialAngle + time * planet.orbitSpeed;
+  const x = Math.cos(angle) * planet.orbitDistance;
+  const z = Math.sin(angle) * planet.orbitDistance;
+  const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
+  return new THREE.Vector3(x, y, z);
+}
+
 export const Minimap: React.FC<MinimapProps> = ({ solarSystem, currentPlanetId, shipPosition }) => {
   const size = 220;
-  const center = size / 2;
+  const padding = 18;
+  const innerSize = size - padding * 2;
 
   const mapData = useMemo(() => {
     if (!solarSystem) return null;
 
-    const orbitMap = buildScaledOrbitMap(solarSystem.bodies);
+    const time = performance.now() / 1000;
     const planets = solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet');
-    const maxDist = Math.max(...planets.map((p) => orbitMap.get(p.id) || 0), 1);
-    const scale = 82 / maxDist;
-    const elapsedTime = Date.now() / 1000;
+    const maxDist = Math.max(...planets.map((b) => b.orbitDistance), 1);
+    const scale = innerSize / (maxDist * 2.4);
 
-    const items = planets.map((planet) => {
-      const world = getBodyWorldPosition(planet, elapsedTime, orbitMap);
+    const planetPoints = planets.map((planet) => {
+      const pos = getPlanetPosition(planet, time);
+      const depth = (pos.z / Math.max(planet.orbitDistance, 1)) * 0.5 + 0.5;
+      const x = size / 2 + pos.x * scale;
+      const y = size / 2 + pos.y * scale * 0.6;
+
       let color = '#ffffff';
       switch (planet.visualClass) {
         case 'lush': color = '#10b981'; break;
@@ -33,59 +45,63 @@ export const Minimap: React.FC<MinimapProps> = ({ solarSystem, currentPlanetId, 
         case 'icy': color = '#93c5fd'; break;
         case 'volcanic': color = '#ef4444'; break;
       }
-      return { planet, world, color };
+
+      return { id: planet.id, x, y, depth, color, orbitDistance: planet.orbitDistance };
     });
 
-    const currentPlanet = currentPlanetId ? items.find((item) => item.planet.id === currentPlanetId) : null;
-    const playerWorld = currentPlanet ? currentPlanet.world.clone().add(shipPosition) : shipPosition.clone();
+    const playerX = size / 2 + shipPosition.x * scale;
+    const playerY = size / 2 + shipPosition.y * scale * 0.6;
 
-    return { items, scale, playerWorld };
-  }, [solarSystem, currentPlanetId, shipPosition]);
+    return { scale, planetPoints, playerX, playerY };
+  }, [solarSystem, shipPosition.x, shipPosition.y, shipPosition.z, currentPlanetId]);
 
   if (!mapData) return null;
 
-  const project = (v: THREE.Vector3) => ({
-    x: center + v.x * mapData.scale,
-    y: center + v.z * mapData.scale - v.y * mapData.scale * 0.35,
-  });
-
-  const playerPoint = project(mapData.playerWorld);
-
   return (
-    <div className="absolute bottom-6 right-6 bg-black/60 backdrop-blur border border-cyan-400/20 rounded-3xl overflow-hidden shadow-2xl" style={{ width: size, height: size }}>
+    <div className="absolute bottom-6 right-6 bg-black/55 backdrop-blur-md border border-white/15 rounded-3xl overflow-hidden shadow-2xl" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <defs>
-          <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#fbbf24" stopOpacity="1" />
-            <stop offset="100%" stopColor="#fbbf24" stopOpacity="0" />
+          <radialGradient id="minimapSun" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#fde68a" />
+            <stop offset="100%" stopColor="#f59e0b" />
           </radialGradient>
         </defs>
 
-        {mapData.items.map(({ planet }) => {
-          const radius = (buildScaledOrbitMap(solarSystem!.bodies).get(planet.id) || 0) * mapData.scale;
-          return <ellipse key={`orbit-${planet.id}`} cx={center} cy={center} rx={radius} ry={Math.max(radius * 0.72, 2)} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1" />;
-        })}
+        {mapData.planetPoints.map((p) => (
+          <ellipse
+            key={`orbit-${p.id}`}
+            cx={size / 2}
+            cy={size / 2}
+            rx={p.orbitDistance * mapData.scale}
+            ry={p.orbitDistance * mapData.scale * 0.6}
+            fill="none"
+            stroke="rgba(255,255,255,0.08)"
+            strokeWidth="1"
+          />
+        ))}
 
-        <circle cx={center} cy={center} r={18} fill="url(#sunGlow)" />
-        <circle cx={center} cy={center} r={4.5} fill="#fbbf24" />
+        <circle cx={size / 2} cy={size / 2} r={7} fill="url(#minimapSun)" />
 
-        {mapData.items.map(({ planet, world, color }) => {
-          const p = project(world);
-          const selected = planet.id === currentPlanetId;
-          return (
-            <g key={planet.id}>
-              <circle cx={p.x} cy={p.y} r={selected ? 4.2 : 2.8} fill={color} stroke={selected ? '#ffffff' : 'none'} strokeWidth={selected ? 1.2 : 0} />
-              {selected && <circle cx={p.x} cy={p.y} r={8} fill="none" stroke={color} strokeWidth="1" opacity="0.65" />}
-            </g>
-          );
-        })}
+        {mapData.planetPoints.map((p) => (
+          <g key={p.id}>
+            <circle cx={p.x} cy={p.y} r={Math.max(2, 2 + p.depth * 2)} fill={p.color} opacity={0.65 + p.depth * 0.35} />
+            {p.id === currentPlanetId && (
+              <circle cx={p.x} cy={p.y} r={10} fill="none" stroke={p.color} strokeWidth="1.5" opacity="0.8" />
+            )}
+          </g>
+        ))}
 
-        <circle cx={playerPoint.x} cy={playerPoint.y} r={3.4} fill="#ef4444" />
-        <circle cx={playerPoint.x} cy={playerPoint.y} r={7.5} fill="none" stroke="#ef4444" strokeWidth="1" opacity="0.45" />
+        <circle cx={mapData.playerX} cy={mapData.playerY} r={4} fill="#ef4444" />
+        <circle cx={mapData.playerX} cy={mapData.playerY} r={8} fill="none" stroke="#ef4444" strokeWidth="1" opacity="0.6" />
       </svg>
 
-      <div className="absolute top-3 left-4 text-[10px] font-mono tracking-[0.25em] text-cyan-300/80 uppercase">3D Nav Map</div>
-      <div className="absolute bottom-3 left-4 text-[10px] text-white/50">Player: <span className="text-red-400">●</span></div>
+      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+        <div className="w-full h-px bg-white/5" />
+        <div className="h-full w-px bg-white/5" />
+      </div>
+
+      <div className="absolute top-2 left-3 text-[10px] font-mono text-white/45 uppercase tracking-[0.3em]">Nav 3D</div>
+      <div className="absolute bottom-2 left-3 text-[10px] font-mono text-red-400/80 uppercase tracking-[0.2em]">Player</div>
     </div>
   );
 };
