@@ -14,9 +14,6 @@ service cloud.firestore {
     //   - commonResources: number (required) - Amount of common resources.
     //   - rareResources: number (required) - Amount of rare resources.
     //   - hasSatellite: boolean (required) - Whether the user has launched a satellite.
-    //   - satelliteHealth: number (required) - Satellite HP, 0-100.
-    //   - satelliteDestroyedAt: string|null (optional) - When the satellite was destroyed.
-    //   - playerSave: map (optional) - Last known player state.
     //   - createdAt: string (required) - When the account was created.
     //
     // Collection: bases
@@ -86,26 +83,15 @@ service cloud.firestore {
     }
 
     function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'displayName', 'commonResources', 'rareResources', 'hasSatellite', 'satelliteHealth', 'machineGunAmmo', 'missileAmmo', 'createdAt']) &&
-             data.keys().hasOnly(['uid', 'displayName', 'commonResources', 'rareResources', 'hasSatellite', 'satelliteHealth', 'satelliteDestroyedAt', 'machineGunAmmo', 'missileAmmo', 'createdAt', 'playerSave']) &&
+      return hasOnlyAllowedFields(['uid', 'displayName', 'commonResources', 'rareResources', 'hasSatellite', 'machineGunAmmo', 'missileAmmo', 'createdAt']) &&
              data.uid is string && data.uid == request.auth.uid &&
              data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 50 &&
              data.commonResources is number && data.commonResources >= 0 &&
              data.rareResources is number && data.rareResources >= 0 &&
              data.hasSatellite is bool &&
-             data.satelliteHealth is number && data.satelliteHealth >= 0 && data.satelliteHealth <= 100 &&
-             (!('satelliteDestroyedAt' in data) || data.satelliteDestroyedAt == null || isValidDateString(data.satelliteDestroyedAt)) &&
              data.machineGunAmmo is number && data.machineGunAmmo >= 0 &&
              data.missileAmmo is number && data.missileAmmo >= 0 &&
-             isValidDateString(data.createdAt) &&
-             (!('playerSave' in data) || (data.playerSave is map &&
-               data.playerSave.keys().hasAll(['lastPlanetID', 'position', 'rotation']) &&
-               data.playerSave.lastPlanetID is string &&
-               data.playerSave.position is map && data.playerSave.rotation is map &&
-               data.playerSave.position.keys().hasAll(['x', 'y', 'z']) &&
-               data.playerSave.rotation.keys().hasAll(['x', 'y', 'z']) &&
-               data.playerSave.position.x is number && data.playerSave.position.y is number && data.playerSave.position.z is number &&
-               data.playerSave.rotation.x is number && data.playerSave.rotation.y is number && data.playerSave.rotation.z is number));
+             isValidDateString(data.createdAt);
     }
 
     function isValidBase(data) {
@@ -151,17 +137,12 @@ service cloud.firestore {
       // Anyone can read users (for satellite leaderboard).
       allow read: if true;
       // Users can create their own profile.
-      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.commonResources == 0 && request.resource.data.rareResources == 0 && request.resource.data.hasSatellite == false && request.resource.data.satelliteHealth == 100 && request.resource.data.machineGunAmmo == 500 && request.resource.data.missileAmmo == 20;
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.commonResources == 0 && request.resource.data.rareResources == 0 && request.resource.data.hasSatellite == false && request.resource.data.machineGunAmmo == 500 && request.resource.data.missileAmmo == 20;
       // Users can update their own profile (mining, spending resources, launching satellite).
       // Or other users can destroy their satellite.
       allow update: if isAuthenticated() && (
         (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.uid == resource.data.uid) ||
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasSatellite', 'satelliteHealth', 'satelliteDestroyedAt']) &&
-         resource.data.hasSatellite == true &&
-         request.resource.data.satelliteHealth is number &&
-         request.resource.data.satelliteHealth <= resource.data.satelliteHealth &&
-         request.resource.data.satelliteHealth >= 0 &&
-         request.resource.data.hasSatellite == (request.resource.data.satelliteHealth > 0))
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasSatellite']) && request.resource.data.hasSatellite == false)
       );
     }
 

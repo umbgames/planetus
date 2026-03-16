@@ -3,25 +3,56 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 
+import { SolarSystemData, PlanetData, getPlanetAtmosphereProfile } from '../services/solarSystem';
+
 interface CameraControllerProps {
   trackedSatellite: any | null;
   onInteract: () => void;
   currentPlanetId: string | null;
   planetRadius: number;
+  solarSystem: SolarSystemData | null;
 }
 
-export function CameraController({ trackedSatellite, onInteract, currentPlanetId, planetRadius }: CameraControllerProps) {
+export function CameraController({ trackedSatellite, onInteract, currentPlanetId, planetRadius, solarSystem }: CameraControllerProps) {
   const { camera, scene } = useThree();
   const controlsRef = useRef<any>(null);
+  const prevPlanetId = useRef<string | null>(currentPlanetId);
+  const isTransitioning = useRef(false);
+  const transitionTarget = useRef(new THREE.Vector3());
+  const transitionStart = useRef(new THREE.Vector3());
+  const transitionProgress = useRef(0);
   
   const targetPos = useMemo(() => new THREE.Vector3(), []);
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 0, 0), []);
   const spaceColor = useMemo(() => new THREE.Color('#000000'), []);
-  const skyColor = useMemo(() => new THREE.Color('#cda077'), []);
+  const dynamicSkyColor = useMemo(() => new THREE.Color('#cda077'), []);
+  const dynamicFogColor = useMemo(() => new THREE.Color('#cda077'), []);
   
   useFrame((state) => {
-    const dist = camera.position.length();
-    const R = currentPlanetId ? planetRadius : 8; // Planet radius or Sun radius
+    const planetCenter = new THREE.Vector3();
+    // First, determine the base target position (the planet or sun)
+    if (currentPlanetId) {
+      const planetObj = scene.getObjectByName(currentPlanetId);
+      if (planetObj) {
+        planetObj.getWorldPosition(planetCenter);
+      } else {
+        planetCenter.copy(defaultTarget);
+      }
+    } else {
+      planetCenter.copy(defaultTarget);
+    }
+    
+    targetPos.copy(planetCenter);
+
+    const currentPlanet = currentPlanetId && solarSystem
+      ? (solarSystem.bodies.find((b) => b.id === currentPlanetId) as PlanetData | undefined)
+      : undefined;
+    const atmosphere = currentPlanet ? getPlanetAtmosphereProfile(currentPlanet.visualClass) : null;
+    dynamicSkyColor.set(atmosphere?.sky ?? '#cda077');
+    dynamicFogColor.set(atmosphere?.fog ?? atmosphere?.sky ?? '#cda077');
+
+    const dist = camera.position.distanceTo(planetCenter);
+    const R = planetRadius; // Planet radius or Sun radius
     const altitude = dist - R;
     
     let tiltFactor = 0;
@@ -43,14 +74,14 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
     if (!scene.background) {
       scene.background = new THREE.Color('#000000');
     }
-    (scene.background as THREE.Color).copy(spaceColor).lerp(skyColor, tiltFactor);
+    (scene.background as THREE.Color).copy(spaceColor).lerp(dynamicSkyColor, tiltFactor);
 
     // Dynamic Fog
     if (!scene.fog) {
       scene.fog = new THREE.Fog('#cda077', 100, 200);
     }
     const fog = scene.fog as THREE.Fog;
-    fog.color.copy(skyColor);
+    fog.color.copy(dynamicFogColor);
     
     // Use exponential curve for fog distances so it only comes in near the surface
     const fogNear = THREE.MathUtils.lerp(1000000, 0.5, Math.pow(tiltFactor, 4));
@@ -69,13 +100,17 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
       const tag = trackedSatellite;
       
       // Calculate satellite world position
-      targetPos.set(tag.orbitRadius, 0, 0);
-      targetPos.applyEuler(new THREE.Euler(0, time * tag.speed + tag.initialAngle, 0));
-      targetPos.applyEuler(new THREE.Euler(tag.tiltX, tag.tiltY, tag.tiltZ));
+      const satPos = new THREE.Vector3();
+      satPos.set(tag.orbitRadius, 0, 0);
+      satPos.applyEuler(new THREE.Euler(0, time * tag.speed + tag.initialAngle, 0));
+      satPos.applyEuler(new THREE.Euler(tag.tiltX, tag.tiltY, tag.tiltZ));
+      
+      // Add planet position
+      satPos.add(targetPos);
       
       if (controlsRef.current) {
         // Smoothly move target to satellite
-        controlsRef.current.target.lerp(targetPos, 0.05);
+        controlsRef.current.target.lerp(satPos, 0.05);
         
         // Smoothly zoom in
         const currentDist = camera.position.distanceTo(controlsRef.current.target);
@@ -94,9 +129,33 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
       if (controlsRef.current) {
         const controls = controlsRef.current;
         
-        if (tiltFactor > 0.01 && currentPlanetId) {
-          const camDir = camera.position.clone().normalize();
-          const surfacePoint = camDir.clone().multiplyScalar(R);
+        if (prevPlanetId.current !== currentPlanetId) {
+          prevPlanetId.current = currentPlanetId;
+          isTransitioning.current = true;
+          transitionProgress.current = 0;
+          transitionStart.current.copy(camera.position);
+          
+          if (currentPlanetId) {
+            // Move camera to be near the new planet
+            const dir = camera.position.clone().sub(targetPos).normalize();
+            if (dir.lengthSq() < 0.001) dir.set(0, 0, 1);
+            transitionTarget.current.copy(targetPos).add(dir.multiplyScalar(R * 3));
+          } else {
+            // Move camera back to view the solar system
+            transitionTarget.current.set(0, 20, 40);
+          }
+        }
+        
+        if (isTransitioning.current) {
+          camera.position.lerp(transitionTarget.current, 0.05);
+          if (camera.position.distanceTo(transitionTarget.current) < 0.1) {
+            isTransitioning.current = false;
+          }
+        }
+        
+        if (tiltFactor > 0.01 && currentPlanetId && !isTransitioning.current) {
+          const camDir = camera.position.clone().sub(targetPos).normalize();
+          const surfacePoint = targetPos.clone().add(camDir.multiplyScalar(R));
           
           const up = camera.up.clone().normalize();
           let forward = up.projectOnPlane(camDir);
@@ -115,25 +174,25 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
           const shiftAmount = Math.min(R * 0.6 * tiltFactor, maxShift);
           
           const closeTarget = surfacePoint.clone().add(forward.multiplyScalar(shiftAmount));
-          closeTarget.normalize().multiplyScalar(R); // Ensure target stays on surface
+          closeTarget.sub(targetPos).normalize().multiplyScalar(R).add(targetPos); // Ensure target stays on surface
           
-          targetPos.lerpVectors(defaultTarget, closeTarget, tiltFactor);
-        } else {
-          targetPos.copy(defaultTarget);
+          targetPos.lerpVectors(targetPos, closeTarget, tiltFactor);
         }
         
         controls.target.lerp(targetPos, 0.1);
         
         // Dynamically adjust minDistance to prevent going inside the planet
         // while allowing close zooms when tilted
-        const targetDistFromCenter = controls.target.length();
+        const targetDistFromCenter = controls.target.distanceTo(planetCenter);
         controls.minDistance = Math.max(0.0002, R + 0.0002 - targetDistFromCenter);
         
         controls.update();
         
         // Safeguard: prevent camera from going underground
-        if (camera.position.length() < R + 0.0002) {
-          camera.position.normalize().multiplyScalar(R + 0.0002);
+        const actualDistFromCenter = camera.position.distanceTo(planetCenter);
+        if (actualDistFromCenter < R + 0.0002) {
+          const dir = camera.position.clone().sub(planetCenter).normalize();
+          camera.position.copy(planetCenter).add(dir.multiplyScalar(R + 0.0002));
         }
       }
     }
@@ -143,7 +202,7 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
     <OrbitControls 
       ref={controlsRef} 
       enablePan={false} 
-      minDistance={currentPlanetId ? planetRadius + 0.0002 : 8.0002} 
+      minDistance={0.0002} 
       maxDistance={1000000} 
       makeDefault
       onStart={() => {

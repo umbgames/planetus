@@ -1,15 +1,9 @@
-import React, { useRef, useMemo, useState, memo, useEffect } from 'react';
+import React, { useRef, useMemo, useState, memo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { SolarSystemData, PlanetData, AsteroidBeltData, MoonData } from '../services/solarSystem';
+import { SolarSystemData, PlanetData, AsteroidBeltData } from '../services/solarSystem';
 import { Planet } from './Planet';
 import { Sun } from './Sun';
-import {
-  VISUAL_SCALE,
-  buildOrbitMap,
-  getScaledPlanetRadius,
-  getScaledStarRadius,
-} from '../services/orbitUtils';
 import { createPRNG } from '../utils/random';
 
 interface SolarSystemViewProps {
@@ -17,8 +11,63 @@ interface SolarSystemViewProps {
   isMobile: boolean;
   currentPlanetId: string | null;
   setCurrentPlanetId: (id: string | null) => void;
-  showOrbitRings?: boolean;
-  quality?: 'low' | 'medium' | 'high';
+}
+
+/**
+ * Visual tuning constants.
+ * These do NOT change the simulation data itself.
+ * They only remap sizes/distances for presentation.
+ */
+export const VISUAL_SCALE = {
+  STAR_RADIUS_MULTIPLIER: 4.5,      // makes sun feel dominant
+  PLANET_RADIUS_MULTIPLIER: 0.9,    // slightly reduce planets if they feel too big
+  ORBIT_DISTANCE_MULTIPLIER: 2.8,   // spreads planets farther apart
+  MIN_ORBIT_GAP: 18,                // minimum spacing between consecutive orbit bands
+  ASTEROID_DISTANCE_MULTIPLIER: 2.8,
+  ASTEROID_WIDTH_MULTIPLIER: 1.4,
+  PLANET_LOD_DISTANCE_MULTIPLIER: 1.8,
+};
+
+export function getScaledPlanetRadius(radius: number) {
+  return radius * VISUAL_SCALE.PLANET_RADIUS_MULTIPLIER;
+}
+
+function buildOrbitMap(bodies: SolarSystemData['bodies']) {
+  const planets = bodies
+    .filter((b): b is PlanetData => b.type === 'planet')
+    .slice()
+    .sort((a, b) => a.orbitDistance - b.orbitDistance);
+
+  const scaledOrbitMap = new Map<string, number>();
+
+  let lastScaledOrbit = 0;
+  let lastOriginalOrbit = 0;
+
+  planets.forEach((planet, index) => {
+    const baseScaled =
+      planet.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
+
+    if (index === 0) {
+      scaledOrbitMap.set(planet.id, baseScaled);
+      lastScaledOrbit = baseScaled;
+      lastOriginalOrbit = planet.orbitDistance;
+      return;
+    }
+
+    const originalGap = planet.orbitDistance - lastOriginalOrbit;
+    const scaledGap = Math.max(
+      originalGap * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER,
+      VISUAL_SCALE.MIN_ORBIT_GAP
+    );
+
+    const nextOrbit = lastScaledOrbit + scaledGap;
+    scaledOrbitMap.set(planet.id, nextOrbit);
+
+    lastScaledOrbit = nextOrbit;
+    lastOriginalOrbit = planet.orbitDistance;
+  });
+
+  return scaledOrbitMap;
 }
 
 interface OrbitingPlanetProps {
@@ -27,200 +76,223 @@ interface OrbitingPlanetProps {
   currentPlanetId: string | null;
   setCurrentPlanetId: (id: string | null) => void;
   scaledOrbitDistance: number;
-  quality?: 'low' | 'medium' | 'high';
 }
-
-const RingMesh = memo(function RingMesh({ innerRadius, outerRadius, color, opacity }: { innerRadius: number; outerRadius: number; color: string; opacity: number }) {
-  return (
-    <group rotation={[Math.PI / 2.55, 0, 0.25]}>
-      <mesh>
-        <ringGeometry args={[innerRadius, outerRadius, 96]} />
-        <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
-      </mesh>
-    </group>
-  );
-});
-
-const OrbitingMoon = memo(function OrbitingMoon({ moon, isMobile }: { moon: MoonData; isMobile: boolean }) {
-  const groupRef = useRef<THREE.Group>(null);
-  const scaledRadius = getScaledPlanetRadius(moon.radius) * 0.58;
-  const segments = isMobile ? 18 : 24;
-
-  useFrame((state) => {
-    if (!groupRef.current) return;
-    const angle = moon.initialAngle + state.clock.getElapsedTime() * moon.orbitSpeed;
-    groupRef.current.position.set(Math.cos(angle) * moon.orbitDistance, 0, Math.sin(angle) * moon.orbitDistance);
-  });
-
-  return (
-    <group ref={groupRef}>
-      <mesh castShadow receiveShadow>
-        <sphereGeometry args={[scaledRadius, segments, segments]} />
-        <meshStandardMaterial color="#a8a8b0" roughness={1} metalness={0.02} />
-      </mesh>
-    </group>
-  );
-});
 
 const OrbitingPlanet = memo(function OrbitingPlanet({
   planet,
   isMobile,
+  currentPlanetId,
   setCurrentPlanetId,
   scaledOrbitDistance,
-  quality = 'medium',
 }: OrbitingPlanetProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const spinRef = useRef<THREE.Group>(null);
   const [isActive, setIsActive] = useState(false);
   const { camera } = useThree();
   const worldPos = useMemo(() => new THREE.Vector3(), []);
 
-  const scaledRadius = useMemo(() => getScaledPlanetRadius(planet.radius), [planet.radius]);
+  const scaledRadius = useMemo(
+    () => getScaledPlanetRadius(planet.radius),
+    [planet.radius]
+  );
 
-  useFrame((state, delta) => {
+  const isSelected = currentPlanetId === planet.id;
+  const ringRef = useRef<THREE.Mesh>(null);
+
+  useFrame((state) => {
     if (!groupRef.current) return;
+
     const time = state.clock.getElapsedTime();
     const angle = planet.initialAngle + time * planet.orbitSpeed;
+
     const x = Math.cos(angle) * scaledOrbitDistance;
     const z = Math.sin(angle) * scaledOrbitDistance;
-    const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
+
+    // Preserve orbital tilt look
+    const y =
+      x * Math.sin(planet.orbitTiltZ) +
+      z * Math.sin(planet.orbitTiltX);
+
     groupRef.current.position.set(x, y, z);
 
-    if (spinRef.current) spinRef.current.rotation.y += 0.018 * delta;
+    // axial spin
+    groupRef.current.rotation.y += 0.005;
 
+    // LOD activation distance should scale with planet size and orbital presentation
     groupRef.current.getWorldPosition(worldPos);
     const dist = camera.position.distanceTo(worldPos);
-    const activationDistance = Math.max(220, scaledRadius * 40 * VISUAL_SCALE.PLANET_LOD_DISTANCE_MULTIPLIER);
-    if (dist < activationDistance && !isActive) setIsActive(true);
-    else if (dist >= activationDistance && isActive) setIsActive(false);
+    const activationDistance = Math.max(
+      80,
+      scaledRadius * 18 * VISUAL_SCALE.PLANET_LOD_DISTANCE_MULTIPLIER
+    );
+
+    if (dist < activationDistance && !isActive) {
+      setIsActive(true);
+    } else if (dist >= activationDistance && isActive) {
+      setIsActive(false);
+    }
+    
+    if (ringRef.current && isSelected) {
+      const scale = 1 + Math.sin(time * 4) * 0.05;
+      ringRef.current.scale.set(scale, scale, scale);
+      ringRef.current.lookAt(camera.position);
+    }
   });
+
+  const proxyColor = useMemo(() => {
+    switch (planet.visualClass) {
+      case 'lush': return '#4d7c0f';
+      case 'oceanic': return '#1d4ed8';
+      case 'desert': return '#d97706';
+      case 'arid_rocky': return '#78350f';
+      case 'barren_gray': return '#525252';
+      case 'icy': return '#bae6fd';
+      case 'volcanic': return '#991b1b';
+      default: return '#444444';
+    }
+  }, [planet.visualClass]);
 
   return (
     <group
       ref={groupRef}
+      name={planet.id}
       onClick={(e) => {
         e.stopPropagation();
         setCurrentPlanetId(planet.id);
       }}
-      onPointerOver={() => { document.body.style.cursor = 'pointer'; }}
-      onPointerOut={() => { document.body.style.cursor = 'auto'; }}
+      onPointerOver={() => {
+        document.body.style.cursor = 'pointer';
+      }}
+      onPointerOut={() => {
+        document.body.style.cursor = 'auto';
+      }}
     >
-      <group ref={spinRef}>
-        {planet.ring && (
-          <RingMesh
-            innerRadius={getScaledPlanetRadius(planet.ring.innerRadius)}
-            outerRadius={getScaledPlanetRadius(planet.ring.outerRadius)}
-            color={planet.ring.color}
-            opacity={planet.ring.opacity}
-          />
-        )}
-
-        {isActive ? (
-          <Planet
-            radius={scaledRadius}
-            isMobile={isMobile}
-            seed={planet.seed}
-            noiseScale={planet.noiseScale}
-            landThreshold={planet.landThreshold}
-            showClouds={planet.hasClouds}
-            cloudDensity={planet.cloudDensity}
-            cloudSpeed={planet.cloudSpeed}
-            cloudRotationSpeed={planet.cloudRotationSpeed}
-          />
-        ) : (
-          <mesh>
-            <sphereGeometry args={[scaledRadius, quality === 'low' ? 10 : quality === 'medium' ? 14 : 18, quality === 'low' ? 10 : quality === 'medium' ? 14 : 18]} />
-            <meshStandardMaterial color={planet.ring ? '#8a7f72' : '#6b6b75'} emissive={planet.ring ? '#3d342b' : '#202028'} emissiveIntensity={0.18} roughness={1} />
-          </mesh>
-        )}
-
-        {planet.moons.map((moon) => <OrbitingMoon key={moon.id} moon={moon} isMobile={isMobile} />)}
-      </group>
+      {isActive ? (
+        <Planet
+          radius={scaledRadius}
+          isMobile={isMobile}
+          seed={planet.id}
+          noiseScale={planet.noiseScale}
+          landThreshold={planet.landThreshold}
+          visualClass={planet.visualClass}
+        />
+      ) : (
+        <mesh>
+          <sphereGeometry args={[scaledRadius, 16, 16]} />
+          <meshStandardMaterial color={proxyColor} roughness={1} />
+        </mesh>
+      )}
+      
+      {isSelected && (
+        <mesh ref={ringRef}>
+          <ringGeometry args={[scaledRadius * 1.2, scaledRadius * 1.3, 64]} />
+          <meshBasicMaterial color="#00ffff" side={THREE.DoubleSide} transparent opacity={0.5} />
+        </mesh>
+      )}
     </group>
   );
 });
 
-function OrbitRing({ radius, color = '#1e3a8a' }: { radius: number; color?: string }) {
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]}>
-      <ringGeometry args={[radius - 0.22, radius + 0.22, 128]} />
-      <meshBasicMaterial color={color} transparent opacity={0.14} side={THREE.DoubleSide} depthWrite={false} />
-    </mesh>
-  );
-}
-
-function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'medium' }: { belt: AsteroidBeltData; scaledOrbitDistance: number; scaledWidth: number; quality?: 'low' | 'medium' | 'high'; }) {
+function AsteroidBelt({
+  belt,
+  scaledOrbitDistance,
+  scaledWidth,
+}: {
+  belt: AsteroidBeltData;
+  scaledOrbitDistance: number;
+  scaledWidth: number;
+}) {
   const groupRef = useRef<THREE.Group>(null);
-  const meshRef = useRef<THREE.InstancedMesh>(null);
-
-  const asteroidCount = useMemo(() => {
-    const ratio = quality === 'low' ? 0.28 : quality === 'medium' ? 0.5 : 0.8;
-    return Math.max(40, Math.floor(belt.count * ratio));
-  }, [belt.count, quality]);
 
   const asteroids = useMemo(() => {
-    const items = [] as Array<{ position: THREE.Vector3; scale: number; rotation: THREE.Euler }>;
-    const random = createPRNG(belt.seed);
-    for (let i = 0; i < asteroidCount; i++) {
-      const angle = random() * Math.PI * 2;
-      const distance = scaledOrbitDistance + (random() - 0.5) * scaledWidth;
+    const items = [];
+    const prng = createPRNG(belt.seed);
+
+    for (let i = 0; i < belt.count; i++) {
+      const angle = prng() * Math.PI * 2;
+      const distance =
+        scaledOrbitDistance + (prng() - 0.5) * scaledWidth;
+
       const x = Math.cos(angle) * distance;
       const z = Math.sin(angle) * distance;
-      const y = (random() - 0.5) * scaledWidth * 0.2;
-      const scale = random() * 0.5 + 0.1;
+      const y = (prng() - 0.5) * scaledWidth * 0.2;
+
+      const scale = prng() * 0.5 + 0.1;
+
       items.push({
         position: new THREE.Vector3(x, y, z),
         scale,
-        rotation: new THREE.Euler(random() * Math.PI, random() * Math.PI, random() * Math.PI),
+        rotation: new THREE.Euler(
+          prng() * Math.PI,
+          prng() * Math.PI,
+          prng() * Math.PI
+        ),
       });
     }
     return items;
-  }, [asteroidCount, scaledOrbitDistance, scaledWidth, belt.seed]);
-
-  useEffect(() => {
-    if (!meshRef.current) return;
-    const dummy = new THREE.Object3D();
-    asteroids.forEach((ast, i) => {
-      dummy.position.copy(ast.position);
-      dummy.rotation.copy(ast.rotation);
-      dummy.scale.setScalar(ast.scale);
-      dummy.updateMatrix();
-      meshRef.current!.setMatrixAt(i, dummy.matrix);
-    });
-    meshRef.current.instanceMatrix.needsUpdate = true;
-  }, [asteroids]);
+  }, [belt.count, scaledOrbitDistance, scaledWidth, belt.seed]);
 
   useFrame((state) => {
     if (!groupRef.current) return;
-    groupRef.current.rotation.y = belt.initialAngle + state.clock.getElapsedTime() * belt.orbitSpeed;
+    groupRef.current.rotation.y =
+      belt.initialAngle + state.clock.getElapsedTime() * belt.orbitSpeed;
   });
 
   return (
     <group ref={groupRef}>
-      <instancedMesh ref={meshRef} args={[undefined, undefined, asteroidCount]}>
-        <dodecahedronGeometry args={[1, 0]} />
-        <meshStandardMaterial color="#888888" roughness={0.9} />
-      </instancedMesh>
+      {asteroids.map((ast, i) => (
+        <mesh
+          key={i}
+          position={ast.position}
+          scale={ast.scale}
+          rotation={ast.rotation}
+        >
+          <dodecahedronGeometry args={[1, 0]} />
+          <meshStandardMaterial color="#888888" roughness={0.9} />
+        </mesh>
+      ))}
     </group>
   );
 }
 
-export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPlanetId, showOrbitRings = true, quality = 'medium' }: SolarSystemViewProps) {
+export function SolarSystemView({
+  data,
+  isMobile,
+  currentPlanetId,
+  setCurrentPlanetId,
+}: SolarSystemViewProps) {
   const groupRef = useRef<THREE.Group>(null);
+
   const orbitMap = useMemo(() => buildOrbitMap(data.bodies), [data.bodies]);
-  const scaledStarRadius = useMemo(() => getScaledStarRadius(data.starRadius), [data.starRadius]);
+
+  const scaledStarRadius = useMemo(() => {
+    return Math.max(
+      data.starRadius * VISUAL_SCALE.STAR_RADIUS_MULTIPLIER,
+      12
+    );
+  }, [data.starRadius]);
 
   useFrame((state) => {
     if (!groupRef.current) return;
+
     if (currentPlanetId) {
-      const planet = data.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId);
+      const planet = data.bodies.find(
+        (b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId
+      );
+
       if (planet) {
-        const scaledOrbitDistance = orbitMap.get(planet.id) ?? planet.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
+        const scaledOrbitDistance =
+          orbitMap.get(planet.id) ??
+          planet.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
+
         const time = state.clock.getElapsedTime();
         const angle = planet.initialAngle + time * planet.orbitSpeed;
+
         const x = Math.cos(angle) * scaledOrbitDistance;
         const z = Math.sin(angle) * scaledOrbitDistance;
-        const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
+        const y =
+          x * Math.sin(planet.orbitTiltZ) +
+          z * Math.sin(planet.orbitTiltX);
+
         groupRef.current.position.set(-x, -y, -z);
       }
     } else {
@@ -230,33 +302,52 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
 
   return (
     <group ref={groupRef}>
-      <Sun radius={scaledStarRadius} distance={0} speed={0} onClick={() => setCurrentPlanetId(null)} color={data.starColor} />
-
-      {showOrbitRings && data.bodies.map((body) => {
-        if (body.type !== 'planet') return null;
-        const orbitDistance = orbitMap.get(body.id) ?? body.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
-        return <OrbitRing key={`ring-${body.id}`} radius={orbitDistance} color={currentPlanetId === body.id ? '#38bdf8' : '#1d4ed8'} />;
-      })}
+      <Sun
+        radius={scaledStarRadius}
+        distance={0}
+        speed={0}
+        onClick={() => setCurrentPlanetId(null)}
+      />
 
       {data.bodies.map((body) => {
         if (body.type === 'planet') {
-          const scaledOrbitDistance = orbitMap.get(body.id) ?? body.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
+          const planet = body as PlanetData;
+          const scaledOrbitDistance =
+            orbitMap.get(planet.id) ??
+            planet.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
+
           return (
             <OrbitingPlanet
-              key={body.id}
-              planet={body}
+              key={planet.id}
+              planet={planet}
               isMobile={isMobile}
               currentPlanetId={currentPlanetId}
               setCurrentPlanetId={setCurrentPlanetId}
               scaledOrbitDistance={scaledOrbitDistance}
-              quality={quality}
             />
           );
         }
 
-        const scaledOrbitDistance = body.orbitDistance * VISUAL_SCALE.ASTEROID_DISTANCE_MULTIPLIER;
-        const scaledWidth = body.width * VISUAL_SCALE.ASTEROID_WIDTH_MULTIPLIER;
-        return <AsteroidBelt key={body.id} belt={body} scaledOrbitDistance={scaledOrbitDistance} scaledWidth={scaledWidth} quality={quality} />;
+        if (body.type === 'asteroid_belt') {
+          const belt = body as AsteroidBeltData;
+
+          const scaledOrbitDistance =
+            belt.orbitDistance * VISUAL_SCALE.ASTEROID_DISTANCE_MULTIPLIER;
+
+          const scaledWidth =
+            belt.width * VISUAL_SCALE.ASTEROID_WIDTH_MULTIPLIER;
+
+          return (
+            <AsteroidBelt
+              key={belt.id}
+              belt={belt}
+              scaledOrbitDistance={scaledOrbitDistance}
+              scaledWidth={scaledWidth}
+            />
+          );
+        }
+
+        return null;
       })}
     </group>
   );

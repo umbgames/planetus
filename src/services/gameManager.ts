@@ -21,8 +21,6 @@ export interface UserData {
   commonResources: number;
   rareResources: number;
   hasSatellite: boolean;
-  satelliteHealth: number;
-  satelliteDestroyedAt?: string | null;
   machineGunAmmo: number;
   missileAmmo: number;
   createdAt: string;
@@ -47,6 +45,7 @@ export interface MarketOffer {
 
 export interface ResourceNode {
   id: string;
+  planetId: string;
   type: 'common' | 'rare';
   position: { x: number; y: number; z: number };
   active: boolean;
@@ -56,14 +55,14 @@ export interface ResourceNode {
 class GameManager {
   bases: BaseData[] = [];
   userData: UserData | null = null;
-  satelliteUsers: { uid?: string; name: string; bases: number; info: string; health: number }[] = [];
+  satelliteUsers: { uid?: string; name: string; bases: number; info: string }[] = [];
   marketOffers: MarketOffer[] = [];
   resources: ResourceNode[] = [];
   onBasesUpdate: ((bases: BaseData[]) => void) | null = null;
   onUserDataUpdate: ((userData: UserData | null) => void) | null = null;
-  onSatelliteUsersUpdate: ((users: { uid?: string; name: string; bases: number; info: string; health: number }[]) => void) | null = null;
+  onSatelliteUsersUpdate: ((users: { uid?: string; name: string; bases: number; info: string }[]) => void) | null = null;
   onMarketOffersUpdate: ((offers: MarketOffer[]) => void) | null = null;
-  onResourcesUpdate: ((resources: ResourceNode[]) => void) | null = null;
+  resourceListeners: Set<(resources: ResourceNode[]) => void> = new Set();
   unsubscribeBases: (() => void) | null = null;
   unsubscribeUser: (() => void) | null = null;
   unsubscribeSatellites: (() => void) | null = null;
@@ -77,7 +76,6 @@ class GameManager {
     this.listenToSatellites();
     this.listenToMarket();
     this.listenToResources();
-    this.startRespawnTimer();
     
     auth.onAuthStateChanged(async (user) => {
       if (user) {
@@ -86,10 +84,6 @@ class GameManager {
         if (this.needsNPCBases) {
           this.initializeNPCBases();
           this.needsNPCBases = false;
-        }
-        if (this.needsResources) {
-          this.initializeResources();
-          this.needsResources = false;
         }
       } else {
         this.userData = null;
@@ -113,8 +107,6 @@ class GameManager {
         commonResources: 0,
         rareResources: 0,
         hasSatellite: false,
-        satelliteHealth: 100,
-        satelliteDestroyedAt: null,
         machineGunAmmo: 500,
         missileAmmo: 20,
         createdAt: new Date().toISOString()
@@ -129,8 +121,6 @@ class GameManager {
     this.unsubscribeUser = onSnapshot(doc(db, 'users', uid), (doc) => {
       if (doc.exists()) {
         const data = doc.data() as UserData;
-        if (typeof data.satelliteHealth !== 'number') data.satelliteHealth = 100;
-        if (!('satelliteDestroyedAt' in data)) data.satelliteDestroyedAt = null;
         
         // Apply pending updates to prevent jitter
         if (this.pendingAmmoUpdates.mg > 0) {
@@ -187,8 +177,7 @@ class GameManager {
           uid: u.uid,
           name: u.displayName,
           bases: userBases,
-          info: `A powerful explorer with ${userBases} bases.`,
-          health: typeof u.satelliteHealth === 'number' ? u.satelliteHealth : 100
+          info: `A powerful explorer with ${userBases} bases.`
         };
       });
       this.satelliteUsers = satUsers;
@@ -196,102 +185,22 @@ class GameManager {
     });
   }
 
+  addResourceListener(listener: (resources: ResourceNode[]) => void) {
+    this.resourceListeners.add(listener);
+    listener(this.resources);
+  }
+
+  removeResourceListener(listener: (resources: ResourceNode[]) => void) {
+    this.resourceListeners.delete(listener);
+  }
+
   listenToResources() {
     if (this.unsubscribeResources) this.unsubscribeResources();
     
     this.unsubscribeResources = onSnapshot(collection(db, 'resources'), (snapshot) => {
       this.resources = snapshot.docs.map(doc => doc.data() as ResourceNode);
-      
-      if (snapshot.empty) {
-        if (auth.currentUser) {
-          this.initializeResources();
-        } else {
-          this.needsResources = true;
-        }
-      } else {
-        // We will handle respawning in a separate interval
-      }
-      
-      if (this.onResourcesUpdate) this.onResourcesUpdate(this.resources);
+      this.resourceListeners.forEach(listener => listener(this.resources));
     });
-  }
-
-  private respawnInterval: any = null;
-
-  startRespawnTimer() {
-    if (this.respawnInterval) return;
-    this.respawnInterval = setInterval(() => {
-      if (!auth.currentUser) return;
-      const inactiveResources = this.resources.filter(r => !r.active);
-      if (inactiveResources.length > 0) {
-        const resToRespawn = inactiveResources[Math.floor(Math.random() * inactiveResources.length)];
-        geographyManager.initializeTopicRegions();
-        
-        let validRegions = geographyManager.regions;
-        if (resToRespawn.type === 'rare') {
-          validRegions = validRegions.filter(r => r.resourceZone === 'high');
-        }
-        
-        if (validRegions.length > 0) {
-          const region = validRegions[Math.floor(Math.random() * validRegions.length)];
-          const planetRadius = 10;
-          const pos = geographyManager.getRandomPointForTopic(region.id, planetRadius);
-          const height = geographyManager.getHeightAtPoint(pos[0], pos[1], pos[2], planetRadius, 0.8);
-          const snappedPos = new THREE.Vector3(pos[0], pos[1], pos[2]).normalize().multiplyScalar(height);
-          
-          updateDoc(doc(db, 'resources', resToRespawn.id), {
-            active: true,
-            position: { x: snappedPos.x, y: snappedPos.y, z: snappedPos.z }
-          }).catch(console.error);
-        }
-      }
-    }, 10000); // Try to respawn one resource every 10 seconds
-  }
-
-  async initializeResources() {
-    if (!auth.currentUser) return;
-    geographyManager.initializeTopicRegions();
-    const planetRadius = 10;
-    const numCommon = 80;
-    const numRare = 20;
-    
-    const spawnResource = async (type: 'common' | 'rare', index: number) => {
-      let validRegions = geographyManager.regions;
-      if (type === 'rare') {
-        validRegions = validRegions.filter(r => r.resourceZone === 'high');
-      }
-      if (validRegions.length === 0) return;
-      
-      const region = validRegions[Math.floor(Math.random() * validRegions.length)];
-      
-      const pos = geographyManager.getRandomPointForTopic(region.id, planetRadius);
-      const height = geographyManager.getHeightAtPoint(pos[0], pos[1], pos[2], planetRadius, 0.8);
-      const snappedPos = new THREE.Vector3(pos[0], pos[1], pos[2]).normalize().multiplyScalar(height);
-      
-      const resourceId = `res_${type}_${index}_${Date.now()}`;
-      
-      try {
-        const resRef = doc(db, 'resources', resourceId);
-        const resData: ResourceNode = {
-          id: resourceId,
-          type,
-          position: { x: snappedPos.x, y: snappedPos.y, z: snappedPos.z },
-          active: true,
-          createdAt: new Date().toISOString()
-        };
-        
-        await setDoc(resRef, resData);
-      } catch (e) {
-        console.error("Failed to create resource", e);
-      }
-    };
-
-    for (let i = 0; i < numCommon; i++) {
-      await spawnResource('common', i);
-    }
-    for (let i = 0; i < numRare; i++) {
-      await spawnResource('rare', i);
-    }
   }
 
   async initializeNPCBases() {
@@ -561,9 +470,7 @@ class GameManager {
       await updateDoc(doc(db, 'users', auth.currentUser.uid), {
         commonResources: this.userData.commonResources - costCommon,
         rareResources: this.userData.rareResources - costRare,
-        hasSatellite: true,
-        satelliteHealth: 100,
-        satelliteDestroyedAt: null
+        hasSatellite: true
       });
     } else {
       throw new Error(`Not enough resources. Need ${costCommon} Common and ${costRare} Rare.`);
@@ -671,25 +578,7 @@ class GameManager {
   async destroySatellite(userId: string) {
     if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
     await updateDoc(doc(db, 'users', userId), {
-      hasSatellite: false,
-      satelliteHealth: 0,
-      satelliteDestroyedAt: new Date().toISOString()
-    });
-  }
-
-  async damageSatellite(userId: string, damage: number) {
-    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
-    if (!userId || damage <= 0) return;
-    if (userId === auth.currentUser.uid) return;
-
-    const target = this.satelliteUsers.find(s => s.uid === userId);
-    if (!target) throw new Error("Satellite not found.");
-
-    const nextHealth = Math.max(0, (target.health ?? 100) - damage);
-    await updateDoc(doc(db, 'users', userId), {
-      satelliteHealth: nextHealth,
-      hasSatellite: nextHealth > 0,
-      satelliteDestroyedAt: nextHealth <= 0 ? new Date().toISOString() : null
+      hasSatellite: false
     });
   }
 

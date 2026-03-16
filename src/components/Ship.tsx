@@ -1,14 +1,11 @@
-import React, { useRef, useState, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Html, PerspectiveCamera, Trail } from '@react-three/drei';
 import * as THREE from 'three';
 import { geographyManager } from '../services/geography';
 import { BaseData, UserData, gameManager } from '../services/gameManager';
 import { useShipStore } from '../services/shipStore';
-import { SolarSystemData, PlanetData } from '../services/solarSystem';
-import { buildOrbitMap, getBodyWorldPosition, getScaledStarRadius, getScaledPlanetRadius, VISUAL_SCALE } from '../services/orbitUtils';
-
-const INFINITE_TEST_AMMO = true;
+import { SolarSystemData, PlanetData, getPlanetAtmosphereProfile } from '../services/solarSystem';
 
 interface ShipProps {
   planetRadius: number;
@@ -21,11 +18,9 @@ interface ShipProps {
   currentPlanetId?: string | null;
   setCurrentPlanetId?: (id: string | null) => void;
   solarSystem?: SolarSystemData | null;
-  onSatelliteDamaged?: (satellite: { uid?: string; name: string }, damage: number) => void;
-  respawnNonce?: number;
 }
 
-export function Ship({ planetRadius, onExit, bases = [], userData = null, satellites = [], initialPosition, initialRotation, currentPlanetId, setCurrentPlanetId, solarSystem, onSatelliteDamaged, respawnNonce = 0 }: ShipProps) {
+export function Ship({ planetRadius, onExit, bases = [], userData = null, satellites = [], initialPosition, initialRotation, currentPlanetId, setCurrentPlanetId, solarSystem }: ShipProps) {
   // 1️⃣ Updated useThree to access the scene
   const { camera, gl, scene } = useThree();
   const shipRef = useRef<THREE.Group>(null);
@@ -48,6 +43,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
   // 2️⃣ Added atmosphere color refs
   const spaceColor = useRef(new THREE.Color('#000000'));
   const skyColor = useRef(new THREE.Color('#cda077'));
+  const fogColor = useRef(new THREE.Color('#cda077'));
 
   // Ship state
   const velocity = useRef(new THREE.Vector3());
@@ -65,6 +61,11 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
   const launchProgress = useRef(0);
   const recoilZ = useRef(0); // Tracks the heavy laser recoil kickback
   const boostEnergy = useRef(100);
+  const localPositionRef = useRef(new THREE.Vector3(
+    initialPosition ? initialPosition.x : 0, 
+    initialPosition ? initialPosition.y : 0, 
+    initialPosition ? initialPosition.z : planetRadius + 5
+  ));
 
   // Combat state
   const lastFired = useRef(0);
@@ -73,35 +74,11 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
   const [muzzleFlashes, setMuzzleFlashes] = useState<{ id: string; pos: THREE.Vector3; createdAt: number }[]>([]);
 
   const prevPlanetId = useRef(currentPlanetId);
-  const lastRespawnNonce = useRef(respawnNonce);
-
-  useEffect(() => {
-    if (lastRespawnNonce.current === respawnNonce) return;
-    lastRespawnNonce.current = respawnNonce;
-
-    const spawnDistance = Math.max(planetRadius + 20, 36);
-    position.current.set(0, 0, spawnDistance);
-    velocity.current.set(0, 0, 0);
-    rotation.current.set(0, 0, 0, 'YXZ');
-    camera.position.copy(position.current);
-    if (shipRef.current) {
-      shipRef.current.position.copy(position.current);
-      shipRef.current.rotation.set(0, 0, 0);
-      shipRef.current.quaternion.setFromEuler(rotation.current);
-    }
-    if (cameraRigRef.current) {
-      cameraRigRef.current.position.copy(position.current);
-      cameraRigRef.current.rotation.set(0, 0, 0);
-    }
-    setMouse({ x: 0, y: 0 });
-    setIsLaunching(true);
-    launchProgress.current = 0;
-  }, [respawnNonce, planetRadius, camera]);
 
   useEffect(() => {
     return () => {
       if (currentPlanetId) {
-        gameManager.savePlayerState(currentPlanetId, position.current, rotation.current);
+        gameManager.savePlayerState(currentPlanetId, localPositionRef.current, rotation.current);
       }
     };
   }, [currentPlanetId]);
@@ -241,41 +218,64 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
 
   const { setShipPosition, setVelocity, setAltitude, setBoostEnergy } = useShipStore();
   const frameCount = useRef(0);
-  const orbitMap = useMemo(() => solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>(), [solarSystem]);
+  const initialized = useRef(false);
 
   useFrame((state, delta) => {
     frameCount.current++;
+    const getPlanetPos = (id: string | null) => {
+      if (!id || !solarSystem) return new THREE.Vector3(0, 0, 0);
+      const planet = solarSystem.bodies.find(b => b.id === id) as PlanetData;
+      if (!planet) return new THREE.Vector3(0, 0, 0);
+      const time = state.clock.getElapsedTime();
+      const angle = planet.initialAngle + time * planet.orbitSpeed;
+      const x = Math.cos(angle) * planet.orbitDistance;
+      const z = Math.sin(angle) * planet.orbitDistance;
+      const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
+      return new THREE.Vector3(x, y, z);
+    };
+
+    const currentPlanetPos = getPlanetPos(currentPlanetId);
+
+    const activePlanet = currentPlanetId && solarSystem
+      ? (solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData | undefined)
+      : undefined;
+    const atmosphere = activePlanet ? getPlanetAtmosphereProfile(activePlanet.visualClass) : null;
+    skyColor.current.set(atmosphere?.sky ?? '#cda077');
+    fogColor.current.set(atmosphere?.fog ?? atmosphere?.sky ?? '#cda077');
+    
+    if (!initialized.current) {
+      position.current.add(currentPlanetPos);
+      if (cameraRigRef.current) {
+        cameraRigRef.current.position.copy(position.current);
+      }
+      initialized.current = true;
+    }
+
+    const localPos = new THREE.Vector3().subVectors(position.current, currentPlanetPos);
+    localPositionRef.current.copy(localPos);
+
     if (frameCount.current % 10 === 0) {
       setShipPosition(position.current);
       setVelocity(velocity.current.length());
-      setAltitude(Math.max(0, position.current.length() - planetRadius));
+      setAltitude(Math.max(0, localPos.length() - planetRadius));
       setBoostEnergy(boostEnergy.current);
     }
 
     if (prevPlanetId.current !== currentPlanetId && solarSystem) {
-      const oldPos = getBodyWorldPosition(prevPlanetId.current, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
-      const newPos = getBodyWorldPosition(currentPlanetId, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
-      const shift = new THREE.Vector3().subVectors(oldPos, newPos);
-      
-      position.current.add(shift);
-      camera.position.add(shift);
-      
       prevPlanetId.current = currentPlanetId;
+      // localPos is already recalculated at the top of useFrame
     }
 
     // Automatic Planet Switching
     if (!isJumping && solarSystem && frameCount.current % 30 === 0) {
-      const currentPlanetPos = getBodyWorldPosition(currentPlanetId, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
-      
       // Check for planets
       let switched = false;
       for (const body of solarSystem.bodies) {
         if (body.type === 'planet' && body.id !== currentPlanetId) {
-          const planetPos = getBodyWorldPosition(body.id, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
-          const relativePlanetPos = new THREE.Vector3().subVectors(planetPos, currentPlanetPos);
-          const distToPlanet = position.current.distanceTo(relativePlanetPos);
+          const planetPos = getPlanetPos(body.id);
+          const distToPlanet = position.current.distanceTo(planetPos);
           
-          if (distToPlanet < getScaledPlanetRadius((body as PlanetData).radius) * VISUAL_SCALE.SHIP_SWITCH_RADIUS_MULTIPLIER) {
+          if (distToPlanet < (body as PlanetData).radius * 10) {
             if (setCurrentPlanetId) {
               setCurrentPlanetId(body.id);
             }
@@ -288,10 +288,9 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
       // Check for Sun if not already switched
       if (!switched && currentPlanetId !== null) {
         const sunPos = new THREE.Vector3(0, 0, 0);
-        const relativeSunPos = new THREE.Vector3().subVectors(sunPos, currentPlanetPos);
-        const distToSun = position.current.distanceTo(relativeSunPos);
+        const distToSun = position.current.distanceTo(sunPos);
         
-        if (distToSun < getScaledStarRadius(solarSystem.starRadius) * VISUAL_SCALE.SUN_SWITCH_RADIUS_MULTIPLIER) {
+        if (distToSun < solarSystem.starRadius * 5) {
           if (setCurrentPlanetId) {
             setCurrentPlanetId(null);
           }
@@ -303,16 +302,24 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     if (isJumping && lockedTarget?.type === 'planet' && solarSystem) {
       const targetPlanet = solarSystem.bodies.find(b => b.id === lockedTarget.id);
       if (targetPlanet) {
-        const currentPlanetPos = getBodyWorldPosition(currentPlanetId, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
-        const targetPlanetPos = getBodyWorldPosition(targetPlanet.id, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
-        
-        // Target relative to current planet
-        const relativeTarget = new THREE.Vector3().subVectors(targetPlanetPos, currentPlanetPos);
+        const getPlanetPos = (id: string | null) => {
+          if (!id) return new THREE.Vector3(0, 0, 0);
+          const planet = solarSystem.bodies.find(b => b.id === id) as PlanetData;
+          if (!planet) return new THREE.Vector3(0, 0, 0);
+          const time = state.clock.getElapsedTime();
+          const angle = planet.initialAngle + time * planet.orbitSpeed;
+          const x = Math.cos(angle) * planet.orbitDistance;
+          const z = Math.sin(angle) * planet.orbitDistance;
+          const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
+          return new THREE.Vector3(x, y, z);
+        };
+
+        const targetPlanetPos = getPlanetPos(targetPlanet.id);
         
         // Distance to target
-        const distToTarget = position.current.distanceTo(relativeTarget);
+        const distToTarget = position.current.distanceTo(targetPlanetPos);
         
-        if (distToTarget < getScaledPlanetRadius((targetPlanet as PlanetData).radius) * 5) {
+        if (distToTarget < (targetPlanet as PlanetData).radius * 5) {
           // Arrived!
           if (setCurrentPlanetId) {
             setCurrentPlanetId(targetPlanet.id);
@@ -326,12 +333,12 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
           perspectiveCamera.updateProjectionMatrix();
         } else {
           // Move towards target at high speed
-          const jumpDir = new THREE.Vector3().subVectors(relativeTarget, position.current).normalize();
+          const jumpDir = new THREE.Vector3().subVectors(targetPlanetPos, position.current).normalize();
           const jumpSpeed = 5000 * delta; // Very fast
           position.current.add(jumpDir.multiplyScalar(jumpSpeed));
           
           // Face target
-          const targetMatrix = new THREE.Matrix4().lookAt(position.current, relativeTarget, new THREE.Vector3(0, 1, 0));
+          const targetMatrix = new THREE.Matrix4().lookAt(position.current, targetPlanetPos, new THREE.Vector3(0, 1, 0));
           const targetQuat = new THREE.Quaternion().setFromRotationMatrix(targetMatrix);
           shipRef.current?.quaternion.slerp(targetQuat, 0.1);
           
@@ -353,7 +360,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
 
     // 3️⃣ Inserted Dynamic Atmosphere
     // ===== Dynamic Atmosphere System =====
-    const distForAtmosphere = position.current.length();
+    const distForAtmosphere = localPos.length();
     const R = planetRadius;
     const altitude = distForAtmosphere - R;
 
@@ -382,10 +389,10 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
 
     const fog = scene.fog as THREE.Fog;
 
-    fog.color.copy(skyColor.current);
+    fog.color.copy(fogColor.current);
 
-    const fogNear = THREE.MathUtils.lerp(8000, 0.5, Math.pow(tiltFactor, 4));
-    const fogFar = THREE.MathUtils.lerp(30000, 4.0, Math.pow(tiltFactor, 4));
+    const fogNear = THREE.MathUtils.lerp(50, 0.5, Math.pow(tiltFactor, 4));
+    const fogFar = THREE.MathUtils.lerp(100, 4.0, Math.pow(tiltFactor, 4));
 
     fog.near = fogNear;
     fog.far = fogFar;
@@ -420,7 +427,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
       
       bases.forEach(base => {
         const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
-        const toBase = basePos.clone().sub(position.current);
+        const toBase = basePos.clone().sub(localPos);
         const dist = toBase.length();
         
         if (dist < 50) { 
@@ -430,7 +437,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
             const score = dot - (dist / 100); 
             if (score > bestScore) {
               bestScore = score;
-              bestTarget = { ...base, type: 'base' };
+              bestTarget = { ...base, position: basePos.clone().add(currentPlanetPos), type: 'base' };
             }
           }
         }
@@ -443,7 +450,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
         satPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
         satPos.applyEuler(new THREE.Euler(sat.tiltX, sat.tiltY, sat.tiltZ));
 
-        const toSat = satPos.clone().sub(position.current);
+        const toSat = satPos.clone().sub(localPos);
         const dist = toSat.length();
 
         if (dist < 50) {
@@ -453,7 +460,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
             const score = dot - (dist / 100);
             if (score > bestScore) {
               bestScore = score;
-              bestTarget = { ...sat, position: satPos, type: 'satellite', health: 100 }; 
+              bestTarget = { ...sat, position: satPos.clone().add(currentPlanetPos), type: 'satellite', health: 100 }; 
             }
           }
         }
@@ -467,30 +474,25 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     }
 
     if (lockedTarget && lockedTarget.type === 'satellite') {
-      const liveSatellite = satellites.find((sat) => sat.name === lockedTarget.name);
-      if (!liveSatellite || (liveSatellite.health ?? 0) <= 0) {
-        setLockedTarget(null);
-      } else {
-        const time = state.clock.elapsedTime;
-        const angle = time * liveSatellite.speed + liveSatellite.initialAngle;
-        const satPos = new THREE.Vector3(liveSatellite.orbitRadius, 0, 0);
-        satPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
-        satPos.applyEuler(new THREE.Euler(liveSatellite.tiltX, liveSatellite.tiltY, liveSatellite.tiltZ));
-
-        setLockedTarget(prev => prev ? { ...prev, position: satPos, health: liveSatellite.health ?? prev.health } : null);
-      }
+      const time = state.clock.elapsedTime;
+      const angle = time * lockedTarget.speed + lockedTarget.initialAngle;
+      const satPos = new THREE.Vector3(lockedTarget.orbitRadius, 0, 0);
+      satPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+      satPos.applyEuler(new THREE.Euler(lockedTarget.tiltX, lockedTarget.tiltY, lockedTarget.tiltZ));
+      satPos.add(currentPlanetPos);
+      
+      setLockedTarget(prev => prev ? { ...prev, position: satPos } : null);
     } else if (lockedTarget && lockedTarget.type === 'base') {
       const updatedBase = bases.find(b => b.id === lockedTarget.id);
-      if (updatedBase && updatedBase.health !== lockedTarget.health) {
-        setLockedTarget(prev => prev ? { ...prev, health: updatedBase.health } : null);
+      if (updatedBase) {
+        const basePos = new THREE.Vector3(updatedBase.position.x, updatedBase.position.y, updatedBase.position.z).add(currentPlanetPos);
+        setLockedTarget(prev => prev ? { ...prev, position: basePos, health: updatedBase.health } : null);
       }
     } else if (lockedTarget && lockedTarget.type === 'planet' && solarSystem) {
-      const currentPlanetPos = getBodyWorldPosition(currentPlanetId, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
-      const targetPlanetPos = getBodyWorldPosition(lockedTarget.id, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
-      const relativeTarget = new THREE.Vector3().subVectors(targetPlanetPos, currentPlanetPos);
+      const targetPlanetPos = getPlanetPos(lockedTarget.id);
       
-      if (!lockedTarget.position || !lockedTarget.position.equals(relativeTarget)) {
-        setLockedTarget(prev => prev ? { ...prev, position: relativeTarget } : null);
+      if (!lockedTarget.position || !lockedTarget.position.equals(targetPlanetPos)) {
+        setLockedTarget(prev => prev ? { ...prev, position: targetPlanetPos } : null);
       }
     }
 
@@ -499,10 +501,10 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     
     // Machine Gun (Light Laser)
     if ((keys['MouseLeft'] || mobileKeys.mg) && now - lastFired.current > 100) { 
-      if (INFINITE_TEST_AMMO || !userData || userData.machineGunAmmo > 0) {
+      if (!userData || userData.machineGunAmmo > 0) {
         lastFired.current = now;
         setLastMgFire(now);
-        if (userData && !INFINITE_TEST_AMMO) gameManager.fireMachineGun();
+        if (userData) gameManager.fireMachineGun();
         
         const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
         if (lockedTarget) {
@@ -532,8 +534,8 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     }
 
     // Missile (Heavy Laser)
-    if ((keys['MouseRight'] || mobileKeys.missile) && now - lastMissile.current > 250) { 
-      if (INFINITE_TEST_AMMO || !userData || userData.missileAmmo > 0) {
+    if ((keys['MouseRight'] || mobileKeys.missile) && now - lastMissile.current > 1000) { 
+      if (!userData || userData.missileAmmo > 0) {
         lastMissile.current = now;
         setLastMissileFire(now);
         
@@ -541,7 +543,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
         // Pushes the ship model slightly backward along its local Z axis
         recoilZ.current = 0.08; 
         
-        if (userData && !INFINITE_TEST_AMMO) gameManager.fireMissile();
+        if (userData) gameManager.fireMissile();
         
         const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
         
@@ -574,7 +576,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
         let hit = false;
         bases.forEach(base => {
           if (hit) return;
-          const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
+          const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z).add(currentPlanetPos);
           if (p.pos.distanceTo(basePos) < 1.0) {
             hit = true;
             const damage = p.type === 'mg' ? 5 : 50;
@@ -591,20 +593,22 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
             const satPos = new THREE.Vector3(sat.orbitRadius, 0, 0);
             satPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
             satPos.applyEuler(new THREE.Euler(sat.tiltX, sat.tiltY, sat.tiltZ));
+            satPos.add(currentPlanetPos);
 
             if (p.pos.distanceTo(satPos) < 1.0) {
               hit = true;
-              const damage = p.type === 'mg' ? 12 : 55;
-              onSatelliteDamaged?.(sat, damage);
-              setExplosions(prev => [...prev, { id: Math.random().toString(), pos: p.pos.clone(), createdAt: now, size: p.type === 'mg' ? 1.2 : 3.5 }]);
+              if (sat.uid) {
+                gameManager.destroySatellite(sat.uid).catch(console.error);
+              }
+              setExplosions(prev => [...prev, { id: Math.random().toString(), pos: p.pos.clone(), createdAt: now, size: p.type === 'mg' ? 1 : 3 }]);
             }
           });
         }
 
         if (!hit) {
           gameManager.resources.forEach(res => {
-            if (hit || !res.active) return;
-            const resPos = new THREE.Vector3(res.position.x, res.position.y, res.position.z);
+            if (hit || !res.active || res.planetId !== currentPlanetId) return;
+            const resPos = new THREE.Vector3(res.position.x, res.position.y, res.position.z).add(currentPlanetPos);
             if (p.pos.distanceTo(resPos) < 0.8) {
               hit = true;
               gameManager.gatherResource(res.id).catch(console.error);
@@ -636,18 +640,9 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
       boostEnergy.current = Math.min(100, boostEnergy.current + 10 * delta);
     }
 
-    const altitudeFromSurface = Math.max(0, position.current.length() - planetRadius);
-    const orbitalFactor = THREE.MathUtils.clamp(altitudeFromSurface / Math.max(planetRadius * 4, 8), 0, 1);
-    const deepSpaceFactor = THREE.MathUtils.clamp(altitudeFromSurface / Math.max(planetRadius * 30, 40), 0, 1);
-    const cruiseMultiplier = THREE.MathUtils.lerp(1, isBoostingActive ? 180 : 36, orbitalFactor);
-    const deepSpaceBoost = THREE.MathUtils.lerp(1, isBoostingActive ? 8 : 3, deepSpaceFactor);
-    const effectiveSpeed = speed * cruiseMultiplier * deepSpaceBoost;
-    const effectiveAccel = accel * THREE.MathUtils.lerp(1, isBoostingActive ? 140 : 28, orbitalFactor) * THREE.MathUtils.lerp(1, isBoostingActive ? 5 : 2.25, deepSpaceFactor);
-
     if (cameraRef.current) {
       const targetFov = isBoostingActive ? 100 : 60;
       cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFov, 0.1);
-      cameraRef.current.far = 250000;
       cameraRef.current.updateProjectionMatrix();
       
       const targetZ = isBoostingActive ? 0.25 : 0.15;
@@ -679,7 +674,7 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     
     const yawDelta = rotation.current.y - prevYaw;
 
-    const up = position.current.clone().normalize();
+    const up = localPos.clone().normalize();
     const north = new THREE.Vector3(0, 1, 0);
     let forward = north.projectOnPlane(up).normalize();
     if (forward.lengthSq() < 0.001) {
@@ -694,24 +689,26 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
     const quaternion = baseQuat.multiply(yawQuat).multiply(pitchQuat);
 
     const moveVector = input.clone().applyQuaternion(quaternion);
-    velocity.current.add(moveVector.multiplyScalar(effectiveAccel));
-    velocity.current.multiplyScalar(THREE.MathUtils.lerp(friction, 0.995, orbitalFactor));
+    velocity.current.add(moveVector.multiplyScalar(accel));
+    velocity.current.multiplyScalar(friction);
     
-    if (velocity.current.length() > effectiveSpeed) {
-      velocity.current.normalize().multiplyScalar(effectiveSpeed);
+    if (velocity.current.length() > speed) {
+      velocity.current.normalize().multiplyScalar(speed);
     }
 
     position.current.addScaledVector(velocity.current, delta);
+    localPos.addScaledVector(velocity.current, delta);
 
-    const dist = position.current.length();
+    const dist = localPos.length();
     const terrainHeight = geographyManager.getHeightAtPoint(
-      position.current.x, position.current.y, position.current.z,
+      localPos.x, localPos.y, localPos.z,
       planetRadius, 0.3
     );
     const minHeight = terrainHeight + 0.05; 
     if (dist < minHeight) {
-      position.current.normalize().multiplyScalar(minHeight);
-      const up = position.current.clone().normalize();
+      localPos.normalize().multiplyScalar(minHeight);
+      position.current.copy(localPos).add(currentPlanetPos);
+      const up = localPos.clone().normalize();
       const downwardVelocity = velocity.current.clone().projectOnVector(up);
       if (downwardVelocity.dot(up) < 0) {
         velocity.current.sub(downwardVelocity);
@@ -739,19 +736,19 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
       // --- APPLY RECOIL DECAY ---
       // Smoothly snap the ship back to its baseline Z position (-0.005)
       recoilZ.current = THREE.MathUtils.lerp(recoilZ.current, 0, 0.15);
-      shipModelRef.current.position.z = -0.005 + Math.max(0, recoilZ.current);
+      shipModelRef.current.position.z = -0.003 + Math.max(0, recoilZ.current * 0.65);
     }
   });
 
   return (
     <>
       <group ref={cameraRigRef}>
-        <PerspectiveCamera makeDefault ref={cameraRef} position={[0, 0.04, 0.15]} rotation={[-0.1, 0, 0]} fov={60} near={0.001} far={250000} />
+        <PerspectiveCamera makeDefault ref={cameraRef} position={[0, 0.025, 0.09]} rotation={[-0.08, 0, 0]} fov={55} near={0.001} far={500} />
       </group>
 
       <group ref={shipRef}>
         {/* The ship's base position Z (-0.005) gets overridden by the recoil logic dynamically */}
-        <group ref={shipModelRef} position={[0, -0.002, -0.005]} scale={0.01}>
+        <group ref={shipModelRef} position={[0, -0.0015, -0.003]} scale={0.0065}>
           <mesh position={[0, 0, 0]}>
             <boxGeometry args={[0.6, 0.4, 2.5]} />
             <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
@@ -821,31 +818,23 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
             {p.type === 'mg' ? (
               <group>
                 <mesh rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.02, 0.02, 2.4, 8]} />
+                  <cylinderGeometry args={[0.015, 0.015, 1.5, 6]} />
                   <meshBasicMaterial color="#ffffff" />
                 </mesh>
                 <mesh rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.06, 0.06, 2.8, 8]} />
-                  <meshBasicMaterial color="#00e5ff" transparent opacity={0.35} />
+                  <cylinderGeometry args={[0.04, 0.04, 1.6, 6]} />
+                  <meshBasicMaterial color="#00ffff" transparent opacity={0.4} />
                 </mesh>
-                <mesh>
-                  <sphereGeometry args={[0.08, 12, 12]} />
-                  <meshBasicMaterial color="#9ffcff" />
-                </mesh>
-                <pointLight distance={3} intensity={1.5} color="#00ffff" />
+                {/* Subtle light emission for standard shots */}
+                <pointLight distance={2} intensity={1} color="#00ffff" />
               </group>
             ) : (
               <group>
                 <mesh rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.06, 0.06, 2.2, 10]} />
-                  <meshStandardMaterial color="#ff5a5a" emissive="#ff2222" emissiveIntensity={7} />
+                  <cylinderGeometry args={[0.05, 0.05, 1.2, 8]} />
+                  <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={5} />
                 </mesh>
-                <mesh>
-                  <sphereGeometry args={[0.11, 16, 16]} />
-                  <meshBasicMaterial color="#ffd0d0" />
-                </mesh>
-                <pointLight distance={4} intensity={2} color="#ff3333" />
-                <Trail width={0.2} length={8} color={new THREE.Color('#ff0000')} attenuation={(t) => t * t}>
+                <Trail width={0.15} length={6} color={new THREE.Color('#ff0000')} attenuation={(t) => t * t}>
                   <mesh position={[0, 0, 0.5]}>
                     <sphereGeometry args={[0.01]} />
                     <meshBasicMaterial transparent opacity={0} />

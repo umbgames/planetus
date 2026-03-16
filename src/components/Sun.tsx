@@ -1,4 +1,4 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -7,13 +7,11 @@ interface SunProps {
   distance?: number;
   speed?: number;
   onClick?: () => void;
-  color?: string;
 }
 
-export function Sun({ radius = 2, distance = 30, speed = 0.1, onClick, color = '#fff1b8' }: SunProps) {
+export function Sun({ radius = 2, distance = 30, speed = 0.1, onClick }: SunProps) {
   const groupRef = useRef<THREE.Group>(null);
   const lightRef = useRef<THREE.DirectionalLight>(null);
-  const coreSegments = useMemo(() => (radius > 20 ? 40 : 28), [radius]);
 
   useFrame((state) => {
     if (groupRef.current && distance > 0) {
@@ -47,33 +45,29 @@ export function Sun({ radius = 2, distance = 30, speed = 0.1, onClick, color = '
     >
       {/* Sun Mesh */}
       <mesh>
-        <sphereGeometry args={[radius, coreSegments, coreSegments]} />
-        <meshBasicMaterial color={color} />
+        <sphereGeometry args={[radius, 32, 32]} />
+        <meshBasicMaterial color="#ffddaa" />
       </mesh>
-
+      
+      {/* Glow Effect */}
       <mesh>
-        <sphereGeometry args={[radius * 1.25, 24, 24]} />
-        <meshBasicMaterial color="#ffb347" transparent opacity={0.35} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <sphereGeometry args={[radius * 1.5, 32, 32]} />
+        <meshBasicMaterial color="#ffaa00" transparent opacity={0.3} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
-
+      
       <mesh>
-        <sphereGeometry args={[radius * 1.7, 20, 20]} />
-        <meshBasicMaterial color="#ff8c42" transparent opacity={0.18} blending={THREE.AdditiveBlending} depthWrite={false} />
-      </mesh>
-
-      <mesh>
-        <sphereGeometry args={[radius * 2.35, 18, 18]} />
-        <meshBasicMaterial color="#ff5a1f" transparent opacity={0.09} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <sphereGeometry args={[radius * 2.5, 32, 32]} />
+        <meshBasicMaterial color="#ff5500" transparent opacity={0.15} blending={THREE.AdditiveBlending} depthWrite={false} />
       </mesh>
 
       {/* Dynamic Light */}
       <directionalLight
         ref={lightRef}
         color="#ffddaa"
-        intensity={4}
+        intensity={3}
         castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
         shadow-camera-near={0.5}
         shadow-camera-far={100}
         shadow-camera-left={-20}

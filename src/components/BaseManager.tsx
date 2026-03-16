@@ -13,9 +13,9 @@ interface BaseManagerProps {
   geographyManager: GeographyManager;
 }
 
-const CUBE_WIDTH = 0.06
-const CUBE_HEIGHT = 0.02
-const CUBE_DEPTH = 0.06
+const CUBE_WIDTH = 0.04
+const CUBE_HEIGHT = 0.014
+const CUBE_DEPTH = 0.04
 
 const baseGeometry = new THREE.BoxGeometry(1,1,1)
 
