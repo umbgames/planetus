@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { Text, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
 import { UserData } from '../services/gameManager';
-import { SolarSystemData, PlanetData } from '../services/solarSystem';
+import { SolarSystemData, PlanetData, buildScaledOrbitMap, getBodyWorldPosition } from '../services/solarSystem';
 
 interface OtherPlayersProps {
   players: UserData[];
@@ -42,20 +42,16 @@ function OtherPlayerShip({
 
   const targetPosition = useRef(new THREE.Vector3());
   const targetRotation = useRef(new THREE.Euler());
+  const orbitMap = useMemo(() => solarSystem ? buildScaledOrbitMap(solarSystem.bodies) : new Map<string, number>(), [solarSystem]);
 
   useFrame((state, delta) => {
     if (!groupRef.current || !solarSystem) return;
 
     const getPlanetPos = (id: string | null) => {
       if (!id || !solarSystem) return new THREE.Vector3(0, 0, 0);
-      const planet = solarSystem.bodies.find(b => b.id === id) as PlanetData;
+      const planet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === id);
       if (!planet) return new THREE.Vector3(0, 0, 0);
-      const time = state.clock.getElapsedTime();
-      const angle = planet.initialAngle + time * planet.orbitSpeed;
-      const x = Math.cos(angle) * planet.orbitDistance;
-      const z = Math.sin(angle) * planet.orbitDistance;
-      const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
-      return new THREE.Vector3(x, y, z);
+      return getBodyWorldPosition(planet, state.clock.getElapsedTime(), orbitMap);
     };
 
     const targetPlanetPos = getPlanetPos(player.currentPlanetId || null);

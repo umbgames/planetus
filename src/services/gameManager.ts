@@ -228,6 +228,8 @@ class GameManager {
         this.userData = data;
         if (this.onUserDataUpdate) this.onUserDataUpdate(this.userData);
       }
+    }, (error) => {
+      console.warn('users listener unavailable', error);
     });
   }
 
@@ -247,6 +249,8 @@ class GameManager {
       
       if (this.onBasesUpdate) this.onBasesUpdate(this.bases);
       this.updateHegemony(); // Recalculate hegemon when bases change
+    }, (error) => {
+      console.warn('bases listener unavailable', error);
     });
   }
 
@@ -260,6 +264,8 @@ class GameManager {
       this.planetStates = states;
       if (this.onPlanetStatesUpdate) this.onPlanetStatesUpdate(states);
       this.processTaxes();
+    }, (error) => {
+      console.warn('planet state listener unavailable', error);
     });
   }
 
@@ -379,6 +385,8 @@ class GameManager {
     this.unsubscribeMarket = onSnapshot(collection(db, 'market_offers'), (snapshot) => {
       this.marketOffers = snapshot.docs.map(doc => doc.data() as MarketOffer);
       if (this.onMarketOffersUpdate) this.onMarketOffersUpdate(this.marketOffers);
+    }, (error) => {
+      console.warn('market listener unavailable', error);
     });
   }
 
@@ -401,6 +409,8 @@ class GameManager {
       });
       this.satelliteUsers = satUsers;
       if (this.onSatelliteUsersUpdate) this.onSatelliteUsersUpdate(satUsers);
+    }, (error) => {
+      console.warn('satellite listener unavailable', error);
     });
   }
 
@@ -419,6 +429,8 @@ class GameManager {
     this.unsubscribeResources = onSnapshot(collection(db, 'resources'), (snapshot) => {
       this.resources = snapshot.docs.map(doc => doc.data() as ResourceNode);
       this.resourceListeners.forEach(listener => listener(this.resources));
+    }, (error) => {
+      console.warn('resource listener unavailable', error);
     });
   }
 
@@ -592,6 +604,8 @@ class GameManager {
         });
       
       if (this.onActivePlayersUpdate) this.onActivePlayersUpdate(players);
+    }, (error) => {
+      console.warn('active players listener unavailable', error);
     });
   }
 
@@ -600,6 +614,8 @@ class GameManager {
     this.unsubscribeSpaceStations = onSnapshot(collection(db, 'space_stations'), (snapshot) => {
       this.spaceStations = snapshot.docs.map(doc => doc.data() as SpaceStation);
       if (this.onSpaceStationsUpdate) this.onSpaceStationsUpdate(this.spaceStations);
+    }, (error) => {
+      console.warn('space station listener unavailable', error);
     });
   }
 
@@ -608,6 +624,8 @@ class GameManager {
     this.unsubscribeClans = onSnapshot(collection(db, 'clans'), (snapshot) => {
       this.clans = snapshot.docs.map(doc => doc.data() as Clan);
       if (this.onClansUpdate) this.onClansUpdate(this.clans);
+    }, (error) => {
+      console.warn('clan listener unavailable', error);
     });
   }
 
@@ -641,6 +659,7 @@ class GameManager {
     if (!clanSnap.exists()) throw new Error("Clan not found.");
     
     const clan = clanSnap.data() as Clan;
+    if (clan.members.includes(auth.currentUser.uid)) throw new Error('Already in this clan.');
     await updateDoc(clanRef, {
       members: [...clan.members, auth.currentUser.uid]
     });

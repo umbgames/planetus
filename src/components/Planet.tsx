@@ -245,6 +245,15 @@ export const Planet = memo(function Planet({
     geographyManager.setSeed(seed, noiseScale, landThreshold, visualClass);
     geographyManager.initializeTopicRegions();
 
+    const refreshTexture = () => {
+      geographyManager.generateTexture();
+      if (geographyManager.texture) geographyManager.texture.needsUpdate = true;
+      if (geographyManager.displacementMap) geographyManager.displacementMap.needsUpdate = true;
+    };
+
+    const rafId = requestAnimationFrame(refreshTexture);
+    const timeoutId = window.setTimeout(refreshTexture, 80);
+
     const nextTexture = geographyManager.texture ?? null;
     const nextDisplacement = geographyManager.displacementMap ?? null;
 
@@ -264,6 +273,8 @@ export const Planet = memo(function Planet({
 
     return () => {
       geographyManager.onTextureUpdate = null;
+      cancelAnimationFrame(rafId);
+      window.clearTimeout(timeoutId);
     };
   }, [geographyManager, seed, noiseScale, landThreshold, visualClass]);
 
@@ -315,7 +326,7 @@ export const Planet = memo(function Planet({
     <group>
       <mesh ref={planetRef} castShadow receiveShadow frustumCulled>
         <sphereGeometry args={[radius, planetSegments, planetSegments]} />
-        <meshStandardMaterial {...materialProps} />
+        <meshStandardMaterial key={`${texture?.uuid || 'planet'}-${displacementMap?.uuid || 'disp'}`} {...materialProps} />
       </mesh>
 
       <mesh frustumCulled>

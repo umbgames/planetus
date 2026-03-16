@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Rocket, X, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Crosshair, Target, Zap, Flame, Compass, Navigation, LogOut } from 'lucide-react';
+import { Rocket, X, Crosshair, Target, Zap, Flame, Navigation, LogOut } from 'lucide-react';
 import { useShipStore } from '../services/shipStore';
 import { UserData } from '../services/gameManager';
 import { SolarSystemData, PlanetData } from '../services/solarSystem';
@@ -43,6 +43,74 @@ const WeaponCooldown = ({ lastFireTime, cooldownDuration, color }: { lastFireTim
       <div 
         className={`h-full ${color}`} 
         style={{ width: `${progress}%` }}
+      />
+    </div>
+  );
+};
+
+const MobileJoystick = ({ setMobileKeys }: { setMobileKeys: (updater: any) => void }) => {
+  const [stick, setStick] = useState({ x: 0, y: 0 });
+
+  const updateStick = (clientX: number, clientY: number, rect: DOMRect) => {
+    const localX = clientX - rect.left - rect.width / 2;
+    const localY = clientY - rect.top - rect.height / 2;
+    const maxRadius = rect.width * 0.32;
+    const len = Math.hypot(localX, localY) || 1;
+    const clamped = len > maxRadius ? { x: (localX / len) * maxRadius, y: (localY / len) * maxRadius } : { x: localX, y: localY };
+    setStick(clamped);
+    setMobileKeys((k: any) => ({ ...k, w: clamped.y < -12, s: clamped.y > 12, a: clamped.x < -12, d: clamped.x > 12 }));
+  };
+
+  const reset = () => {
+    setStick({ x: 0, y: 0 });
+    setMobileKeys((k: any) => ({ ...k, w: false, a: false, s: false, d: false }));
+  };
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: 28,
+        bottom: 28,
+        width: 140,
+        height: 140,
+        borderRadius: '50%',
+        border: '1px solid rgba(255,255,255,0.16)',
+        background: 'rgba(0,0,0,0.32)',
+        backdropFilter: 'blur(10px)',
+        pointerEvents: 'auto',
+        touchAction: 'none',
+      }}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+        updateStick(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
+      }}
+      onPointerMove={(e) => {
+        if (!(e.currentTarget as HTMLDivElement).hasPointerCapture(e.pointerId)) return;
+        e.stopPropagation();
+        updateStick(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
+      }}
+      onPointerUp={(e) => {
+        e.stopPropagation();
+        reset();
+      }}
+      onPointerCancel={reset}
+    >
+      <div style={{ position: 'absolute', inset: '16%', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.08)' }} />
+      <div
+        style={{
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          width: 54,
+          height: 54,
+          transform: `translate(calc(-50% + ${stick.x}px), calc(-50% + ${stick.y}px))`,
+          borderRadius: '50%',
+          background: 'rgba(34,211,238,0.28)',
+          border: '1px solid rgba(103,232,249,0.65)',
+          boxShadow: '0 0 20px rgba(34,211,238,0.22)',
+        }}
       />
     </div>
   );
@@ -171,13 +239,13 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
                         className={`p-3 rounded-lg border flex items-center justify-between transition-all ${isCurrent ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
                       >
                         <div className="flex flex-col">
-                          <span className={`text-sm font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{(planet.id || '').toUpperCase()}</span>
+                          <span className={`text-sm font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{(planet.name || planet.id || '').toUpperCase()}</span>
                           <span className="text-[10px] text-zinc-500">Radius: {planet.radius.toFixed(1)}</span>
                         </div>
                         {!isCurrent && (
                           <button 
                             className="p-1.5 bg-white/10 hover:bg-cyan-500/40 rounded-md transition-colors"
-                            onClick={() => setLockedTarget({ id: planet.id, type: 'planet' })}
+                            onClick={() => setLockedTarget({ id: planet.id, name: planet.name, type: 'planet' })}
                           >
                             <Target size={14} className={lockedTarget?.id === planet.id ? 'text-cyan-400' : 'text-white'} />
                           </button>
@@ -245,7 +313,7 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
             <div className="text-xs font-bold text-zinc-500 tracking-widest uppercase">Target Locked</div>
             <Target size={14} className="text-cyan-400" />
           </div>
-          <div className="text-lg font-bold text-white mb-1">{(lockedTarget.id || lockedTarget.name || '').toUpperCase()}</div>
+          <div className="text-lg font-bold text-white mb-1">{(lockedTarget.name || lockedTarget.id || '').toUpperCase()}</div>
           <div className="flex items-center justify-between text-[10px] text-zinc-400">
             <span>DISTANCE</span>
             <span className="text-white font-mono">
@@ -353,7 +421,7 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
             {lockedTarget && (
               <div className="absolute flex flex-col items-center gap-2 mt-20">
                 <div className="text-cyan-400 text-[10px] font-bold tracking-widest uppercase animate-pulse">Target Locked</div>
-                <div className="text-white text-xs font-mono">{(lockedTarget.id || lockedTarget.name || '').toUpperCase()}</div>
+                <div className="text-white text-xs font-mono">{(lockedTarget.name || lockedTarget.id || '').toUpperCase()}</div>
               </div>
             )}
           </div>
@@ -386,9 +454,9 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
                   <div 
                     key={planet.id} 
                     className={`p-2 rounded-lg border flex items-center justify-between ${isCurrent ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10'}`}
-                    onClick={() => !isCurrent && setLockedTarget({ id: planet.id, type: 'planet' })}
+                    onClick={() => !isCurrent && setLockedTarget({ id: planet.id, name: planet.name, type: 'planet' })}
                   >
-                    <span className={`text-xs font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{(planet.id || '').toUpperCase()}</span>
+                    <span className={`text-xs font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{(planet.name || planet.id || '').toUpperCase()}</span>
                     {lockedTarget?.id === planet.id && <Target size={12} className="text-cyan-400" />}
                   </div>
                 );
@@ -440,31 +508,8 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
             <Target size={24} color={lockedTarget ? '#ff0000' : '#fff'} />
           </button>
           
-          {/* D-Pad */}
-          <div style={{ position: 'absolute', bottom: 40, left: 40, display: 'grid', gridTemplateColumns: 'repeat(3, 60px)', gap: '10px' }}>
-            <div />
-            <button
-              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, w: true})) }}
-              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, w: false})) }}
-              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, w: false})) }}
-              style={{ ...btnStyle, background: mobileKeys.w ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}><ArrowUp /></button>
-            <div />
-            <button
-              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, a: true})) }}
-              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, a: false})) }}
-              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, a: false})) }}
-              style={{ ...btnStyle, background: mobileKeys.a ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}><ArrowLeft /></button>
-            <button
-              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, s: true})) }}
-              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, s: false})) }}
-              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, s: false})) }}
-              style={{ ...btnStyle, background: mobileKeys.s ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}><ArrowDown /></button>
-            <button
-              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, d: true})) }}
-              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, d: false})) }}
-              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, d: false})) }}
-              style={{ ...btnStyle, background: mobileKeys.d ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}><ArrowRight /></button>
-          </div>
+          {/* Flight Joystick */}
+          <MobileJoystick setMobileKeys={setMobileKeys} />
           
           {/* Instructions */}
           <div style={{ position: 'absolute', top: 20, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.5)', fontSize: '12px', textAlign: 'center', pointerEvents: 'none' }}>

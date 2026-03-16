@@ -220,7 +220,7 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
       scale = scale*scale
     }
 
-    groupRef.current.scale.setScalar(scale)
+    groupRef.current.scale.setScalar(scale * 0.45)
 
     if(dist > (isMobile?6:8)){
       highDetailRef.current.visible = false

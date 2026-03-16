@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { geographyManager } from '../services/geography';
 import { BaseData, UserData, gameManager } from '../services/gameManager';
 import { useShipStore } from '../services/shipStore';
-import { SolarSystemData, PlanetData } from '../services/solarSystem';
+import { SolarSystemData, PlanetData, buildScaledOrbitMap, getBodyWorldPosition } from '../services/solarSystem';
 
 interface ShipProps {
   planetRadius: number;
@@ -56,6 +56,7 @@ export function Ship({
   // 2️⃣ Added atmosphere color refs
   const spaceColor = useRef(new THREE.Color('#000000'));
   const skyColor = useRef(new THREE.Color('#cda077'));
+  const orbitMapRef = useRef<Map<string, number>>(new Map());
 
   // Ship state
   const velocity = useRef(new THREE.Vector3());
@@ -86,6 +87,32 @@ export function Ship({
   const [muzzleFlashes, setMuzzleFlashes] = useState<{ id: string; pos: THREE.Vector3; createdAt: number }[]>([]);
 
   const prevPlanetId = useRef(currentPlanetId);
+
+  useEffect(() => {
+    orbitMapRef.current = solarSystem ? buildScaledOrbitMap(solarSystem.bodies) : new Map();
+  }, [solarSystem]);
+
+  useEffect(() => {
+    if (!solarSystem || !currentPlanetId) {
+      skyColor.current.set('#cda077');
+      return;
+    }
+
+    const planet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId);
+    if (!planet) return;
+
+    const colors: Record<string, string> = {
+      lush: '#78b8ff',
+      oceanic: '#4f8dff',
+      desert: '#d9a45a',
+      arid_rocky: '#9b7458',
+      barren_gray: '#8a909b',
+      icy: '#c8ebff',
+      volcanic: '#a85034',
+    };
+
+    skyColor.current.set(colors[planet.visualClass] || '#cda077');
+  }, [solarSystem, currentPlanetId]);
 
   useEffect(() => {
     const syncInterval = setInterval(() => {
@@ -243,14 +270,9 @@ export function Ship({
     frameCount.current++;
     const getPlanetPos = (id: string | null) => {
       if (!id || !solarSystem) return new THREE.Vector3(0, 0, 0);
-      const planet = solarSystem.bodies.find(b => b.id === id) as PlanetData;
+      const planet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === id);
       if (!planet) return new THREE.Vector3(0, 0, 0);
-      const time = state.clock.getElapsedTime();
-      const angle = planet.initialAngle + time * planet.orbitSpeed;
-      const x = Math.cos(angle) * planet.orbitDistance;
-      const z = Math.sin(angle) * planet.orbitDistance;
-      const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
-      return new THREE.Vector3(x, y, z);
+      return getBodyWorldPosition(planet, state.clock.getElapsedTime(), orbitMapRef.current);
     };
 
     const currentPlanetPos = getPlanetPos(currentPlanetId);

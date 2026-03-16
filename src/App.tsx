@@ -15,7 +15,8 @@ import { OtherPlayers } from './components/OtherPlayers';
 import { SpaceStations } from './components/SpaceStations';
 import { ShipUI } from './components/ShipUI';
 import { MarketUI } from './components/MarketUI';
-import { SolarSystemView, getScaledPlanetRadius, VISUAL_SCALE } from './components/SolarSystemView';
+import { SolarSystemView } from './components/SolarSystemView';
+import { getScaledPlanetRadius, VISUAL_SCALE } from './services/solarSystem';
 import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp, ArrowRightLeft, MonitorPlay, Users, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { gameManager, UserData, BaseData, Clan, SpaceStation } from './services/gameManager';
@@ -128,7 +129,7 @@ export default function App() {
         geographyManager.initializeTopicRegions();
         
         // Show welcome message
-        const planetName = planet.id.replace('planet_', 'PLANET-');
+        const planetName = planet.name || planet.id.replace('planet_', 'PLANET-');
         const descriptions = [
           "Entering Orbital Sector",
           "Atmospheric Entry Confirmed",
@@ -905,19 +906,19 @@ export default function App() {
             exit={{ opacity: 0, scale: 1.2 }}
             className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
           >
-            <div className="bg-black/40 backdrop-blur-md px-12 py-8 rounded-3xl border border-white/10 text-center">
+            <div className="px-12 py-8 text-center">
               <motion.div
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.2 }}
               >
-                <div className="text-blue-400 text-xs font-bold tracking-[0.3em] uppercase mb-2">
-                  Welcome to
+                <div className="text-cyan-300/80 text-[11px] font-bold tracking-[0.45em] uppercase mb-3">
+                  Orbital Arrival
                 </div>
-                <h2 className="text-6xl font-black tracking-tighter text-white uppercase italic">
+                <h2 className="text-6xl font-black tracking-[0.08em] text-white uppercase drop-shadow-[0_0_18px_rgba(80,220,255,0.45)]">
                   {welcomeMessage.name}
                 </h2>
-                <div className="h-1 w-24 bg-blue-500 mx-auto mt-6 rounded-full" />
+                <div className="h-px w-40 bg-cyan-400/60 mx-auto mt-5 rounded-full" />
                 <p className="text-zinc-400 mt-6 text-sm font-medium tracking-widest uppercase">
                   {welcomeMessage.desc}
                 </p>
