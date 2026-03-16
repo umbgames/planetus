@@ -47,7 +47,11 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static('dist'));
+    app.use(express.static('dist', { index: false }));
+    app.get('*', (req, res) => {
+      if (req.path.startsWith('/api/')) return res.status(404).end();
+      res.sendFile(new URL('./dist/index.html', import.meta.url).pathname);
+    });
   }
 
   app.listen(PORT, '0.0.0.0', () => {
