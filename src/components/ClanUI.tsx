@@ -6,16 +6,19 @@ import { motion, AnimatePresence } from 'motion/react';
 interface ClanUIProps {
   userData: UserData | null;
   clans: Clan[];
+  activePlayers?: UserData[];
   onClose: () => void;
 }
 
-export const ClanUI: React.FC<ClanUIProps> = ({ userData, clans, onClose }) => {
+export const ClanUI: React.FC<ClanUIProps> = ({ userData, clans, activePlayers = [], onClose }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [clanName, setClanName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
 
   const userClan = clans.find(c => c.id === userData?.clanId);
+  const memberDirectory = new Map(activePlayers.map(player => [player.uid, player.displayName]));
+  if (userData?.uid) memberDirectory.set(userData.uid, userData.displayName);
   const filteredClans = clans.filter(c => 
     c.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -108,7 +111,7 @@ export const ClanUI: React.FC<ClanUIProps> = ({ userData, clans, onClose }) => {
                         <div className="w-8 h-8 bg-zinc-700 rounded-full flex items-center justify-center text-xs font-bold">
                           {memberId === userClan.leaderId ? <Trophy size={14} className="text-yellow-500" /> : <Users size={14} />}
                         </div>
-                        <span className="text-sm text-white">{memberId === userData?.uid ? 'You' : memberId.substring(0, 8)}</span>
+                        <span className="text-sm text-white">{memberId === userData?.uid ? 'You' : (memberDirectory.get(memberId) ?? memberId.substring(0, 8))}</span>
                       </div>
                       {memberId === userClan.leaderId && (
                         <span className="text-[10px] bg-yellow-500/10 text-yellow-500 px-2 py-0.5 rounded border border-yellow-500/20">LEADER</span>
@@ -181,10 +184,10 @@ export const ClanUI: React.FC<ClanUIProps> = ({ userData, clans, onClose }) => {
                           </div>
                           <button 
                             onClick={() => handleJoinClan(clan.id)}
-                            disabled={loading}
+                            disabled={loading || clan.members.includes(userData?.uid || '') || userData?.clanId === clan.id}
                             className="bg-zinc-700 hover:bg-zinc-600 text-white text-xs font-bold py-2 px-4 rounded-lg transition-colors flex items-center gap-2"
                           >
-                            <UserPlus size={14} /> Join
+                            <UserPlus size={14} /> {clan.members.includes(userData?.uid || '') || userData?.clanId === clan.id ? 'Joined' : 'Join'}
                           </button>
                         </div>
                       ))

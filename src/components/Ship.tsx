@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { geographyManager } from '../services/geography';
 import { BaseData, UserData, gameManager } from '../services/gameManager';
 import { useShipStore } from '../services/shipStore';
-import { SolarSystemData, PlanetData } from '../services/solarSystem';
+import { SolarSystemData, PlanetData, buildOrbitMap, getPlanetWorldPosition, VISUAL_SCALE } from '../services/solarSystem';
 
 interface ShipProps {
   planetRadius: number;
@@ -41,6 +41,7 @@ export function Ship({
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
   const [isLocked, setIsLocked] = useState(false);
   const [isLaunching, setIsLaunching] = useState(!initialPosition);
+  const orbitMap = React.useMemo(() => solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>(), [solarSystem]);
   
   // Mobile controls state
   const [isMobile, setIsMobile] = useState(false);
@@ -243,14 +244,10 @@ export function Ship({
     frameCount.current++;
     const getPlanetPos = (id: string | null) => {
       if (!id || !solarSystem) return new THREE.Vector3(0, 0, 0);
-      const planet = solarSystem.bodies.find(b => b.id === id) as PlanetData;
+      const planet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === id);
       if (!planet) return new THREE.Vector3(0, 0, 0);
-      const time = state.clock.getElapsedTime();
-      const angle = planet.initialAngle + time * planet.orbitSpeed;
-      const x = Math.cos(angle) * planet.orbitDistance;
-      const z = Math.sin(angle) * planet.orbitDistance;
-      const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
-      return new THREE.Vector3(x, y, z);
+      const pos = getPlanetWorldPosition(planet, state.clock.getElapsedTime(), orbitMap);
+      return new THREE.Vector3(pos.x, pos.y, pos.z);
     };
 
     const currentPlanetPos = getPlanetPos(currentPlanetId);
@@ -287,7 +284,8 @@ export function Ship({
           const planetPos = getPlanetPos(body.id);
           const distToPlanet = position.current.distanceTo(planetPos);
           
-          if (distToPlanet < (body as PlanetData).radius * 10) {
+          const orbitThreshold = Math.max((body as PlanetData).radius * VISUAL_SCALE.PLANET_RADIUS_MULTIPLIER * 6.5, 18);
+          if (distToPlanet < orbitThreshold) {
             if (setCurrentPlanetId) {
               setCurrentPlanetId(body.id);
             }
@@ -302,7 +300,9 @@ export function Ship({
         const sunPos = new THREE.Vector3(0, 0, 0);
         const distToSun = position.current.distanceTo(sunPos);
         
-        if (distToSun < solarSystem.starRadius * 5) {
+        const currentPlanet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId);
+        const currentPlanetThreshold = currentPlanet ? Math.max(currentPlanet.radius * VISUAL_SCALE.PLANET_RADIUS_MULTIPLIER * 10, 30) : 30;
+        if (distToSun < solarSystem.starRadius * VISUAL_SCALE.STAR_RADIUS_MULTIPLIER * 1.35 && position.current.length() < currentPlanetThreshold) {
           if (setCurrentPlanetId) {
             setCurrentPlanetId(null);
           }

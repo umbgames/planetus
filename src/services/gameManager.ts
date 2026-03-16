@@ -1,4 +1,4 @@
-import { collection, doc, setDoc, getDoc, updateDoc, onSnapshot, query, getDocs, deleteDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, updateDoc, onSnapshot, query, getDocs, deleteDoc, arrayUnion } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import * as THREE from 'three';
 import { geographyManager } from './geography';
@@ -109,10 +109,13 @@ export interface ResourceNode {
 }
 
 class GameManager {
-  private handleSnapshotError(scope: string, error: any) {
-    console.warn(`[Firestore:${scope}]`, error?.code || error?.message || error);
+  private handleListenerError(scope: string, error: any) {
+    if (error?.code === 'permission-denied') {
+      console.warn(`[Firestore] ${scope} listener disabled: insufficient permissions.`);
+      return;
+    }
+    console.error(`[Firestore] ${scope} listener error`, error);
   }
-
   bases: BaseData[] = [];
   userData: UserData | null = null;
   planetStates: { [planetId: string]: PlanetState } = {};
@@ -232,7 +235,7 @@ class GameManager {
         this.userData = data;
         if (this.onUserDataUpdate) this.onUserDataUpdate(this.userData);
       }
-    }, (error) => this.handleSnapshotError('user', error));
+    }, (error) => this.handleListenerError('user', error));
   }
 
   listenToBases() {
@@ -251,7 +254,7 @@ class GameManager {
       
       if (this.onBasesUpdate) this.onBasesUpdate(this.bases);
       this.updateHegemony(); // Recalculate hegemon when bases change
-    }, (error) => this.handleSnapshotError('bases', error));
+    }, (error) => this.handleListenerError('bases', error));
   }
 
   listenToPlanetStates() {
@@ -264,7 +267,7 @@ class GameManager {
       this.planetStates = states;
       if (this.onPlanetStatesUpdate) this.onPlanetStatesUpdate(states);
       this.processTaxes();
-    }, (error) => this.handleSnapshotError('planet_states', error));
+    }, (error) => this.handleListenerError('planet_states', error));
   }
 
   private hegemonyInterval: any = null;
@@ -383,7 +386,7 @@ class GameManager {
     this.unsubscribeMarket = onSnapshot(collection(db, 'market_offers'), (snapshot) => {
       this.marketOffers = snapshot.docs.map(doc => doc.data() as MarketOffer);
       if (this.onMarketOffersUpdate) this.onMarketOffersUpdate(this.marketOffers);
-    }, (error) => this.handleSnapshotError('market_offers', error));
+    }, (error) => this.handleListenerError('market', error));
   }
 
   listenToSatellites() {
@@ -405,7 +408,7 @@ class GameManager {
       });
       this.satelliteUsers = satUsers;
       if (this.onSatelliteUsersUpdate) this.onSatelliteUsersUpdate(satUsers);
-    });
+    }, (error) => this.handleListenerError('satellites', error));
   }
 
   addResourceListener(listener: (resources: ResourceNode[]) => void) {
@@ -423,7 +426,7 @@ class GameManager {
     this.unsubscribeResources = onSnapshot(collection(db, 'resources'), (snapshot) => {
       this.resources = snapshot.docs.map(doc => doc.data() as ResourceNode);
       this.resourceListeners.forEach(listener => listener(this.resources));
-    }, (error) => this.handleSnapshotError('resources', error));
+    }, (error) => this.handleListenerError('resources', error));
   }
 
   async initializeNPCBases() {
@@ -596,7 +599,7 @@ class GameManager {
         });
       
       if (this.onActivePlayersUpdate) this.onActivePlayersUpdate(players);
-    });
+    }, (error) => this.handleListenerError('active_players', error));
   }
 
   listenToSpaceStations() {
@@ -604,7 +607,7 @@ class GameManager {
     this.unsubscribeSpaceStations = onSnapshot(collection(db, 'space_stations'), (snapshot) => {
       this.spaceStations = snapshot.docs.map(doc => doc.data() as SpaceStation);
       if (this.onSpaceStationsUpdate) this.onSpaceStationsUpdate(this.spaceStations);
-    }, (error) => this.handleSnapshotError('space_stations', error));
+    }, (error) => this.handleListenerError('space_stations', error));
   }
 
   listenToClans() {
@@ -612,7 +615,7 @@ class GameManager {
     this.unsubscribeClans = onSnapshot(collection(db, 'clans'), (snapshot) => {
       this.clans = snapshot.docs.map(doc => doc.data() as Clan);
       if (this.onClansUpdate) this.onClansUpdate(this.clans);
-    }, (error) => this.handleSnapshotError('clans', error));
+    }, (error) => this.handleListenerError('clans', error));
   }
 
   async createClan(name: string) {
@@ -645,12 +648,9 @@ class GameManager {
     if (!clanSnap.exists()) throw new Error("Clan not found.");
     
     const clan = clanSnap.data() as Clan;
-    if (clan.members.includes(auth.currentUser.uid)) {
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), { clanId });
-      return;
-    }
+    if (clan.members.includes(auth.currentUser.uid)) throw new Error('Already in this clan.');
     await updateDoc(clanRef, {
-      members: [...clan.members, auth.currentUser.uid]
+      members: arrayUnion(auth.currentUser.uid)
     });
     await updateDoc(doc(db, 'users', auth.currentUser.uid), { clanId });
   }

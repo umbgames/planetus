@@ -19,6 +19,7 @@ export class GeographyManager {
   texture: THREE.CanvasTexture | null = null;
   displacementMap: THREE.CanvasTexture | null = null;
   onTextureUpdate: ((texture: THREE.CanvasTexture, displacementMap: THREE.CanvasTexture) => void) | null = null;
+  private textureCache = new Map<string, { texture: THREE.CanvasTexture; displacementMap: THREE.CanvasTexture }>();
   
   private prng: () => number;
   private noise3D: (x: number, y: number, z: number) => number;
@@ -234,56 +235,9 @@ export class GeographyManager {
   dispCtx: CanvasRenderingContext2D | null = null;
   dispImgData: ImageData | null = null;
 
-  private textureCacheKey(kind: 'color' | 'disp') {
-    return `planet_texture_${kind}_${this.seed}_${this.visualClass}_${this.noiseScale}_${this.landThreshold}`;
-  }
-
-  private buildTextureFromImage(img: HTMLImageElement, isColor: boolean) {
-    const texture = new THREE.Texture(img);
-    if (isColor) texture.colorSpace = THREE.SRGBColorSpace;
-    texture.minFilter = THREE.LinearFilter;
-    texture.magFilter = THREE.LinearFilter;
-    texture.needsUpdate = true;
-    return texture;
-  }
-
-  private tryLoadCachedTexture() {
-    try {
-      const colorSrc = localStorage.getItem(this.textureCacheKey('color'));
-      const dispSrc = localStorage.getItem(this.textureCacheKey('disp'));
-      if (!colorSrc || !dispSrc) return false;
-
-      const colorImg = new Image();
-      const dispImg = new Image();
-      let ready = 0;
-      const finalize = () => {
-        ready += 1;
-        if (ready === 2) {
-          this.texture = this.buildTextureFromImage(colorImg, true) as any;
-          this.displacementMap = this.buildTextureFromImage(dispImg, false) as any;
-          if (this.onTextureUpdate && this.texture && this.displacementMap) {
-            this.onTextureUpdate(this.texture as any, this.displacementMap as any);
-          }
-        }
-      };
-      colorImg.onload = finalize;
-      dispImg.onload = finalize;
-      colorImg.src = colorSrc;
-      dispImg.src = dispSrc;
-      return true;
-    } catch (error) {
-      console.warn('Cached texture load failed', error);
-      return false;
-    }
-  }
-
   generateTexture() {
     const width = 1024;
     const height = 512;
-
-    if (!this.texture && !this.displacementMap && this.tryLoadCachedTexture()) {
-      return;
-    }
     
     if (!this.canvas) {
       try {
@@ -455,13 +409,7 @@ export class GeographyManager {
     this.texture.needsUpdate = true;
     this.displacementMap.needsUpdate = true;
 
-    try {
-      localStorage.setItem(this.textureCacheKey('color'), this.canvas!.toDataURL('image/webp', 0.82));
-      localStorage.setItem(this.textureCacheKey('disp'), this.dispCanvas!.toDataURL('image/webp', 0.82));
-    } catch (error) {
-      console.warn('Planet texture cache write skipped', error);
-    }
-
+    this.textureCache.set(`${this.seed}:${this.noiseScale}:${this.landThreshold}:${this.visualClass}`, { texture: this.texture, displacementMap: this.displacementMap });
     if (this.onTextureUpdate) {
       this.onTextureUpdate(this.texture, this.displacementMap);
     }

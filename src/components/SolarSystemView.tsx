@@ -1,7 +1,7 @@
 import React, { useRef, useMemo, useState, memo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { SolarSystemData, PlanetData, AsteroidBeltData } from '../services/solarSystem';
+import { SolarSystemData, PlanetData, AsteroidBeltData, getScaledPlanetRadius, VISUAL_SCALE, buildOrbitMap, getPlanetWorldPosition } from '../services/solarSystem';
 import { Planet } from './Planet';
 import { Sun } from './Sun';
 import { createPRNG } from '../utils/random';
@@ -13,62 +13,6 @@ interface SolarSystemViewProps {
   setCurrentPlanetId: (id: string | null) => void;
 }
 
-/**
- * Visual tuning constants.
- * These do NOT change the simulation data itself.
- * They only remap sizes/distances for presentation.
- */
-export const VISUAL_SCALE = {
-  STAR_RADIUS_MULTIPLIER: 4.5,      // makes sun feel dominant
-  PLANET_RADIUS_MULTIPLIER: 0.9,    // slightly reduce planets if they feel too big
-  ORBIT_DISTANCE_MULTIPLIER: 2.8,   // spreads planets farther apart
-  MIN_ORBIT_GAP: 18,                // minimum spacing between consecutive orbit bands
-  ASTEROID_DISTANCE_MULTIPLIER: 2.8,
-  ASTEROID_WIDTH_MULTIPLIER: 1.4,
-  PLANET_LOD_DISTANCE_MULTIPLIER: 1.8,
-};
-
-export function getScaledPlanetRadius(radius: number) {
-  return radius * VISUAL_SCALE.PLANET_RADIUS_MULTIPLIER;
-}
-
-function buildOrbitMap(bodies: SolarSystemData['bodies']) {
-  const planets = bodies
-    .filter((b): b is PlanetData => b.type === 'planet')
-    .slice()
-    .sort((a, b) => a.orbitDistance - b.orbitDistance);
-
-  const scaledOrbitMap = new Map<string, number>();
-
-  let lastScaledOrbit = 0;
-  let lastOriginalOrbit = 0;
-
-  planets.forEach((planet, index) => {
-    const baseScaled =
-      planet.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
-
-    if (index === 0) {
-      scaledOrbitMap.set(planet.id, baseScaled);
-      lastScaledOrbit = baseScaled;
-      lastOriginalOrbit = planet.orbitDistance;
-      return;
-    }
-
-    const originalGap = planet.orbitDistance - lastOriginalOrbit;
-    const scaledGap = Math.max(
-      originalGap * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER,
-      VISUAL_SCALE.MIN_ORBIT_GAP
-    );
-
-    const nextOrbit = lastScaledOrbit + scaledGap;
-    scaledOrbitMap.set(planet.id, nextOrbit);
-
-    lastScaledOrbit = nextOrbit;
-    lastOriginalOrbit = planet.orbitDistance;
-  });
-
-  return scaledOrbitMap;
-}
 
 interface OrbitingPlanetProps {
   planet: PlanetData;
@@ -102,16 +46,7 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
     if (!groupRef.current) return;
 
     const time = state.clock.getElapsedTime();
-    const angle = planet.initialAngle + time * planet.orbitSpeed;
-
-    const x = Math.cos(angle) * scaledOrbitDistance;
-    const z = Math.sin(angle) * scaledOrbitDistance;
-
-    // Preserve orbital tilt look
-    const y =
-      x * Math.sin(planet.orbitTiltZ) +
-      z * Math.sin(planet.orbitTiltX);
-
+    const { x, y, z } = getPlanetWorldPosition(planet, time, new Map([[planet.id, scaledOrbitDistance]]));
     groupRef.current.position.set(x, y, z);
 
     // axial spin
@@ -285,14 +220,7 @@ export function SolarSystemView({
           planet.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
 
         const time = state.clock.getElapsedTime();
-        const angle = planet.initialAngle + time * planet.orbitSpeed;
-
-        const x = Math.cos(angle) * scaledOrbitDistance;
-        const z = Math.sin(angle) * scaledOrbitDistance;
-        const y =
-          x * Math.sin(planet.orbitTiltZ) +
-          z * Math.sin(planet.orbitTiltX);
-
+        const { x, y, z } = getPlanetWorldPosition(planet, time, orbitMap);
         groupRef.current.position.set(-x, -y, -z);
       }
     } else {

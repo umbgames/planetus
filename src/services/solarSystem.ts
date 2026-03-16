@@ -4,6 +4,7 @@ export type PlanetVisualClass = 'lush' | 'oceanic' | 'desert' | 'arid_rocky' | '
 
 export interface PlanetData {
   id: string;
+  name: string;
   type: 'planet';
   radius: number;
   orbitDistance: number;
@@ -34,6 +35,69 @@ export interface SolarSystemData {
   seed: string;
   starRadius: number;
   bodies: OrbitalBody[];
+}
+
+export const VISUAL_SCALE = {
+  STAR_RADIUS_MULTIPLIER: 4.5,
+  PLANET_RADIUS_MULTIPLIER: 0.9,
+  ORBIT_DISTANCE_MULTIPLIER: 2.8,
+  MIN_ORBIT_GAP: 18,
+  ASTEROID_DISTANCE_MULTIPLIER: 2.8,
+  ASTEROID_WIDTH_MULTIPLIER: 1.4,
+  PLANET_LOD_DISTANCE_MULTIPLIER: 1.8,
+};
+
+const PLANET_NAME_POOL = [
+  'Astra','Veyra','Noxis','Cindor','Lyra','Orin','Kairo','Zephra','Solis','Drava',
+  'Nyra','Talos','Erynd','Mira','Kest','Vorin','Axiom','Sable','Ivara','Pyra',
+  'Riven','Caelum','Drax','Eldra','Vanta','Koris','Thalos','Bront','Myra','Zenith'
+];
+
+export function getScaledPlanetRadius(radius: number) {
+  return radius * VISUAL_SCALE.PLANET_RADIUS_MULTIPLIER;
+}
+
+export function buildOrbitMap(bodies: SolarSystemData['bodies']) {
+  const planets = bodies
+    .filter((b): b is PlanetData => b.type === 'planet')
+    .slice()
+    .sort((a, b) => a.orbitDistance - b.orbitDistance);
+
+  const scaledOrbitMap = new Map<string, number>();
+  let lastScaledOrbit = 0;
+  let lastOriginalOrbit = 0;
+
+  planets.forEach((planet, index) => {
+    const baseScaled = planet.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
+    if (index === 0) {
+      scaledOrbitMap.set(planet.id, baseScaled);
+      lastScaledOrbit = baseScaled;
+      lastOriginalOrbit = planet.orbitDistance;
+      return;
+    }
+    const originalGap = planet.orbitDistance - lastOriginalOrbit;
+    const scaledGap = Math.max(originalGap * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER, VISUAL_SCALE.MIN_ORBIT_GAP);
+    const nextOrbit = lastScaledOrbit + scaledGap;
+    scaledOrbitMap.set(planet.id, nextOrbit);
+    lastScaledOrbit = nextOrbit;
+    lastOriginalOrbit = planet.orbitDistance;
+  });
+
+  return scaledOrbitMap;
+}
+
+export function getPlanetWorldPosition(planet: PlanetData, elapsedTime: number, orbitMap?: Map<string, number>) {
+  const orbitDistance = orbitMap?.get(planet.id) ?? planet.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
+  const angle = planet.initialAngle + elapsedTime * planet.orbitSpeed;
+  const x = Math.cos(angle) * orbitDistance;
+  const z = Math.sin(angle) * orbitDistance;
+  const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
+  return { x, y, z };
+}
+
+export function getPlanetDisplayName(planetId: string, solarSystem?: SolarSystemData | null) {
+  const named = solarSystem?.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === planetId);
+  return named?.name ?? planetId.replace('planet_', 'PLANET-');
 }
 
 function hashString(str: string): string {
@@ -97,6 +161,7 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
 
       bodies.push({
         id: `planet_${i}`,
+        name: PLANET_NAME_POOL[i % PLANET_NAME_POOL.length],
         type: 'planet',
         radius: bodyPrng() * 6 + 4, // 4 to 10
         orbitDistance: orbitDistance,

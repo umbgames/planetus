@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Rocket, X, Crosshair, Target, Zap, Flame, Compass, Navigation, LogOut } from 'lucide-react';
 import { useShipStore } from '../services/shipStore';
 import { UserData } from '../services/gameManager';
-import { SolarSystemData, PlanetData } from '../services/solarSystem';
+import { SolarSystemData, PlanetData, getPlanetDisplayName } from '../services/solarSystem';
 import * as THREE from 'three';
 
 interface ShipUIProps {
@@ -48,64 +48,9 @@ const WeaponCooldown = ({ lastFireTime, cooldownDuration, color }: { lastFireTim
   );
 };
 
-
-function VirtualJoystick({ mobileKeys, setMobileKeys }: { mobileKeys: any; setMobileKeys: any }) {
-  const [knob, setKnob] = useState({ x: 0, y: 0 });
-  const radius = 34;
-
-  const updateFromPoint = (clientX: number, clientY: number, rect: DOMRect) => {
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    let dx = clientX - centerX;
-    let dy = clientY - centerY;
-    const dist = Math.hypot(dx, dy);
-    if (dist > radius) {
-      const scale = radius / dist;
-      dx *= scale;
-      dy *= scale;
-    }
-    setKnob({ x: dx, y: dy });
-    setMobileKeys((k: any) => ({
-      ...k,
-      w: dy < -12,
-      s: dy > 12,
-      a: dx < -12,
-      d: dx > 12,
-    }));
-  };
-
-  const reset = () => {
-    setKnob({ x: 0, y: 0 });
-    setMobileKeys((k: any) => ({ ...k, w: false, a: false, s: false, d: false }));
-  };
-
-  return (
-    <div
-      style={{ position: 'absolute', left: 24, bottom: 28, width: 120, height: 120, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(8px)', pointerEvents: 'auto', touchAction: 'none' }}
-      onPointerDown={(e) => {
-        e.stopPropagation();
-        (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
-        updateFromPoint(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
-      }}
-      onPointerMove={(e) => {
-        if ((e.buttons & 1) !== 1) return;
-        e.stopPropagation();
-        updateFromPoint(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
-      }}
-      onPointerUp={(e) => {
-        e.stopPropagation();
-        reset();
-      }}
-      onPointerCancel={reset}
-    >
-      <div style={{ position: 'absolute', inset: 18, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.08)' }} />
-      <div style={{ position: 'absolute', left: `calc(50% - 22px + ${knob.x}px)`, top: `calc(50% - 22px + ${knob.y}px)`, width: 44, height: 44, borderRadius: '50%', background: mobileKeys.w || mobileKeys.a || mobileKeys.s || mobileKeys.d ? 'rgba(34,211,238,0.75)' : 'rgba(255,255,255,0.22)', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 0 18px rgba(34,211,238,0.18)' }} />
-      <div style={{ position: 'absolute', bottom: -24, width: '100%', textAlign: 'center', color: 'rgba(255,255,255,0.5)', fontSize: 10, letterSpacing: '0.22em', textTransform: 'uppercase' }}>Stick</div>
-    </div>
-  );
-}
-
 export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurrentPlanetId }: ShipUIProps) {
+  const joystickBaseRef = useRef<HTMLDivElement | null>(null);
+  const joystickPointerId = useRef<number | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const { mobileKeys, setMobileKeys, isBoosting, setIsBoosting, lockedTarget, setLockedTarget, lastMgFire, lastMissileFire, shipPosition, velocity, altitude, health, shield, boostEnergy, isJumping, setIsJumping } = useShipStore();
   const [showNav, setShowNav] = useState(false);
@@ -197,7 +142,7 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
                 <Navigation className="text-cyan-400" size={24} />
                 <div>
                   <div className="text-white font-bold tracking-wider">NAVIGATION</div>
-                  <div className="text-zinc-400 text-xs">{currentPlanetId || 'Deep Space'}</div>
+                  <div className="text-zinc-400 text-xs">{currentPlanetId ? getPlanetDisplayName(currentPlanetId, solarSystem) : 'Deep Space'}</div>
                 </div>
               </div>
 
@@ -497,8 +442,45 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
             <Target size={24} color={lockedTarget ? '#ff0000' : '#fff'} />
           </button>
           
-          <VirtualJoystick mobileKeys={mobileKeys} setMobileKeys={setMobileKeys} />
-
+          {/* Joystick */}
+          <div style={{ position: 'absolute', bottom: 36, left: 36, width: 128, height: 128 }}>
+            <div
+              ref={joystickBaseRef}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                joystickPointerId.current = e.pointerId;
+                const el = joystickBaseRef.current;
+                if (!el) return;
+                const rect = el.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                const dx = e.clientX - cx;
+                const dy = e.clientY - cy;
+                const deadZone = 12;
+                setMobileKeys((k: any) => ({ ...k, w: dy < -deadZone, s: dy > deadZone, a: dx < -deadZone, d: dx > deadZone }));
+              }}
+              onPointerMove={(e) => {
+                if (joystickPointerId.current !== e.pointerId) return;
+                e.stopPropagation();
+                const el = joystickBaseRef.current;
+                if (!el) return;
+                const rect = el.getBoundingClientRect();
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                const dx = e.clientX - cx;
+                const dy = e.clientY - cy;
+                const deadZone = 10;
+                setMobileKeys((k: any) => ({ ...k, w: dy < -deadZone, s: dy > deadZone, a: dx < -deadZone, d: dx > deadZone }));
+              }}
+              onPointerUp={(e) => { if (joystickPointerId.current === e.pointerId) { joystickPointerId.current = null; setMobileKeys((k: any) => ({ ...k, w: false, a: false, s: false, d: false })); } }}
+              onPointerLeave={(e) => { if (joystickPointerId.current === e.pointerId) { joystickPointerId.current = null; setMobileKeys((k: any) => ({ ...k, w: false, a: false, s: false, d: false })); } }}
+              style={{ width: 128, height: 128, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.12)', background: 'radial-gradient(circle, rgba(255,255,255,0.10) 0%, rgba(0,0,0,0.35) 70%)', position: 'relative', touchAction: 'none' }}
+            >
+              <div
+                style={{ width: 42, height: 42, borderRadius: '50%', position: 'absolute', left: mobileKeys.a ? 18 : mobileKeys.d ? 68 : 43, top: mobileKeys.w ? 18 : mobileKeys.s ? 68 : 43, background: 'rgba(255,255,255,0.22)', border: '1px solid rgba(255,255,255,0.2)', boxShadow: '0 0 20px rgba(34,211,238,0.18)' }}
+              />
+            </div>
+          </div>
           {/* Instructions */}
           <div style={{ position: 'absolute', top: 20, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.5)', fontSize: '12px', textAlign: 'center', pointerEvents: 'none' }}>
             Right side: Look around

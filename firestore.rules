@@ -103,7 +103,6 @@ service cloud.firestore {
     function isValidBase(data) {
       return data.id is string &&
              data.ownerId is string &&
-             data.ownerName is string && data.ownerName.size() > 0 && data.ownerName.size() < 80 &&
              (!('clanId' in data) || data.clanId == null || data.clanId is string) &&
              data.zone in ['high', 'mid', 'low'] &&
              data.level is number &&
@@ -130,10 +129,9 @@ service cloud.firestore {
     }
 
     function isValidSpaceStation(data) {
-      return hasOnlyAllowedFields(['id', 'ownerId', 'ownerName', 'clanId', 'planetId', 'position', 'orbitRadius', 'orbitSpeed', 'initialAngle', 'health', 'maxHealth', 'isControlled', 'controlledBy', 'createdAt']) &&
+      return hasOnlyAllowedFields(['id', 'ownerId', 'clanId', 'planetId', 'position', 'orbitRadius', 'orbitSpeed', 'initialAngle', 'health', 'maxHealth', 'isControlled', 'controlledBy', 'createdAt']) &&
              data.id is string &&
              data.ownerId is string &&
-             data.ownerName is string && data.ownerName.size() > 0 && data.ownerName.size() < 80 &&
              (!('clanId' in data) || data.clanId == null || data.clanId is string) &&
              data.planetId is string &&
              data.position is map &&
