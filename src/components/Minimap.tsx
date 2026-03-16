@@ -6,6 +6,8 @@ interface MinimapProps {
   solarSystem: SolarSystemData | null;
   currentPlanetId: string | null;
   shipPosition: THREE.Vector3;
+  shipHeading?: number;
+  onSelectPlanet?: (planetId: string) => void;
 }
 
 function getPlanetWorldPosition(planet: PlanetData, elapsedSeconds: number) {
@@ -16,7 +18,13 @@ function getPlanetWorldPosition(planet: PlanetData, elapsedSeconds: number) {
   return new THREE.Vector3(x, y, z);
 }
 
-export const Minimap: React.FC<MinimapProps> = ({ solarSystem, currentPlanetId, shipPosition }) => {
+export const Minimap: React.FC<MinimapProps> = ({
+  solarSystem,
+  currentPlanetId,
+  shipPosition,
+  shipHeading = 0,
+  onSelectPlanet,
+}) => {
   const size = 220;
   const padding = 18;
   const innerSize = size - padding * 2;
@@ -58,7 +66,7 @@ export const Minimap: React.FC<MinimapProps> = ({ solarSystem, currentPlanetId, 
         color,
         x: size / 2 + worldPos.x * scale,
         y: size / 2 + worldPos.z * scale,
-        radius: planet.id === currentPlanetId ? 4 : 2.5,
+        radius: planet.id === currentPlanetId ? 4.5 : 3,
       };
     });
 
@@ -74,51 +82,58 @@ export const Minimap: React.FC<MinimapProps> = ({ solarSystem, currentPlanetId, 
 
   return (
     <div
-      className="absolute bottom-6 right-6 bg-black/70 backdrop-blur border border-cyan-400/20 rounded-full overflow-hidden shadow-2xl"
+      className="absolute bottom-6 right-6 bg-black/70 backdrop-blur border border-cyan-400/20 rounded-full overflow-hidden shadow-2xl pointer-events-auto"
       style={{ width: size, height: size }}
     >
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        {solarSystem?.bodies.filter((b): b is PlanetData => b.type === 'planet').map((planet) => (
-          <circle
-            key={`orbit-${planet.id}`}
-            cx={size / 2}
-            cy={size / 2}
-            r={planet.orbitDistance * mapData.scale}
-            fill="none"
-            stroke="rgba(255,255,255,0.08)"
-            strokeWidth="1"
-          />
-        ))}
-
-        <circle cx={size / 2} cy={size / 2} r={5} fill="#fbbf24" className="animate-pulse" />
-
-        {mapData.planets.map((planet) => (
-          <g key={`planet-${planet.id}`}>
+        <g transform={`rotate(${(-shipHeading * 180) / Math.PI}, ${size / 2}, ${size / 2})`}>
+          {solarSystem?.bodies.filter((b): b is PlanetData => b.type === 'planet').map((planet) => (
             <circle
-              cx={planet.x}
-              cy={planet.y}
-              r={planet.radius}
-              fill={planet.color}
-              stroke={planet.id === currentPlanetId ? '#ffffff' : 'transparent'}
-              strokeWidth={planet.id === currentPlanetId ? 1.5 : 0}
+              key={`orbit-${planet.id}`}
+              cx={size / 2}
+              cy={size / 2}
+              r={planet.orbitDistance * mapData.scale}
+              fill="none"
+              stroke="rgba(255,255,255,0.08)"
+              strokeWidth="1"
             />
-            {planet.id === currentPlanetId && (
+          ))}
+
+          <circle cx={size / 2} cy={size / 2} r={5} fill="#fbbf24" className="animate-pulse" />
+
+          {mapData.planets.map((planet) => (
+            <g
+              key={`planet-${planet.id}`}
+              className="cursor-pointer"
+              onClick={() => onSelectPlanet?.(planet.id)}
+            >
+              <circle cx={planet.x} cy={planet.y} r={Math.max(10, planet.radius + 5)} fill="transparent" />
               <circle
                 cx={planet.x}
                 cy={planet.y}
-                r={9}
-                fill="none"
-                stroke={planet.color}
-                strokeWidth="1"
-                className="animate-ping"
+                r={planet.radius}
+                fill={planet.color}
+                stroke={planet.id === currentPlanetId ? '#ffffff' : 'transparent'}
+                strokeWidth={planet.id === currentPlanetId ? 1.5 : 0}
               />
-            )}
-          </g>
-        ))}
+              {planet.id === currentPlanetId && (
+                <circle
+                  cx={planet.x}
+                  cy={planet.y}
+                  r={9}
+                  fill="none"
+                  stroke={planet.color}
+                  strokeWidth="1"
+                  className="animate-ping"
+                />
+              )}
+            </g>
+          ))}
+        </g>
 
         <g transform={`translate(${mapData.shipMarker.x}, ${mapData.shipMarker.y})`}>
-          <path d="M 0,-6 L 4,5 L 0,2 L -4,5 Z" fill="#22d3ee" />
-          <circle cx="0" cy="0" r="10" fill="none" stroke="rgba(34,211,238,0.35)" strokeWidth="1" />
+          <circle cx="0" cy="0" r="12" fill="rgba(34,211,238,0.12)" stroke="rgba(34,211,238,0.35)" strokeWidth="1" />
+          <path d="M 0,-7 L 5,6 L 0,3 L -5,6 Z" fill="#22d3ee" />
         </g>
       </svg>
 
@@ -127,7 +142,7 @@ export const Minimap: React.FC<MinimapProps> = ({ solarSystem, currentPlanetId, 
         <div className="h-full w-px bg-white/5" />
       </div>
 
-      <div className="absolute bottom-2 left-0 w-full text-center">
+      <div className="absolute bottom-2 left-0 w-full text-center pointer-events-none">
         <span className="text-[10px] font-mono text-white/50 uppercase tracking-widest">Navigation System</span>
       </div>
     </div>

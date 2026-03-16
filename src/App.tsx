@@ -24,6 +24,7 @@ import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { geographyManager } from './services/geography';
 import { useShipStore } from './services/shipStore';
 import { generateSolarSystem, SolarSystemData, PlanetData } from './services/solarSystem';
+import { prewarmTextureKitchen } from './services/textureKitchen';
 
 export const planetRotationRef = { current: 0 };
 
@@ -96,6 +97,10 @@ export default function App() {
   const [currentPlanetId, setCurrentPlanetId] = useState<string | null>(null);
   const [solarSystem, setSolarSystem] = useState<SolarSystemData | null>(null);
   const [welcomeMessage, setWelcomeMessage] = useState<{ name: string, desc: string } | null>(null);
+  const [isLoadingWorld, setIsLoadingWorld] = useState(true);
+  const [loadingStatus, setLoadingStatus] = useState('Initializing texture kitchen');
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [shipHeading, setShipHeading] = useState(0);
 
   const currentPlanetRadius = useMemo(() => {
     if (!solarSystem) return getScaledPlanetRadius(PLANET_RADIUS);
@@ -105,19 +110,39 @@ export default function App() {
   }, [solarSystem, currentPlanetId]);
 
   useEffect(() => {
-    // Generate solar system deterministically
-    // In a real multiplayer game, this seed would come from the server
     const seed = "alpha_centauri_v1";
     const system = generateSolarSystem(seed);
     setSolarSystem(system);
-    
-    // Set the singleton geographyManager to the first planet's seed
+
     const firstPlanet = system.bodies.find(b => b.type === 'planet') as PlanetData;
     if (firstPlanet) {
       geographyManager.setSeed(firstPlanet.id, firstPlanet.noiseScale, firstPlanet.landThreshold, firstPlanet.visualClass);
       setCurrentPlanetId(firstPlanet.id);
     }
-  }, []);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        await prewarmTextureKitchen(system, isMobile, (progress) => {
+          if (cancelled) return;
+          setLoadingStatus(progress.label);
+          setLoadingProgress(progress.total > 0 ? progress.completed / progress.total : 1);
+        });
+      } finally {
+        if (!cancelled) {
+          setLoadingProgress(1);
+          setLoadingStatus('Launch ready');
+          setTimeout(() => {
+            if (!cancelled) setIsLoadingWorld(false);
+          }, 300);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isMobile]);
 
 
   useEffect(() => {
@@ -547,6 +572,29 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      <AnimatePresence>
+        {isLoadingWorld && (
+          <motion.div
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[70] bg-black flex items-center justify-center"
+          >
+            <div className="w-[min(520px,92vw)] rounded-3xl border border-cyan-400/20 bg-zinc-950/90 backdrop-blur-xl p-8">
+              <div className="text-cyan-400 text-xs font-bold tracking-[0.35em] uppercase mb-3">Loading</div>
+              <h2 className="text-4xl font-black tracking-tight text-white mb-3">Texture Kitchen</h2>
+              <p className="text-zinc-400 text-sm mb-6">Pre-baking planetary textures, atmosphere palettes, and navigation data for smoother travel.</p>
+              <div className="h-3 w-full bg-zinc-800 rounded-full overflow-hidden border border-white/5">
+                <motion.div className="h-full bg-cyan-400" animate={{ width: `${Math.round(loadingProgress * 100)}%` }} />
+              </div>
+              <div className="mt-4 flex items-center justify-between text-xs">
+                <span className="text-zinc-300">{loadingStatus}</span>
+                <span className="text-cyan-300 font-mono">{Math.round(loadingProgress * 100)}%</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 3D Canvas */}
       <Canvas shadows={!isMobile} camera={{ position: [0, 0, 25], fov: 45, near: 0.0001, far: 1000000 } } dpr={isMobile ? [1, 1.5] : [1, 2]} performance={{ min: 0.5 }}>
         <ambientLight intensity={0.2} />
@@ -601,6 +649,7 @@ export default function App() {
             currentPlanetId={currentPlanetId}
             setCurrentPlanetId={setCurrentPlanetId}
             solarSystem={solarSystem}
+            onShipHeadingChange={setShipHeading}
           />
         )}
 
@@ -953,6 +1002,15 @@ export default function App() {
         solarSystem={solarSystem}
         currentPlanetId={currentPlanetId}
         shipPosition={shipPosition || new THREE.Vector3()}
+        shipHeading={shipHeading}
+        onSelectPlanet={(planetId) => {
+          setCurrentPlanetId(planetId);
+          const planet = solarSystem?.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === planetId);
+          if (planet) {
+            setTargetId(null);
+            useShipStore.getState().setLockedTarget({ id: planetId, type: 'planet', position: new THREE.Vector3() } as any);
+          }
+        }}
       />
 
       {/* Targeting UI */}

@@ -12,6 +12,7 @@ export interface Region {
 }
 
 export class GeographyManager {
+  private static textureCanvasCache = new Map<string, { color: HTMLCanvasElement; displacement: HTMLCanvasElement }>();
   regions: Region[] = [];
   noiseScale = 1.5;
   landThreshold = 0.2;
@@ -32,6 +33,53 @@ export class GeographyManager {
     this.noise3D = createNoise3D(this.prng);
     this.tempNoise3D = createNoise3D(createPRNG(this.seed + '_temp'));
     this.humidNoise3D = createNoise3D(createPRNG(this.seed + '_humid'));
+  }
+
+  private getTextureCacheKey() {
+    const { width, height } = this.textureResolution;
+    return [this.seed, this.noiseScale, this.landThreshold, this.visualClass, width, height].join('|');
+  }
+
+  private applyCachedTextures() {
+    const cached = GeographyManager.textureCanvasCache.get(this.getTextureCacheKey());
+    if (!cached) return false;
+
+    this.texture = new THREE.CanvasTexture(cached.color);
+    this.texture.colorSpace = THREE.SRGBColorSpace;
+    this.texture.wrapS = THREE.RepeatWrapping;
+    this.texture.wrapT = THREE.ClampToEdgeWrapping;
+    this.texture.anisotropy = 8;
+    this.texture.needsUpdate = true;
+
+    this.displacementMap = new THREE.CanvasTexture(cached.displacement);
+    this.displacementMap.wrapS = THREE.RepeatWrapping;
+    this.displacementMap.wrapT = THREE.ClampToEdgeWrapping;
+    this.displacementMap.needsUpdate = true;
+
+    if (this.onTextureUpdate && this.texture && this.displacementMap) {
+      this.onTextureUpdate(this.texture, this.displacementMap);
+    }
+    return true;
+  }
+
+  private storeCurrentTexturesInCache() {
+    if (!this.canvas || !this.dispCanvas) return;
+
+    const color = document.createElement('canvas');
+    color.width = this.canvas.width;
+    color.height = this.canvas.height;
+    color.getContext('2d')?.drawImage(this.canvas, 0, 0);
+
+    const displacement = document.createElement('canvas');
+    displacement.width = this.dispCanvas.width;
+    displacement.height = this.dispCanvas.height;
+    displacement.getContext('2d')?.drawImage(this.dispCanvas, 0, 0);
+
+    GeographyManager.textureCanvasCache.set(this.getTextureCacheKey(), { color, displacement });
+  }
+
+  static hasCachedTexture(key: string, noiseScale: number, landThreshold: number, visualClass: PlanetVisualClass, width: number, height: number) {
+    return GeographyManager.textureCanvasCache.has([key, noiseScale, landThreshold, visualClass, Math.max(256, Math.floor(width)), Math.max(128, Math.floor(height))].join('|'));
   }
 
   setSeed(seed: string, noiseScale: number = 1.5, landThreshold: number = 0.2, visualClass: PlanetVisualClass = 'lush') {
@@ -262,6 +310,10 @@ export class GeographyManager {
 
   generateTexture() {
     const { width, height } = this.textureResolution;
+
+    if (this.applyCachedTextures()) {
+      return;
+    }
     
     if (!this.canvas) {
       try {
@@ -436,6 +488,7 @@ export class GeographyManager {
     
     this.texture.needsUpdate = true;
     this.displacementMap.needsUpdate = true;
+    this.storeCurrentTexturesInCache();
 
     if (this.onTextureUpdate) {
       this.onTextureUpdate(this.texture, this.displacementMap);

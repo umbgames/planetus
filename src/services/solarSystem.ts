@@ -120,7 +120,7 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
           id: `moon_${i}_${moonIndex}`,
           radius: Math.max(0.8, radius * (0.12 + moonPrng() * 0.12)),
           orbitDistance: radius * (2.2 + moonIndex * 0.9 + moonPrng() * 0.8),
-          orbitSpeed: (moonPrng() * 0.45 + 0.15) * (moonPrng() > 0.5 ? 1 : -1),
+          orbitSpeed: (moonPrng() * 0.04 + 0.01) * (moonPrng() > 0.5 ? 1 : -1),
           orbitTiltX: (moonPrng() - 0.5) * 0.8,
           orbitTiltZ: (moonPrng() - 0.5) * 0.8,
           initialAngle: moonPrng() * Math.PI * 2,

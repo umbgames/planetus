@@ -261,7 +261,6 @@ export const Planet = memo(function Planet({
     geographyManager.setTextureResolution(textureResolution.width, textureResolution.height);
     geographyManager.initializeTopicRegions();
     geographyManager.generateTexture();
-    requestAnimationFrame(() => geographyManager.generateTexture());
 
     const nextTexture = geographyManager.texture ?? null;
     const nextDisplacement = geographyManager.displacementMap ?? null;
@@ -320,9 +319,9 @@ export const Planet = memo(function Planet({
     () => ({
       map: texture,
       displacementMap,
-      displacementScale: isMobile ? 0.45 : 0.65,
+      displacementScale: isMobile ? 0.28 : 0.4,
       bumpMap: displacementMap,
-      bumpScale: isMobile ? 0.12 : 0.18,
+      bumpScale: isMobile ? 0.08 : 0.12,
       roughness: 0.85,
       metalness: 0.05,
     }),
