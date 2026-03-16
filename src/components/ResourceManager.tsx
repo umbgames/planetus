@@ -4,53 +4,11 @@ import * as THREE from 'three';
 import { gameManager, ResourceNode } from '../services/gameManager';
 
 import { GeographyManager } from '../services/geography';
-import { createPRNG, hashCombine } from '../utils/random';
 
 interface ResourceManagerProps {
   planetRadius: number;
   isMobile?: boolean;
   geographyManager: GeographyManager;
-}
-
-function buildLocalDeterministicResources(geographyManager: GeographyManager, planetRadius: number): ResourceNode[] {
-  geographyManager.initializeTopicRegions();
-  const seed = geographyManager.getSeed();
-  const commonCount = 56;
-  const rareCount = 14;
-  const out: ResourceNode[] = [];
-
-  const spawnForZone = (type: 'common' | 'rare', count: number, zones: Array<'high' | 'mid' | 'low'>) => {
-    const regions = geographyManager.regions.filter(r => zones.includes(r.resourceZone));
-    if (!regions.length) return;
-    const prng = createPRNG(hashCombine(seed, 'local-resources', type));
-    let accepted = 0;
-    let attempts = 0;
-    while (accepted < count && attempts < count * 80) {
-      attempts += 1;
-      const region = regions[Math.floor(prng() * regions.length) % regions.length];
-      const [x, y, z] = geographyManager.getRandomPointForTopic(region.id, planetRadius);
-      const nx = x / planetRadius;
-      const ny = y / planetRadius;
-      const nz = z / planetRadius;
-      const thresholdNoise = geographyManager.getTerrain(nx, ny, nz);
-      const threshold = type === 'rare' ? 0.17 : 0.02;
-      if (thresholdNoise < geographyManager.landThreshold + threshold) continue;
-      const height = geographyManager.getHeightAtPoint(nx, ny, nz, planetRadius, 0.8);
-      const snapped = new THREE.Vector3(nx, ny, nz).normalize().multiplyScalar(height);
-      out.push({
-        id: `local_${type}_${accepted}`,
-        type,
-        position: { x: snapped.x, y: snapped.y, z: snapped.z },
-        active: true,
-        createdAt: 'local',
-      });
-      accepted += 1;
-    }
-  };
-
-  spawnForZone('common', commonCount, ['low', 'mid', 'high']);
-  spawnForZone('rare', rareCount, ['high']);
-  return out;
 }
 
 function CommonResource({ scale, isMobile }: { scale: number, isMobile: boolean }) {
@@ -161,11 +119,9 @@ export function ResourceManager({ planetRadius, isMobile = false, geographyManag
 
 
   useEffect(() => {
-    const localFallback = buildLocalDeterministicResources(geographyManager, planetRadius);
-
     const updateResources = (newResources: ResourceNode[]) => {
       const activeResources = newResources.filter(r => r.active);
-      setResources(activeResources.length > 0 ? activeResources : localFallback);
+      setResources(activeResources);
     };
 
     gameManager.onResourcesUpdate = updateResources;
@@ -174,7 +130,7 @@ export function ResourceManager({ planetRadius, isMobile = false, geographyManag
     return () => {
       gameManager.onResourcesUpdate = null;
     };
-  }, [geographyManager, planetRadius]);
+  }, []);
 
   return (
     <group>

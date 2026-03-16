@@ -19,7 +19,7 @@ import { useShipStore } from './services/shipStore';
 import { generateSolarSystem, SolarSystemData, PlanetData } from './services/solarSystem';
 import { createPRNG, hashCombine } from './utils/random';
 import { SolarSystemView } from './components/SolarSystemView';
-import { getScaledPlanetRadius, getScaledStarRadius } from './services/orbitUtils';
+import { getScaledStarRadius } from './services/orbitUtils';
 
 export const planetRotationRef = { current: 0 };
 
@@ -271,7 +271,7 @@ export default function App() {
     if (!solarSystem) return PLANET_RADIUS;
     if (!currentPlanetId) return getScaledStarRadius(solarSystem.starRadius);
     const planet = solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData;
-    return planet ? getScaledPlanetRadius(planet.radius) : PLANET_RADIUS;
+    return planet ? planet.radius * 0.9 : PLANET_RADIUS;
   }, [solarSystem, currentPlanetId]);
 
   useEffect(() => {
@@ -299,7 +299,7 @@ export default function App() {
         });
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() => {
-            GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold, 'enhanced');
+            GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold);
             resolve();
           });
         });
@@ -652,7 +652,7 @@ export default function App() {
       const altitude = dist - PLANET_RADIUS;
 
       if (!isShipMode) {
-        setCanSpawnShip(Boolean(currentPlanetId) || (altitude < 8 && altitude > 0.25));
+        setCanSpawnShip(altitude < 4 && altitude > 0.5);
       } else {
         // In ship mode, check for nearby bases and zones
         if (altitude < 0.5) {
@@ -784,9 +784,6 @@ export default function App() {
               <MonitorPlay size={12} className="text-violet-400" />
               <span>{currentSystemSeed.replaceAll('|', ' ').toUpperCase()}</span>
             </div>
-          </div>
-          <div className="mt-3 text-[11px] text-zinc-400 max-w-md">
-            Distant stars are selectable in both solar and ship view. Click one and the camera will smoothly transfer into its generated system.
           </div>
         </div>
         

@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { SolarSystemData, PlanetData, AsteroidBeltData, MoonData } from './solarSystem';
+import { SolarSystemData, PlanetData, AsteroidBeltData } from './solarSystem';
 
 export const VISUAL_SCALE = {
   STAR_RADIUS_MULTIPLIER: 4.5,
-  PLANET_RADIUS_MULTIPLIER: 1.24,
+  PLANET_RADIUS_MULTIPLIER: 0.9,
   ORBIT_DISTANCE_MULTIPLIER: 2.8,
   MIN_ORBIT_GAP: 18,
   ASTEROID_DISTANCE_MULTIPLIER: 2.8,
@@ -89,22 +89,6 @@ export function getBodyWorldPosition(
   const planet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === id);
   if (!planet) return target.set(0, 0, 0);
   return getPlanetWorldPosition(planet, elapsedTime, orbitMap, target);
-}
-
-
-export function getMoonWorldPosition(
-  planet: PlanetData,
-  moon: MoonData,
-  elapsedTime: number,
-  orbitMap?: Map<string, number>,
-  target = new THREE.Vector3(),
-) {
-  const planetPos = getPlanetWorldPosition(planet, elapsedTime, orbitMap, new THREE.Vector3());
-  const moonAngle = moon.initialAngle + elapsedTime * moon.orbitSpeed;
-  const moonX = Math.cos(moonAngle) * moon.orbitDistance;
-  const moonZ = Math.sin(moonAngle) * moon.orbitDistance;
-  const moonY = moonX * Math.sin(moon.orbitTiltZ) + moonZ * Math.sin(moon.orbitTiltX);
-  return target.copy(planetPos).add(new THREE.Vector3(moonX, moonY, moonZ));
 }
 
 export function getScaledAsteroidOrbitDistance(belt: AsteroidBeltData) {

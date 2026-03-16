@@ -10,9 +10,7 @@ import {
   getScaledPlanetRadius,
   getScaledStarRadius,
 } from '../services/orbitUtils';
-import { createPRNG, hashCombine, hashToUnitFloat } from '../utils/random';
-import { useShipStore } from '../services/shipStore';
-import { getMoonWorldPosition } from '../services/orbitUtils';
+import { createPRNG } from '../utils/random';
 
 interface SolarSystemViewProps {
   data: SolarSystemData;
@@ -32,18 +30,6 @@ interface OrbitingPlanetProps {
   quality?: 'low' | 'medium' | 'high';
 }
 
-
-function getVisualSignature(seed: string) {
-  const roll = hashToUnitFloat(hashCombine(seed, 'visualProfile'));
-  if (roll < 0.14) return { atmosphereColor: '#6aa7ff', proxyColor: '#1d4ed8' };
-  if (roll < 0.28) return { atmosphereColor: '#f3b36b', proxyColor: '#b45309' };
-  if (roll < 0.42) return { atmosphereColor: '#b98962', proxyColor: '#7c4a2d' };
-  if (roll < 0.58) return { atmosphereColor: '#9ca3af', proxyColor: '#6b7280' };
-  if (roll < 0.72) return { atmosphereColor: '#b6e2ff', proxyColor: '#93c5fd' };
-  if (roll < 0.84) return { atmosphereColor: '#ff7a45', proxyColor: '#7f1d1d' };
-  return { atmosphereColor: '#7cc7ff', proxyColor: '#22c55e' };
-}
-
 const RingMesh = memo(function RingMesh({ innerRadius, outerRadius, color, opacity }: { innerRadius: number; outerRadius: number; color: string; opacity: number }) {
   return (
     <group rotation={[Math.PI / 2.55, 0, 0.25]}>
@@ -55,48 +41,23 @@ const RingMesh = memo(function RingMesh({ innerRadius, outerRadius, color, opaci
   );
 });
 
-const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, quality = 'medium', setCurrentPlanetId }: { moon: MoonData; parentPlanet: PlanetData; isMobile: boolean; quality?: 'low' | 'medium' | 'high'; setCurrentPlanetId: (id: string | null) => void; }) {
+const OrbitingMoon = memo(function OrbitingMoon({ moon, isMobile }: { moon: MoonData; isMobile: boolean }) {
   const groupRef = useRef<THREE.Group>(null);
-  const spinRef = useRef<THREE.Group>(null);
-  const { setLockedTarget } = useShipStore();
-  const scaledRadius = getScaledPlanetRadius(moon.radius) * 0.9;
-  const visuals = useMemo(() => getVisualSignature(moon.seed), [moon.seed]);
+  const scaledRadius = getScaledPlanetRadius(moon.radius) * 0.58;
+  const segments = isMobile ? 18 : 24;
 
-  useFrame((state, delta) => {
+  useFrame((state) => {
     if (!groupRef.current) return;
     const angle = moon.initialAngle + state.clock.getElapsedTime() * moon.orbitSpeed;
-    const x = Math.cos(angle) * moon.orbitDistance;
-    const z = Math.sin(angle) * moon.orbitDistance;
-    const y = x * Math.sin(moon.orbitTiltZ) + z * Math.sin(moon.orbitTiltX);
-    groupRef.current.position.set(x, y, z);
-    if (spinRef.current) spinRef.current.rotation.y += 0.024 * delta;
+    groupRef.current.position.set(Math.cos(angle) * moon.orbitDistance, 0, Math.sin(angle) * moon.orbitDistance);
   });
 
   return (
-    <group
-      ref={groupRef}
-      onClick={(e) => {
-        e.stopPropagation();
-        setCurrentPlanetId(parentPlanet.id);
-        setLockedTarget({ id: moon.id, type: 'moon', parentPlanetId: parentPlanet.id });
-      }}
-      onPointerOver={() => { document.body.style.cursor = 'pointer'; }}
-      onPointerOut={() => { document.body.style.cursor = 'auto'; }}
-    >
-      <group ref={spinRef}>
-        <Planet
-          radius={scaledRadius}
-          isMobile={isMobile}
-          seed={moon.seed}
-          noiseScale={moon.noiseScale}
-          landThreshold={moon.landThreshold}
-          showClouds={moon.hasClouds}
-          cloudDensity={0.28}
-          cloudSpeed={0.015}
-          cloudRotationSpeed={0.012}
-          atmosphereColor={visuals.atmosphereColor}
-        />
-      </group>
+    <group ref={groupRef}>
+      <mesh castShadow receiveShadow>
+        <sphereGeometry args={[scaledRadius, segments, segments]} />
+        <meshStandardMaterial color="#a8a8b0" roughness={1} metalness={0.02} />
+      </mesh>
     </group>
   );
 });
@@ -115,7 +76,6 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
   const worldPos = useMemo(() => new THREE.Vector3(), []);
 
   const scaledRadius = useMemo(() => getScaledPlanetRadius(planet.radius), [planet.radius]);
-  const visuals = useMemo(() => getVisualSignature(planet.seed), [planet.seed]);
 
   useFrame((state, delta) => {
     if (!groupRef.current) return;
@@ -166,16 +126,15 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
             cloudDensity={planet.cloudDensity}
             cloudSpeed={planet.cloudSpeed}
             cloudRotationSpeed={planet.cloudRotationSpeed}
-            atmosphereColor={visuals.atmosphereColor}
           />
         ) : (
           <mesh>
             <sphereGeometry args={[scaledRadius, quality === 'low' ? 10 : quality === 'medium' ? 14 : 18, quality === 'low' ? 10 : quality === 'medium' ? 14 : 18]} />
-            <meshStandardMaterial color={visuals.proxyColor} emissive={visuals.proxyColor} emissiveIntensity={0.12} roughness={1} />
+            <meshStandardMaterial color={planet.ring ? '#8a7f72' : '#6b6b75'} emissive={planet.ring ? '#3d342b' : '#202028'} emissiveIntensity={0.18} roughness={1} />
           </mesh>
         )}
 
-        {planet.moons.map((moon) => <OrbitingMoon key={moon.id} moon={moon} parentPlanet={planet} isMobile={isMobile} quality={quality} setCurrentPlanetId={setCurrentPlanetId} />)}
+        {planet.moons.map((moon) => <OrbitingMoon key={moon.id} moon={moon} isMobile={isMobile} />)}
       </group>
     </group>
   );

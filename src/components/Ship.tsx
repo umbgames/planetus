@@ -492,19 +492,6 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
       if (!lockedTarget.position || !lockedTarget.position.equals(relativeTarget)) {
         setLockedTarget(prev => prev ? { ...prev, position: relativeTarget } : null);
       }
-    } else if (lockedTarget && lockedTarget.type === 'moon' && solarSystem) {
-      const currentPlanetPos = getBodyWorldPosition(currentPlanetId, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
-      const parentPlanet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === lockedTarget.parentPlanetId);
-      const moon = parentPlanet?.moons.find((m) => m.id === lockedTarget.id);
-      if (!parentPlanet || !moon) {
-        setLockedTarget(null);
-      } else {
-        const targetMoonPos = getMoonWorldPosition(parentPlanet, moon, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
-        const relativeTarget = new THREE.Vector3().subVectors(targetMoonPos, currentPlanetPos);
-        if (!lockedTarget.position || !lockedTarget.position.equals(relativeTarget)) {
-          setLockedTarget(prev => prev ? { ...prev, position: relativeTarget } : null);
-        }
-      }
     }
 
     // Firing Weapons
