@@ -11,6 +11,14 @@ export interface Region {
   resourceZone: 'high' | 'mid' | 'low';
 }
 
+interface TextureCacheEntry {
+  color: string;
+  displacement: string;
+}
+
+const TEXTURE_CACHE_PREFIX = 'planet-us:texture-cache:';
+const memoryTextureCache = new Map<string, TextureCacheEntry>();
+
 export class GeographyManager {
   regions: Region[] = [];
   noiseScale = 1.5;
@@ -31,6 +39,91 @@ export class GeographyManager {
     this.noise3D = createNoise3D(this.prng);
     this.tempNoise3D = createNoise3D(createPRNG(this.seed + '_temp'));
     this.humidNoise3D = createNoise3D(createPRNG(this.seed + '_humid'));
+  }
+
+  private getTextureCacheKey() {
+    return `${TEXTURE_CACHE_PREFIX}${this.seed}:${this.noiseScale}:${this.landThreshold}:${this.visualClass}`;
+  }
+
+  private getMemoryEntry() {
+    return memoryTextureCache.get(this.getTextureCacheKey()) ?? null;
+  }
+
+  private setMemoryEntry(entry: TextureCacheEntry) {
+    memoryTextureCache.set(this.getTextureCacheKey(), entry);
+  }
+
+  private getPersistedEntry() {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(this.getTextureCacheKey());
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as TextureCacheEntry;
+      if (!parsed?.color || !parsed?.displacement) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  private persistEntry(entry: TextureCacheEntry) {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(this.getTextureCacheKey(), JSON.stringify(entry));
+    } catch {
+      // Best-effort cache only.
+    }
+  }
+
+  private async createTextureFromDataUrl(url: string, colorSpace?: THREE.ColorSpace) {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error('Failed to load cached texture'));
+      image.src = url;
+    });
+
+    const texture = new THREE.Texture(img);
+    texture.needsUpdate = true;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    if (colorSpace) texture.colorSpace = colorSpace;
+    return texture;
+  }
+
+  async restoreTexturesFromCache() {
+    const entry = this.getMemoryEntry() ?? this.getPersistedEntry();
+    if (!entry) return false;
+
+    try {
+      const [colorTexture, dispTexture] = await Promise.all([
+        this.createTextureFromDataUrl(entry.color, THREE.SRGBColorSpace),
+        this.createTextureFromDataUrl(entry.displacement),
+      ]);
+
+      if (this.texture && this.texture !== colorTexture) this.texture.dispose();
+      if (this.displacementMap && this.displacementMap !== dispTexture) this.displacementMap.dispose();
+
+      this.texture = colorTexture as unknown as THREE.CanvasTexture;
+      this.displacementMap = dispTexture as unknown as THREE.CanvasTexture;
+      this.setMemoryEntry(entry);
+      if (this.onTextureUpdate) {
+        this.onTextureUpdate(this.texture, this.displacementMap);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  static async preloadPlanetTexture(seed: string, noiseScale: number, landThreshold: number, visualClass: PlanetVisualClass) {
+    const manager = new GeographyManager();
+    manager.setSeed(seed, noiseScale, landThreshold, visualClass);
+    manager.initializeTopicRegions();
+    const restored = await manager.restoreTexturesFromCache();
+    if (!restored) {
+      manager.generateTexture();
+    }
   }
 
   setSeed(seed: string, noiseScale: number = 1.5, landThreshold: number = 0.2, visualClass: PlanetVisualClass = 'lush') {
@@ -55,8 +148,6 @@ export class GeographyManager {
     const ny = y/len;
     const nz = z/len;
     
-    // height = noise(position * 1.0) * 0.6 + noise(position * 2.0) * 0.3 + noise(position * 4.0) * 0.1
-    // Map noise from [-1, 1] to [0, 1]
     const n1 = (this.noise3D(nx * this.noiseScale, ny * this.noiseScale, nz * this.noiseScale) + 1) * 0.5;
     const n2 = (this.noise3D(nx * this.noiseScale * 2.0, ny * this.noiseScale * 2.0, nz * this.noiseScale * 2.0) + 1) * 0.5;
     const n3 = (this.noise3D(nx * this.noiseScale * 4.0, ny * this.noiseScale * 4.0, nz * this.noiseScale * 4.0) + 1) * 0.5;
@@ -70,11 +161,11 @@ export class GeographyManager {
     const ny = y/len;
     const nz = z/len;
 
-    const latitude = 1.0 - Math.abs(ny); // 0 at poles, 1 at equator
+    const latitude = 1.0 - Math.abs(ny);
     const tNoise = this.tempNoise3D(nx * 2, ny * 2, nz * 2) * 0.2;
     const temperature = latitude + tNoise;
 
-    const hNoise = (this.humidNoise3D(nx * 3, ny * 3, nz * 3) + 1) * 0.5; // 0 to 1
+    const hNoise = (this.humidNoise3D(nx * 3, ny * 3, nz * 3) + 1) * 0.5;
     const humidity = hNoise;
 
     const isHot = temperature > 0.6;
@@ -92,14 +183,9 @@ export class GeographyManager {
 
   getElevation(x: number, y: number, z: number) {
     const t = this.getTerrain(x, y, z);
-    if (t < this.landThreshold) return 0; // Water level
-    
-    // Map terrain value above threshold to elevation
+    if (t < this.landThreshold) return 0;
     let elevation = Math.max(0, (t - this.landThreshold) / (1.0 - this.landThreshold));
-    
-    // Non-linear elevation for flatter plains and steeper mountains
     elevation = Math.pow(elevation, 1.5);
-    
     return elevation;
   }
 
@@ -115,7 +201,6 @@ export class GeographyManager {
   }
 
   initializeTopicRegions() {
-    // Generate regions deterministically based on seed
     if (this.regions.length === 0) {
       const TOPICS = [
         { name: 'Tech', zone: 'high' as const },
@@ -159,7 +244,7 @@ export class GeographyManager {
           id: topic.name,
           hashtag: topic.name,
           center,
-          color: new THREE.Color(0x888888), // Not used anymore for terrain
+          color: new THREE.Color(0x888888),
           resourceZone: topic.zone,
         });
       }
@@ -191,7 +276,6 @@ export class GeographyManager {
   }
 
   getRandomPointForTopic(topic: string, radius: number): [number, number, number] {
-    // Rejection sampling
     for (let i = 0; i < 500; i++) {
       const u = this.prng();
       const v = this.prng();
@@ -207,7 +291,6 @@ export class GeographyManager {
       }
     }
     
-    // Fallback: just return a random land point
     for (let i = 0; i < 500; i++) {
       const u = this.prng();
       const v = this.prng();
@@ -222,7 +305,6 @@ export class GeographyManager {
       }
     }
     
-    // Ultimate fallback
     return [radius, 0, 0];
   }
 
@@ -244,17 +326,17 @@ export class GeographyManager {
         this.canvas.width = width;
         this.canvas.height = height;
         this.ctx = this.canvas.getContext('2d', { willReadFrequently: true });
-        if (!this.ctx) throw new Error("Could not get 2D context");
+        if (!this.ctx) throw new Error('Could not get 2D context');
         this.imgData = this.ctx.createImageData(width, height);
         
         this.dispCanvas = document.createElement('canvas');
         this.dispCanvas.width = width;
         this.dispCanvas.height = height;
         this.dispCtx = this.dispCanvas.getContext('2d', { willReadFrequently: true });
-        if (!this.dispCtx) throw new Error("Could not get 2D displacement context");
+        if (!this.dispCtx) throw new Error('Could not get 2D displacement context');
         this.dispImgData = this.dispCtx.createImageData(width, height);
       } catch (e) {
-        console.error("Failed to initialize canvases for planet textures", e);
+        console.error('Failed to initialize canvases for planet textures', e);
         return;
       }
     }
@@ -262,80 +344,39 @@ export class GeographyManager {
     const data = this.imgData!.data;
     const dispData = this.dispImgData!.data;
 
-    // Palette based on visual class
     const getPalette = (vClass: PlanetVisualClass) => {
       switch (vClass) {
         case 'lush':
           return {
-            ocean: new THREE.Color('#1e3a8a'),
-            beaches: new THREE.Color('#fde047'),
-            low: new THREE.Color('#84cc16'),
-            mid: new THREE.Color('#15803d'),
-            high: new THREE.Color('#71717a'),
-            peak: new THREE.Color('#ffffff'),
+            ocean: new THREE.Color('#1e3a8a'), beaches: new THREE.Color('#fde047'), low: new THREE.Color('#84cc16'), mid: new THREE.Color('#15803d'), high: new THREE.Color('#71717a'), peak: new THREE.Color('#ffffff'),
           };
         case 'oceanic':
           return {
-            ocean: new THREE.Color('#1e40af'),
-            beaches: new THREE.Color('#fef08a'),
-            low: new THREE.Color('#10b981'),
-            mid: new THREE.Color('#059669'),
-            high: new THREE.Color('#64748b'),
-            peak: new THREE.Color('#f1f5f9'),
+            ocean: new THREE.Color('#1e40af'), beaches: new THREE.Color('#fef08a'), low: new THREE.Color('#10b981'), mid: new THREE.Color('#059669'), high: new THREE.Color('#64748b'), peak: new THREE.Color('#f1f5f9'),
           };
         case 'desert':
           return {
-            ocean: new THREE.Color('#78350f'), // Sandy basin
-            beaches: new THREE.Color('#d97706'),
-            low: new THREE.Color('#f59e0b'),
-            mid: new THREE.Color('#fbbf24'),
-            high: new THREE.Color('#b45309'),
-            peak: new THREE.Color('#78350f'),
+            ocean: new THREE.Color('#78350f'), beaches: new THREE.Color('#d97706'), low: new THREE.Color('#f59e0b'), mid: new THREE.Color('#fbbf24'), high: new THREE.Color('#b45309'), peak: new THREE.Color('#78350f'),
           };
         case 'arid_rocky':
           return {
-            ocean: new THREE.Color('#451a03'), // Rocky basin
-            beaches: new THREE.Color('#78350f'),
-            low: new THREE.Color('#92400e'),
-            mid: new THREE.Color('#b45309'),
-            high: new THREE.Color('#57534e'),
-            peak: new THREE.Color('#292524'),
+            ocean: new THREE.Color('#451a03'), beaches: new THREE.Color('#78350f'), low: new THREE.Color('#92400e'), mid: new THREE.Color('#b45309'), high: new THREE.Color('#57534e'), peak: new THREE.Color('#292524'),
           };
         case 'barren_gray':
           return {
-            ocean: new THREE.Color('#171717'),
-            beaches: new THREE.Color('#262626'),
-            low: new THREE.Color('#404040'),
-            mid: new THREE.Color('#525252'),
-            high: new THREE.Color('#737373'),
-            peak: new THREE.Color('#a3a3a3'),
+            ocean: new THREE.Color('#171717'), beaches: new THREE.Color('#262626'), low: new THREE.Color('#404040'), mid: new THREE.Color('#525252'), high: new THREE.Color('#737373'), peak: new THREE.Color('#a3a3a3'),
           };
         case 'icy':
           return {
-            ocean: new THREE.Color('#0c4a6e'),
-            beaches: new THREE.Color('#bae6fd'),
-            low: new THREE.Color('#e0f2fe'),
-            mid: new THREE.Color('#f0f9ff'),
-            high: new THREE.Color('#ffffff'),
-            peak: new THREE.Color('#ffffff'),
+            ocean: new THREE.Color('#0c4a6e'), beaches: new THREE.Color('#bae6fd'), low: new THREE.Color('#e0f2fe'), mid: new THREE.Color('#f0f9ff'), high: new THREE.Color('#ffffff'), peak: new THREE.Color('#ffffff'),
           };
         case 'volcanic':
           return {
-            ocean: new THREE.Color('#1a0a0a'), // Dark crust
-            beaches: new THREE.Color('#2d0a0a'),
-            low: new THREE.Color('#450a0a'),
-            mid: new THREE.Color('#7f1d1d'),
-            high: new THREE.Color('#dc2626'), // Lava accents
-            peak: new THREE.Color('#f87171'),
+            ocean: new THREE.Color('#1a0a0a'), beaches: new THREE.Color('#2d0a0a'), low: new THREE.Color('#450a0a'), mid: new THREE.Color('#7f1d1d'), high: new THREE.Color('#dc2626'), peak: new THREE.Color('#f87171'),
           };
         default:
           return {
-            ocean: new THREE.Color('#1e3a8a'),
-            beaches: new THREE.Color('#fde047'),
-            low: new THREE.Color('#84cc16'),
-            mid: new THREE.Color('#15803d'),
-            high: new THREE.Color('#71717a'),
-            peak: new THREE.Color('#ffffff'),
+            ocean: new THREE.Color('#1e3a8a'), beaches: new THREE.Color('#fde047'), low: new THREE.Color('#84cc16'), mid: new THREE.Color('#15803d'), high: new THREE.Color('#71717a'), peak: new THREE.Color('#ffffff'),
           };
       }
     };
@@ -343,9 +384,9 @@ export class GeographyManager {
     const palette = getPalette(this.visualClass);
 
     for (let y = 0; y < height; y++) {
-      const phi = (y / height) * Math.PI; // 0 to PI
+      const phi = (y / height) * Math.PI;
       for (let x = 0; x < width; x++) {
-        const theta = (x / width) * Math.PI * 2; // 0 to 2PI
+        const theta = (x / width) * Math.PI * 2;
 
         const px = Math.sin(phi) * Math.cos(theta);
         const py = Math.cos(phi);
@@ -364,20 +405,13 @@ export class GeographyManager {
           const normHeight = (heightVal - this.landThreshold) / (1.0 - this.landThreshold);
           dispValue = Math.min(255, Math.floor(normHeight * 255));
           
-          if (normHeight < 0.1) {
-            color = palette.beaches;
-          } else if (normHeight < 0.4) {
-            color = palette.low;
-          } else if (normHeight < 0.7) {
-            color = palette.mid;
-          } else if (normHeight < 0.9) {
-            color = palette.high;
-          } else {
-            color = palette.peak;
-          }
+          if (normHeight < 0.1) color = palette.beaches;
+          else if (normHeight < 0.4) color = palette.low;
+          else if (normHeight < 0.7) color = palette.mid;
+          else if (normHeight < 0.9) color = palette.high;
+          else color = palette.peak;
         }
 
-        // Add some noise to color for texture
         const colorNoise = this.noise3D(px * 50, py * 50, pz * 50) * 0.05;
         
         data[idx] = Math.max(0, Math.min(255, color.r * 255 * (1 + colorNoise)));
@@ -406,10 +440,17 @@ export class GeographyManager {
     }
     
     this.texture.needsUpdate = true;
-    this.displacementMap.needsUpdate = true;
+    this.displacementMap!.needsUpdate = true;
+
+    const cacheEntry: TextureCacheEntry = {
+      color: this.canvas.toDataURL('image/webp', 0.82),
+      displacement: this.dispCanvas!.toDataURL('image/webp', 0.82),
+    };
+    this.setMemoryEntry(cacheEntry);
+    this.persistEntry(cacheEntry);
 
     if (this.onTextureUpdate) {
-      this.onTextureUpdate(this.texture, this.displacementMap);
+      this.onTextureUpdate(this.texture, this.displacementMap!);
     }
   }
 }

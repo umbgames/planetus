@@ -243,6 +243,13 @@ export const Planet = memo(function Planet({
     };
 
     geographyManager.setSeed(seed, noiseScale, landThreshold, visualClass);
+    geographyManager.restoreTexturesFromCache().then((restored) => {
+      if (!restored) {
+        geographyManager.initializeTopicRegions();
+      } else if (geographyManager.regions.length === 0) {
+        geographyManager.initializeTopicRegions();
+      }
+    });
     geographyManager.initializeTopicRegions();
 
     const nextTexture = geographyManager.texture ?? null;

@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Html, PerspectiveCamera, Trail } from '@react-three/drei';
 import * as THREE from 'three';
@@ -40,7 +40,8 @@ export function Ship({
   const [keys, setKeys] = useState<Record<string, boolean>>({});
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
   const [isLocked, setIsLocked] = useState(false);
-  const [isLaunching, setIsLaunching] = useState(!initialPosition);
+  const [isLaunching, setIsLaunching] = useState(false);
+  const [boostVisualActive, setBoostVisualActive] = useState(false);
   
   // Mobile controls state
   const [isMobile, setIsMobile] = useState(false);
@@ -52,30 +53,37 @@ export function Ship({
 
   const cameraRigRef = useRef<THREE.Group>(null);
   const shipModelRef = useRef<THREE.Group>(null);
+  const boosterCoreMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
+  const wingLeftBoosterMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
+  const wingRightBoosterMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
+  const cameraVelocityLag = useRef(new THREE.Vector3());
 
   // 2️⃣ Added atmosphere color refs
+
+  const getSkyColorForPlanet = useMemo(() => (planetId: string | null) => {
+    if (!planetId || !solarSystem) return new THREE.Color('#cda077');
+    const planet = solarSystem.bodies.find(b => b.id === planetId) as PlanetData | undefined;
+    const color = new THREE.Color('#cda077');
+    if (!planet) return color;
+    switch (planet.visualClass) {
+      case 'lush': color.set('#87CEEB'); break;
+      case 'oceanic': color.set('#4682B4'); break;
+      case 'desert': color.set('#F4A460'); break;
+      case 'arid_rocky': color.set('#CD853F'); break;
+      case 'barren_gray': color.set('#696969'); break;
+      case 'icy': color.set('#E0FFFF'); break;
+      case 'volcanic': color.set('#8B0000'); break;
+      default: color.set('#cda077');
+    }
+    return color;
+  }, [solarSystem]);
+
   const spaceColor = useRef(new THREE.Color('#000000'));
   const skyColor = useRef(new THREE.Color('#cda077'));
 
   useEffect(() => {
-    if (currentPlanetId && solarSystem) {
-      const planet = solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData;
-      if (planet) {
-        switch (planet.visualClass) {
-          case 'lush': skyColor.current.set('#87CEEB'); break;
-          case 'oceanic': skyColor.current.set('#4682B4'); break;
-          case 'desert': skyColor.current.set('#F4A460'); break;
-          case 'arid_rocky': skyColor.current.set('#CD853F'); break;
-          case 'barren_gray': skyColor.current.set('#696969'); break;
-          case 'icy': skyColor.current.set('#E0FFFF'); break;
-          case 'volcanic': skyColor.current.set('#8B0000'); break;
-          default: skyColor.current.set('#cda077');
-        }
-      }
-    } else {
-      skyColor.current.set('#cda077');
-    }
-  }, [currentPlanetId, solarSystem]);
+    skyColor.current.copy(getSkyColorForPlanet(currentPlanetId));
+  }, [currentPlanetId, getSkyColorForPlanet]);
 
   // Ship state
   const velocity = useRef(new THREE.Vector3());
@@ -88,7 +96,7 @@ export function Ship({
   const position = useRef(new THREE.Vector3(
     initialPosition ? initialPosition.x : 0, 
     initialPosition ? initialPosition.y : 0, 
-    initialPosition ? initialPosition.z : planetRadius * 2.5
+    initialPosition ? initialPosition.z : planetRadius
   ));
   const launchProgress = useRef(0);
   const recoilZ = useRef(0); // Tracks the heavy laser recoil kickback
@@ -96,7 +104,7 @@ export function Ship({
   const localPositionRef = useRef(new THREE.Vector3(
     initialPosition ? initialPosition.x : 0, 
     initialPosition ? initialPosition.y : 0, 
-    initialPosition ? initialPosition.z : planetRadius * 2.5
+    initialPosition ? initialPosition.z : planetRadius
   ));
 
   // Combat state
@@ -220,19 +228,21 @@ export function Ship({
     canvas.addEventListener('touchend', handleTouchEnd);
     canvas.addEventListener('touchcancel', handleTouchEnd);
 
-    position.current.copy(camera.position);
-    velocity.current.copy(camera.position).normalize().multiplyScalar(20);
+    if (initialPosition) {
+      position.current.set(initialPosition.x, initialPosition.y, initialPosition.z);
+    } else {
+      // Spawn at the surface in the direction of the camera
+      position.current.copy(camera.position).normalize().multiplyScalar(planetRadius);
+    }
+    velocity.current.set(0, 0, 0);
+    
     setMouse({ x: 0, y: -Math.PI / 2 });
     rotation.current.set(-Math.PI / 2, 0, 0);
     
     if (cameraRigRef.current) {
-      cameraRigRef.current.position.copy(camera.position);
+      cameraRigRef.current.position.copy(position.current);
     }
     
-    if (!window.matchMedia("(pointer: coarse)").matches && !('ontouchstart' in window)) {
-      gl.domElement.requestPointerLock();
-    }
-
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
@@ -391,20 +401,32 @@ export function Ship({
 
     if (!isLocked && !isLaunching && !isMobile) return;
 
-    // 3️⃣ Inserted Dynamic Atmosphere
-    // ===== Dynamic Atmosphere System =====
-    const distForAtmosphere = localPos.length();
+    // Dynamic atmosphere / approach state for the nearest planet, even before switching planets.
     const R = planetRadius;
-    const altitude = distForAtmosphere - R;
+    let atmosphericPlanetId = currentPlanetId;
+    let atmosphereAltitude = currentPlanetId ? localPos.length() - R : Infinity;
+
+    if (solarSystem) {
+      for (const body of solarSystem.bodies) {
+        if (body.type !== 'planet') continue;
+        const planetPos = getPlanetPos(body.id);
+        const altitudeToBody = worldPos.distanceTo(planetPos) - (body as PlanetData).radius;
+        if (altitudeToBody < atmosphereAltitude) {
+          atmosphereAltitude = altitudeToBody;
+          atmosphericPlanetId = body.id;
+        }
+      }
+    }
+
+    skyColor.current.copy(getSkyColorForPlanet(atmosphericPlanetId));
 
     let tiltFactor = 0;
-
-    if (altitude < 4) {
-      tiltFactor = 1 - altitude / 4;
+    if (Number.isFinite(atmosphereAltitude) && atmosphereAltitude < 10) {
+      tiltFactor = 1 - atmosphereAltitude / 10;
     }
 
     tiltFactor = THREE.MathUtils.clamp(tiltFactor, 0, 1);
-    tiltFactor = tiltFactor * tiltFactor * (3 - 2 * tiltFactor); // smoothstep
+    tiltFactor = tiltFactor * tiltFactor * (3 - 2 * tiltFactor);
 
     // Dynamic sky
     if (!scene.background) {
@@ -434,7 +456,7 @@ export function Ship({
     if (isLaunching) {
       launchProgress.current += delta;
       
-      if (launchProgress.current > 1.5) {
+      if (launchProgress.current > 0.8) {
         setIsLaunching(false);
       }
       
@@ -723,14 +745,17 @@ export function Ship({
       boostEnergy.current = Math.min(100, boostEnergy.current + 10 * delta);
     }
 
-    if (cameraRef.current) {
-      const targetFov = isBoostingActive ? 100 : 60;
-      cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFov, 0.1);
-      cameraRef.current.updateProjectionMatrix();
-      
-      const targetZ = isBoostingActive ? 0.025 : 0.015;
-      cameraRef.current.position.lerp(new THREE.Vector3(0, 0.004, targetZ), 0.05);
+    if (boostVisualActive !== isBoostingActive) {
+      setBoostVisualActive(isBoostingActive);
     }
+
+    const boosterColor = new THREE.Color(isBoostingActive ? '#ff7a18' : '#00e5ff');
+    [boosterCoreMaterialRef.current, wingLeftBoosterMaterialRef.current, wingRightBoosterMaterialRef.current].forEach((mat) => {
+      if (!mat) return;
+      mat.color.copy(boosterColor);
+      mat.emissive.copy(boosterColor);
+      mat.emissiveIntensity = isBoostingActive ? 6 : 3;
+    });
 
     const input = new THREE.Vector3();
     if (!isLaunching) {
@@ -798,14 +823,68 @@ export function Ship({
       }
     }
 
+    let resolvedWorldPos = currentPlanetId
+      ? position.current.clone().add(currentPlanetPos)
+      : position.current.clone();
+
+    if (solarSystem) {
+      for (const body of solarSystem.bodies) {
+        if (body.type !== 'planet') continue;
+        const bodyPos = getPlanetPos(body.id);
+        const bodyRadius = (body as PlanetData).radius;
+        const safeDistance = bodyRadius + 0.18;
+        const toShip = resolvedWorldPos.clone().sub(bodyPos);
+        const distToCenter = toShip.length();
+
+        if (distToCenter < safeDistance) {
+          const normal = (distToCenter > 0.0001 ? toShip : new THREE.Vector3(0, 1, 0)).normalize();
+          resolvedWorldPos.copy(bodyPos).add(normal.multiplyScalar(safeDistance));
+          velocity.current.addScaledVector(normal, 0.05);
+
+          if (currentPlanetId !== body.id && setCurrentPlanetId) {
+            const newLocalPos = resolvedWorldPos.clone().sub(bodyPos);
+            position.current.copy(newLocalPos);
+            setCurrentPlanetId(body.id);
+          } else if (currentPlanetId === body.id) {
+            position.current.copy(resolvedWorldPos.clone().sub(bodyPos));
+          }
+          break;
+        }
+      }
+    }
+
     if (shipRef.current) {
-      shipRef.current.position.copy(worldPos);
+      shipRef.current.position.copy(resolvedWorldPos);
       shipRef.current.quaternion.copy(quaternion);
     }
 
     if (cameraRigRef.current) {
-      cameraRigRef.current.position.lerp(worldPos, 0.1);
-      cameraRigRef.current.quaternion.slerp(quaternion, 0.1);
+      const chaseOffset = new THREE.Vector3(0, isBoostingActive ? 0.006 : 0.0045, isBoostingActive ? 0.028 : 0.018);
+      chaseOffset.x += THREE.MathUtils.clamp(rawInputX * 0.004, -0.004, 0.004);
+      chaseOffset.y += THREE.MathUtils.clamp(velocity.current.y * 0.03, -0.003, 0.003);
+      chaseOffset.applyQuaternion(quaternion);
+      const desiredRigPos = resolvedWorldPos.clone().sub(chaseOffset);
+      cameraRigRef.current.position.lerp(desiredRigPos, 0.12);
+      cameraRigRef.current.quaternion.slerp(quaternion, 0.12);
+    }
+
+    if (cameraRef.current) {
+      const speedRatio = THREE.MathUtils.clamp(velocity.current.length() / 0.25, 0, 1);
+      const targetFov = THREE.MathUtils.lerp(64, isBoostingActive ? 98 : 78, speedRatio);
+      cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFov, 0.08);
+      cameraRef.current.updateProjectionMatrix();
+
+      cameraVelocityLag.current.lerp(velocity.current, 0.08);
+      const cockpitOffset = new THREE.Vector3(
+        THREE.MathUtils.clamp(rawInputX * 0.0015, -0.0015, 0.0015),
+        0.004 + THREE.MathUtils.clamp(-input.y * 0.001, -0.001, 0.001),
+        THREE.MathUtils.lerp(0.016, 0.022, speedRatio),
+      );
+      cockpitOffset.x += THREE.MathUtils.clamp(yawDelta * 0.003, -0.003, 0.003);
+      cockpitOffset.y += Math.sin(state.clock.elapsedTime * (isBoostingActive ? 30 : 18)) * (isBoostingActive ? 0.0006 : 0.0002);
+      cockpitOffset.applyQuaternion(new THREE.Quaternion().setFromEuler(new THREE.Euler(rotation.current.x * 0.08, 0, 0)));
+      cameraRef.current.position.lerp(cockpitOffset, 0.15);
+      cameraRef.current.lookAt(new THREE.Vector3(0, 0.001 + input.y * 0.001, -0.09 - speedRatio * 0.04));
     }
 
     if (shipModelRef.current) {
@@ -831,60 +910,56 @@ export function Ship({
 
       <group ref={shipRef}>
         {/* The ship's base position Z (-0.005) gets overridden by the recoil logic dynamically */}
-        <group ref={shipModelRef} position={[0, -0.0002, -0.0005]} scale={0.001}>
-          <mesh position={[0, 0, 0]}>
-            <boxGeometry args={[0.6, 0.4, 2.5]} />
+        <group ref={shipModelRef} position={[0, -0.0002, -0.0005]} scale={0.00065}>
+          <mesh position={[0, 0, -0.1]}>
+            <boxGeometry args={[0.55, 0.26, 2.2]} />
+            <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.12} />
+          </mesh>
+          <mesh position={[0, 0, -1.45]} rotation={[-Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.26, 0.9, 4]} />
             <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
           </mesh>
-          <mesh position={[0, 0, -1.5]} rotation={[-Math.PI / 2, 0, 0]}>
-            <coneGeometry args={[0.3, 1, 4]} />
-            <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
+          <mesh position={[0, 0.18, -0.45]}>
+            <boxGeometry args={[0.34, 0.22, 0.9]} />
+            <meshStandardMaterial color="#7fe7ff" metalness={1} roughness={0} transparent opacity={0.82} />
           </mesh>
-          <mesh position={[0, 0.3, -0.5]}>
-            <boxGeometry args={[0.4, 0.3, 1]} />
-            <meshStandardMaterial color="#00ffff" metalness={1} roughness={0} transparent opacity={0.8} />
+          <mesh position={[0, -0.02, 0.12]}>
+            <boxGeometry args={[3.2, 0.05, 0.9]} />
+            <meshStandardMaterial color="#2a2a2a" metalness={0.8} roughness={0.22} />
           </mesh>
-          <mesh position={[0, 0, 0.2]}>
-            <boxGeometry args={[3.5, 0.05, 1]} />
-            <meshStandardMaterial color="#2a2a2a" metalness={0.8} roughness={0.2} />
+          <mesh position={[-1.28, -0.02, 0.92]}>
+            <cylinderGeometry args={[0.1, 0.12, 0.45, 8]} />
+            <meshStandardMaterial ref={wingLeftBoosterMaterialRef} color="#00e5ff" emissive="#00e5ff" emissiveIntensity={3} />
           </mesh>
-          <mesh position={[-0.2, 0.4, 1]}>
-            <boxGeometry args={[0.05, 0.8, 0.5]} />
-            <meshStandardMaterial color="#ff3333" metalness={0.5} roughness={0.5} />
+          <mesh position={[1.28, -0.02, 0.92]}>
+            <cylinderGeometry args={[0.1, 0.12, 0.45, 8]} />
+            <meshStandardMaterial ref={wingRightBoosterMaterialRef} color="#00e5ff" emissive="#00e5ff" emissiveIntensity={3} />
           </mesh>
-          <mesh position={[0.2, 0.4, 1]}>
-            <boxGeometry args={[0.05, 0.8, 0.5]} />
-            <meshStandardMaterial color="#ff3333" metalness={0.5} roughness={0.5} />
-          </mesh>
-          <mesh position={[0, 0, 1.26]}>
-            <boxGeometry args={[0.4, 0.2, 0.05]} />
-            <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={3} />
+          <mesh position={[0, 0, 1.18]}>
+            <boxGeometry args={[0.34, 0.16, 0.12]} />
+            <meshStandardMaterial ref={boosterCoreMaterialRef} color="#00e5ff" emissive="#00e5ff" emissiveIntensity={3} />
           </mesh>
 
-          <Trail width={0.08} length={isMobile ? 2 : 4} color={new THREE.Color('#00ffff')} attenuation={(t) => t * t}>
-            <mesh position={[0, 0, 1.3]}>
+          <Trail width={boostVisualActive ? 0.13 : 0.08} length={isMobile ? 3 : 6} color={new THREE.Color(boostVisualActive ? '#ff7a18' : '#00e5ff')} attenuation={(t) => t * t}>
+            <mesh position={[0, 0, 1.32]}>
               <sphereGeometry args={[0.1]} />
               <meshBasicMaterial transparent opacity={0} />
             </mesh>
           </Trail>
-          
-          {!isMobile && (
-            <>
-              <Trail width={0.01} length={8} color={new THREE.Color('#ffffff')} attenuation={(t) => t * t}>
-                <mesh position={[-1.75, 0, 0.7]}>
-                  <sphereGeometry args={[0.05]} />
-                  <meshBasicMaterial transparent opacity={0} />
-                </mesh>
-              </Trail>
-              
-              <Trail width={0.01} length={8} color={new THREE.Color('#ffffff')} attenuation={(t) => t * t}>
-                <mesh position={[1.75, 0, 0.7]}>
-                  <sphereGeometry args={[0.05]} />
-                  <meshBasicMaterial transparent opacity={0} />
-                </mesh>
-              </Trail>
-            </>
-          )}
+
+          <Trail width={boostVisualActive ? 0.03 : 0.015} length={isMobile ? 3 : 8} color={new THREE.Color(boostVisualActive ? '#ffd166' : '#ffffff')} attenuation={(t) => t * t}>
+            <mesh position={[-1.6, -0.02, 0.7]}>
+              <sphereGeometry args={[0.05]} />
+              <meshBasicMaterial transparent opacity={0} />
+            </mesh>
+          </Trail>
+
+          <Trail width={boostVisualActive ? 0.03 : 0.015} length={isMobile ? 3 : 8} color={new THREE.Color(boostVisualActive ? '#ffd166' : '#ffffff')} attenuation={(t) => t * t}>
+            <mesh position={[1.6, -0.02, 0.7]}>
+              <sphereGeometry args={[0.05]} />
+              <meshBasicMaterial transparent opacity={0} />
+            </mesh>
+          </Trail>
         </group>
       </group>
 

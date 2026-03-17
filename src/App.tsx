@@ -21,7 +21,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { gameManager, UserData, BaseData, Clan, SpaceStation } from './services/gameManager';
 import { auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { geographyManager } from './services/geography';
+import { GeographyManager, geographyManager } from './services/geography';
 import { useShipStore } from './services/shipStore';
 import { generateSolarSystem, SolarSystemData, PlanetData } from './services/solarSystem';
 
@@ -101,11 +101,30 @@ export default function App() {
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    // Simulate loading of assets and procedural generation
-    const timer = setTimeout(() => {
-      setIsLoaded(true);
-    }, 2500);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+
+    const warmTextures = async () => {
+      const startedAt = performance.now();
+      const seed = 'alpha_centauri_v1';
+      const system = generateSolarSystem(seed);
+
+      const jobs = system.bodies
+        .filter((body): body is PlanetData => body.type === 'planet')
+        .map((planet) => GeographyManager.preloadPlanetTexture(planet.id, planet.noiseScale, planet.landThreshold, planet.visualClass));
+
+      await Promise.allSettled(jobs);
+
+      const elapsed = performance.now() - startedAt;
+      const remaining = Math.max(0, 1800 - elapsed);
+      window.setTimeout(() => {
+        if (!cancelled) setIsLoaded(true);
+      }, remaining);
+    };
+
+    warmTextures();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const currentPlanetRadius = useMemo(() => {
