@@ -45,7 +45,7 @@ export function Ship({
   
   // Mobile controls state
   const [isMobile, setIsMobile] = useState(false);
-  const { mobileKeys, setMobileKeys, isBoosting, setIsBoosting, lockedTarget, setLockedTarget, setLastMgFire, setLastMissileFire, projectiles, setProjectiles, isJumping, setIsJumping } = useShipStore();
+  const { mobileKeys, setMobileKeys, isBoosting, setIsBoosting, lockedTarget, setLockedTarget, setLastMgFire, setLastMissileFire, projectiles, setProjectiles, isJumping, setIsJumping, setShipHeading } = useShipStore();
   
   const touchLook = useRef({ x: 0, y: 0 });
   const rightTouchId = useRef<number | null>(null);
@@ -202,7 +202,7 @@ export function Ship({
     canvas.addEventListener('touchcancel', handleTouchEnd);
 
     position.current.copy(camera.position);
-    velocity.current.copy(camera.position).normalize().multiplyScalar(20);
+    velocity.current.set(0, 0, 0);
     setMouse({ x: 0, y: -Math.PI / 2 });
     rotation.current.set(-Math.PI / 2, 0, 0);
     
@@ -275,37 +275,24 @@ export function Ship({
       // localPos is already recalculated at the top of useFrame
     }
 
-    // Automatic Planet Switching
+    // Soft orbital context update only — no forced snap or camera drag.
     if (!isJumping && solarSystem && frameCount.current % 30 === 0) {
-      // Check for planets
-      let switched = false;
+      let closestPlanetId: string | null = currentPlanetId ?? null;
+      let closestDistance = Infinity;
       for (const body of solarSystem.bodies) {
-        if (body.type === 'planet' && body.id !== currentPlanetId) {
-          const planetPos = getPlanetPos(body.id);
-          const distToPlanet = position.current.distanceTo(planetPos);
-          
-          const orbitThreshold = Math.max((body as PlanetData).radius * VISUAL_SCALE.PLANET_RADIUS_MULTIPLIER * 6.5, 18);
-          if (distToPlanet < orbitThreshold) {
-            if (setCurrentPlanetId) {
-              setCurrentPlanetId(body.id);
-            }
-            switched = true;
-            break;
-          }
+        if (body.type !== 'planet') continue;
+        const planetPos = getPlanetPos(body.id);
+        const distToPlanet = position.current.distanceTo(planetPos);
+        if (distToPlanet < closestDistance) {
+          closestDistance = distToPlanet;
+          closestPlanetId = body.id;
         }
       }
-
-      // Check for Sun if not already switched
-      if (!switched && currentPlanetId !== null) {
-        const sunPos = new THREE.Vector3(0, 0, 0);
-        const distToSun = position.current.distanceTo(sunPos);
-        
-        const currentPlanet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId);
-        const currentPlanetThreshold = currentPlanet ? Math.max(currentPlanet.radius * VISUAL_SCALE.PLANET_RADIUS_MULTIPLIER * 10, 30) : 30;
-        if (distToSun < solarSystem.starRadius * VISUAL_SCALE.STAR_RADIUS_MULTIPLIER * 1.35 && position.current.length() < currentPlanetThreshold) {
-          if (setCurrentPlanetId) {
-            setCurrentPlanetId(null);
-          }
+      if (closestPlanetId && setCurrentPlanetId) {
+        const current = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === closestPlanetId);
+        const captureDistance = current ? Math.max(current.radius * VISUAL_SCALE.PLANET_RADIUS_MULTIPLIER * 8, 28) : 28;
+        if (closestDistance < captureDistance && closestPlanetId !== currentPlanetId) {
+          setCurrentPlanetId(closestPlanetId);
         }
       }
     }
@@ -692,9 +679,12 @@ export function Ship({
 
     // 4️⃣ Reduced ship speed & acceleration for planetary scale
     const isBoostingActive = (keys['ShiftLeft'] || isBoosting) && boostEnergy.current > 0;
-    const speed = isBoostingActive ? 2.5 : 0.6;
-    const accel = isBoostingActive ? 2.5 * delta : 0.8 * delta;
-    const friction = 0.96;
+    const inSpace = Math.max(0, localPos.length() - planetRadius) > 4;
+    const cruiseSpeed = inSpace ? 1.45 : 0.65;
+    const boostSpeed = inSpace ? 4.8 : 2.2;
+    const speed = isBoostingActive ? boostSpeed : cruiseSpeed;
+    const accel = (isBoostingActive ? (inSpace ? 3.8 : 1.9) : (inSpace ? 1.25 : 0.85)) * delta;
+    const friction = inSpace ? 0.982 : 0.955;
 
     if (isBoostingActive) {
       boostEnergy.current = Math.max(0, boostEnergy.current - 20 * delta);
@@ -733,6 +723,7 @@ export function Ship({
     const prevYaw = rotation.current.y;
     rotation.current.y = -mouse.x;
     rotation.current.x = -mouse.y;
+    setShipHeading(rotation.current.y);
     
     const yawDelta = rotation.current.y - prevYaw;
 
@@ -751,8 +742,12 @@ export function Ship({
     const quaternion = baseQuat.multiply(yawQuat).multiply(pitchQuat);
 
     const moveVector = input.clone().applyQuaternion(quaternion);
-    velocity.current.add(moveVector.multiplyScalar(accel));
-    velocity.current.multiplyScalar(friction);
+    if (input.lengthSq() > 0) {
+      velocity.current.add(moveVector.multiplyScalar(accel));
+    } else {
+      velocity.current.multiplyScalar(friction);
+      if (velocity.current.length() < 0.02) velocity.current.set(0, 0, 0);
+    }
     
     if (velocity.current.length() > speed) {
       velocity.current.normalize().multiplyScalar(speed);
@@ -784,7 +779,8 @@ export function Ship({
 
     if (cameraRigRef.current) {
       cameraRigRef.current.position.lerp(position.current, 0.1);
-      cameraRigRef.current.quaternion.slerp(quaternion, 0.1);
+      const lookOnlyQuat = new THREE.Quaternion().copy(quaternion);
+      cameraRigRef.current.quaternion.slerp(lookOnlyQuat, 0.16);
     }
 
     if (shipModelRef.current) {

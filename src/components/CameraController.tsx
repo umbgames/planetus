@@ -17,10 +17,6 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
   const { camera, scene } = useThree();
   const controlsRef = useRef<any>(null);
   const prevPlanetId = useRef<string | null>(currentPlanetId);
-  const isTransitioning = useRef(false);
-  const transitionTarget = useRef(new THREE.Vector3());
-  const transitionStart = useRef(new THREE.Vector3());
-  const transitionProgress = useRef(0);
   
   const targetPos = useMemo(() => new THREE.Vector3(), []);
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 0, 0), []);
@@ -123,29 +119,9 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
         
         if (prevPlanetId.current !== currentPlanetId) {
           prevPlanetId.current = currentPlanetId;
-          isTransitioning.current = true;
-          transitionProgress.current = 0;
-          transitionStart.current.copy(camera.position);
-          
-          if (currentPlanetId) {
-            // Move camera to be near the new planet
-            const dir = camera.position.clone().sub(targetPos).normalize();
-            if (dir.lengthSq() < 0.001) dir.set(0, 0, 1);
-            transitionTarget.current.copy(targetPos).add(dir.multiplyScalar(R * 3));
-          } else {
-            // Move camera back to view the solar system
-            transitionTarget.current.set(0, 20, 40);
-          }
         }
         
-        if (isTransitioning.current) {
-          camera.position.lerp(transitionTarget.current, 0.05);
-          if (camera.position.distanceTo(transitionTarget.current) < 0.1) {
-            isTransitioning.current = false;
-          }
-        }
-        
-        if (tiltFactor > 0.01 && currentPlanetId && !isTransitioning.current) {
+        if (tiltFactor > 0.01 && currentPlanetId) {
           const camDir = camera.position.clone().sub(targetPos).normalize();
           const surfacePoint = targetPos.clone().add(camDir.multiplyScalar(R));
           
@@ -175,16 +151,17 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
         
         // Dynamically adjust minDistance to prevent going inside the planet
         // while allowing close zooms when tilted
-        const targetDistFromCenter = controls.target.distanceTo(planetCenter);
-        controls.minDistance = Math.max(0.0002, R + 0.0002 - targetDistFromCenter);
-        
+        controls.minDistance = currentPlanetId ? Math.max(0.08, R * 0.08) : 8;
+        controls.maxDistance = currentPlanetId ? Math.max(30, R * 40) : 1000000;
         controls.update();
         
         // Safeguard: prevent camera from going underground
         const actualDistFromCenter = camera.position.distanceTo(planetCenter);
-        if (actualDistFromCenter < R + 0.0002) {
-          const dir = camera.position.clone().sub(planetCenter).normalize();
-          camera.position.copy(planetCenter).add(dir.multiplyScalar(R + 0.0002));
+        if (actualDistFromCenter < R + 0.05) {
+          let dir = camera.position.clone().sub(planetCenter);
+          if (dir.lengthSq() < 1e-6) dir = new THREE.Vector3(0, 0, 1);
+          dir.normalize();
+          camera.position.copy(planetCenter).add(dir.multiplyScalar(R + 0.05));
         }
       }
     }

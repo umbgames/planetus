@@ -92,7 +92,7 @@ export default function App() {
   const [isMobile, setIsMobile] = useState(false);
   const [screenShake, setScreenShake] = useState(false);
   const [hitEffect, setHitEffect] = useState(false);
-  const { lockedTarget } = useShipStore();
+  const { lockedTarget, shipHeading } = useShipStore();
   const [currentPlanetId, setCurrentPlanetId] = useState<string | null>(null);
   const [solarSystem, setSolarSystem] = useState<SolarSystemData | null>(null);
   const [welcomeMessage, setWelcomeMessage] = useState<{ name: string, desc: string } | null>(null);
@@ -980,11 +980,14 @@ export default function App() {
 
       {/* Ship Controls Info */}
       {/* Minimap */}
-      <Minimap 
-        solarSystem={solarSystem}
-        currentPlanetId={currentPlanetId}
-        shipPosition={shipPosition || new THREE.Vector3()}
-      />
+      {isShipMode && (
+        <Minimap
+          solarSystem={solarSystem}
+          currentPlanetId={currentPlanetId}
+          shipPosition={shipPosition || new THREE.Vector3()}
+          shipHeading={shipHeading}
+        />
+      )}
 
       {/* Targeting UI */}
       {targetPlayer && (
