@@ -1,15 +1,17 @@
 import React, { useMemo } from 'react';
-import { SolarSystemData, PlanetData, buildOrbitMap, getPlanetWorldPosition } from '../services/solarSystem';
 import * as THREE from 'three';
+import { useShipStore } from '../services/shipStore';
+import {
+  SolarSystemData,
+  PlanetData,
+  buildOrbitMap,
+  getPlanetWorldPosition,
+} from '../services/solarSystem';
 
 interface MinimapProps {
   solarSystem: SolarSystemData | null;
   currentPlanetId: string | null;
-  shipPosition: THREE.Vector3;
-  shipYaw?: number;        // radians
-  cameraPitch?: number;    // radians
-  visible?: boolean;       // false in solar system view
-  range?: number;          // world-space culling radius
+  range?: number;
 }
 
 type PointItem = {
@@ -26,67 +28,59 @@ type PointItem = {
 export const Minimap: React.FC<MinimapProps> = ({
   solarSystem,
   currentPlanetId,
-  shipPosition,
-  shipYaw = 0,
-  cameraPitch = 0,
-  visible = true,
   range = 1400,
 }) => {
+  const navShipPosition = useShipStore((s) => s.navShipPosition);
+  const navShipYaw = useShipStore((s) => s.navShipYaw);
+  const navCameraPitch = useShipStore((s) => s.navCameraPitch);
+  const navTime = useShipStore((s) => s.navTime);
+  const navVisible = useShipStore((s) => s.navVisible);
+
   const size = 170;
   const half = size / 2;
   const renderRadius = size * 0.44;
 
   const mapData = useMemo(() => {
-    if (!solarSystem || !visible) return null;
+    if (!solarSystem || !navVisible) return null;
 
     const orbitMap = buildOrbitMap(solarSystem.bodies);
     const planets = solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet');
     if (!planets.length) return null;
 
-    const elapsed = performance.now() / 1000;
+    const cosYaw = Math.cos(-navShipYaw);
+    const sinYaw = Math.sin(-navShipYaw);
 
-    const cosYaw = Math.cos(-shipYaw);
-    const sinYaw = Math.sin(-shipYaw);
-
-    // Clamp pitch influence so minimap never folds too much
-    const clampedPitch = THREE.MathUtils.clamp(cameraPitch, -0.95, 0.95);
+    const clampedPitch = THREE.MathUtils.clamp(navCameraPitch, -0.95, 0.95);
     const pitchFlatten = THREE.MathUtils.lerp(0.82, 0.18, Math.abs(clampedPitch));
     const pitchLift = Math.sin(clampedPitch) * 0.38;
 
-    const culled: PointItem[] = [];
+    const points: PointItem[] = [];
 
     for (const planet of planets) {
-      const pos = getPlanetWorldPosition(planet, elapsed, orbitMap);
+      const pos = getPlanetWorldPosition(planet, navTime, orbitMap);
 
-      // world -> ship local
-      const lx = pos.x - shipPosition.x;
-      const ly = pos.y - shipPosition.y;
-      const lz = pos.z - shipPosition.z;
+      const lx = pos.x - navShipPosition.x;
+      const ly = pos.y - navShipPosition.y;
+      const lz = pos.z - navShipPosition.z;
 
       const dist = Math.sqrt(lx * lx + ly * ly + lz * lz);
+      const isCurrent = planet.id === currentPlanetId;
 
-      // hard cull outside local nav range, but keep selected/current target longer
-      const keepBecauseCurrent = planet.id === currentPlanetId;
-      if (dist > range && !keepBecauseCurrent) continue;
+      if (dist > range && !isCurrent) continue;
 
-      // rotate by yaw so map follows ship heading
       const rx = lx * cosYaw - lz * sinYaw;
       const rz = lx * sinYaw + lz * cosYaw;
       const ry = ly;
 
-      // pitch-sensitive projection
       const px = rx;
       const py = rz * pitchFlatten - ry * (0.18 + Math.abs(pitchLift));
 
-      // radial culling in map-space
-      const normalized = Math.min(dist / range, 1);
       const radialScale = renderRadius / Math.max(range, 1);
-
       const sx = px * radialScale;
       const sy = py * radialScale;
 
       const screenR = Math.sqrt(sx * sx + sy * sy);
-      if (screenR > renderRadius && !keepBecauseCurrent) continue;
+      if (screenR > renderRadius && !isCurrent) continue;
 
       let color = '#cfd4da';
       switch (planet.visualClass) {
@@ -113,16 +107,18 @@ export const Minimap: React.FC<MinimapProps> = ({
           break;
       }
 
+      const normalized = Math.min(dist / range, 1);
       const depthFactor = THREE.MathUtils.clamp((rz / range + 1) * 0.5, 0.2, 1);
-      const size = keepBecauseCurrent
+
+      const size = isCurrent
         ? THREE.MathUtils.lerp(2.4, 3.8, depthFactor)
         : THREE.MathUtils.lerp(1.2, 2.2, depthFactor);
 
-      const opacity = keepBecauseCurrent
+      const opacity = isCurrent
         ? THREE.MathUtils.lerp(0.85, 1.0, 1 - normalized)
         : THREE.MathUtils.lerp(0.35, 0.85, 1 - normalized);
 
-      culled.push({
+      points.push({
         id: planet.id,
         color,
         x: sx,
@@ -130,32 +126,18 @@ export const Minimap: React.FC<MinimapProps> = ({
         z: rz,
         size,
         opacity,
-        isCurrent: keepBecauseCurrent,
+        isCurrent,
       });
     }
 
-    culled.sort((a, b) => a.z - b.z);
+    points.sort((a, b) => a.z - b.z);
 
-    const sweepAngle = (performance.now() * 0.0012) % (Math.PI * 2);
+    const sweepAngle = (navTime * 1.2) % (Math.PI * 2);
 
-    return {
-      points: culled,
-      sweepAngle,
-      pitchFlatten,
-    };
-  }, [
-    solarSystem,
-    currentPlanetId,
-    shipPosition.x,
-    shipPosition.y,
-    shipPosition.z,
-    shipYaw,
-    cameraPitch,
-    visible,
-    range,
-  ]);
+    return { points, sweepAngle };
+  }, [solarSystem, navVisible, navShipYaw, navCameraPitch, navShipPosition, navTime, currentPlanetId, range]);
 
-  if (!visible || !mapData) return null;
+  if (!navVisible || !mapData) return null;
 
   const sweepLen = renderRadius;
   const sweepX = half + Math.cos(mapData.sweepAngle - Math.PI / 2) * sweepLen;
@@ -164,19 +146,9 @@ export const Minimap: React.FC<MinimapProps> = ({
   return (
     <div
       className="absolute bottom-5 right-5 pointer-events-none select-none"
-      style={{
-        width: size,
-        height: size,
-        background: 'transparent',
-      }}
+      style={{ width: size, height: size, background: 'transparent' }}
     >
-      <svg
-        width={size}
-        height={size}
-        viewBox={`0 0 ${size} ${size}`}
-        style={{ overflow: 'visible' }}
-      >
-        {/* subtle flat guide, no glow */}
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: 'visible' }}>
         <ellipse
           cx={half}
           cy={half}
@@ -187,7 +159,6 @@ export const Minimap: React.FC<MinimapProps> = ({
           strokeWidth="0.8"
         />
 
-        {/* center crosshair */}
         <line
           x1={half - 8}
           y1={half}
@@ -205,7 +176,6 @@ export const Minimap: React.FC<MinimapProps> = ({
           strokeWidth="0.8"
         />
 
-        {/* radar sweep */}
         <line
           x1={half}
           y1={half}
@@ -216,28 +186,15 @@ export const Minimap: React.FC<MinimapProps> = ({
           strokeLinecap="round"
         />
 
-        {/* sweep head */}
-        <circle
-          cx={sweepX}
-          cy={sweepY}
-          r={1.2}
-          fill="rgba(255,255,255,0.32)"
-        />
+        <circle cx={sweepX} cy={sweepY} r={1.2} fill="rgba(255,255,255,0.32)" />
 
-        {/* points */}
         {mapData.points.map((p) => {
           const x = half + p.x;
           const y = half + p.y;
 
           return (
             <g key={p.id}>
-              <circle
-                cx={x}
-                cy={y}
-                r={p.size}
-                fill={p.color}
-                opacity={p.opacity}
-              />
+              <circle cx={x} cy={y} r={p.size} fill={p.color} opacity={p.opacity} />
               {p.isCurrent && (
                 <circle
                   cx={x}
@@ -253,14 +210,8 @@ export const Minimap: React.FC<MinimapProps> = ({
           );
         })}
 
-        {/* player marker - red */}
         <g>
-          <circle
-            cx={half}
-            cy={half}
-            r={2.7}
-            fill="#ff3b30"
-          />
+          <circle cx={half} cy={half} r={2.7} fill="#ff3b30" />
           <path
             d={`
               M ${half} ${half - 9}
@@ -274,7 +225,6 @@ export const Minimap: React.FC<MinimapProps> = ({
           />
         </g>
 
-        {/* heading tick */}
         <line
           x1={half}
           y1={half - 16}
