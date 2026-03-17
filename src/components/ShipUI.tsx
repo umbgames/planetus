@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { X, Crosshair, Target, Zap, Compass, Navigation, LogOut, Shield, Gauge, Rocket } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Joystick } from 'react-joystick-component';
+import { Rocket, X, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Crosshair, Target, Zap, Flame, Compass, Navigation, LogOut } from 'lucide-react';
 import { useShipStore } from '../services/shipStore';
 import { UserData } from '../services/gameManager';
 import { SolarSystemData, PlanetData } from '../services/solarSystem';
+import * as THREE from 'three';
 
 interface ShipUIProps {
   onExit: () => void;
@@ -12,11 +14,13 @@ interface ShipUIProps {
   setCurrentPlanetId?: (id: string | null) => void;
 }
 
-const WeaponCooldown = ({ lastFireTime, cooldownDuration, color }: { lastFireTime: number; cooldownDuration: number; color: string }) => {
+const WeaponCooldown = ({ lastFireTime, cooldownDuration, color }: { lastFireTime: number, cooldownDuration: number, color: string }) => {
+// ... existing WeaponCooldown ...
   const [progress, setProgress] = useState(100);
 
   useEffect(() => {
     let animationFrameId: number;
+    
     const updateProgress = () => {
       const now = Date.now();
       const elapsed = now - lastFireTime;
@@ -29,223 +33,470 @@ const WeaponCooldown = ({ lastFireTime, cooldownDuration, color }: { lastFireTim
     };
 
     updateProgress();
-    return () => animationFrameId && cancelAnimationFrame(animationFrameId);
+
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
   }, [lastFireTime, cooldownDuration]);
 
   return (
-    <div className="h-1 w-full overflow-hidden rounded-full bg-white/8">
-      <div className={`h-full ${color}`} style={{ width: `${progress}%` }} />
+    <div className="w-full h-1 bg-white/10 mt-1 rounded-full overflow-hidden">
+      <div 
+        className={`h-full ${color}`} 
+        style={{ width: `${progress}%` }}
+      />
     </div>
   );
 };
 
-function StatBar({ label, value, max = 100, color = 'bg-cyan-400' }: { label: string; value: number; max?: number; color?: string }) {
-  const pct = Math.max(0, Math.min(100, (value / max) * 100));
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.22em] text-white/45">
-        <span>{label}</span>
-        <span className="font-mono text-white/75">{Math.round(value)}</span>
-      </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-white/8">
-        <div className={`h-full ${color}`} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
-}
-
 export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurrentPlanetId }: ShipUIProps) {
   const [isMobile, setIsMobile] = useState(false);
+  const { mobileKeys, setMobileKeys, isBoosting, setIsBoosting, lockedTarget, setLockedTarget, lastMgFire, lastMissileFire, shipPosition, velocity, altitude, health, shield, boostEnergy, isJumping, setIsJumping } = useShipStore();
   const [showNav, setShowNav] = useState(false);
-  const {
-    lockedTarget,
-    setLockedTarget,
-    lastMgFire,
-    lastMissileFire,
-    velocity,
-    altitude,
-    health,
-    shield,
-    boostEnergy,
-    isJumping,
-    setIsJumping,
-  } = useShipStore();
 
   useEffect(() => {
+// ... existing checkMobile ...
     const checkMobile = () => {
-      const coarse = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
-      setIsMobile(window.innerWidth <= 768 || coarse);
+      const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      setIsMobile(window.innerWidth <= 768 || isMobileUserAgent || window.matchMedia("(pointer: coarse)").matches || 'ontouchstart' in window);
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  const planets = useMemo(() => (solarSystem?.bodies.filter((b): b is PlanetData => b.type === 'planet') ?? []), [solarSystem]);
-  const currentPlanet = planets.find((planet) => planet.id === currentPlanetId);
+  const planets = solarSystem?.bodies.filter(b => b.type === 'planet') as PlanetData[] || [];
 
-  const minimalistPanel = 'rounded-2xl border border-white/10 bg-black/50 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.35)]';
-  const navLabel = currentPlanet ? currentPlanet.name : 'Deep Space';
+  const formatDistance = (dist: number) => {
+    if (dist > 1000) return `${(dist / 1000).toFixed(1)}k km`;
+    return `${dist.toFixed(0)} km`;
+  };
 
-  if (isMobile) {
+  const btnStyle = {
+// ... existing btnStyle ...
+    width: '60px',
+    height: '60px',
+    borderRadius: '50%',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    color: 'white',
+    border: '1px solid rgba(255,255,255,0.2)',
+    backdropFilter: 'blur(4px)',
+    pointerEvents: 'auto' as const,
+    position: 'absolute' as const,
+    overflow: 'hidden' as const,
+  };
+
+  const MobileCooldownOverlay = ({ lastFireTime, cooldownDuration }: { lastFireTime: number, cooldownDuration: number }) => {
+// ... existing MobileCooldownOverlay ...
+    const [progress, setProgress] = useState(100);
+
+    useEffect(() => {
+      let animationFrameId: number;
+      
+      const updateProgress = () => {
+        const now = Date.now();
+        const elapsed = now - lastFireTime;
+        if (elapsed < cooldownDuration) {
+          setProgress((elapsed / cooldownDuration) * 100);
+          animationFrameId = requestAnimationFrame(updateProgress);
+        } else {
+          setProgress(100);
+        }
+      };
+
+      updateProgress();
+
+      return () => {
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      };
+    }, [lastFireTime, cooldownDuration]);
+
+    if (progress === 100) return null;
+
     return (
-      <div className="pointer-events-none absolute inset-0 z-50 select-none">
-        <div className="absolute left-4 right-4 top-4 flex items-start justify-between gap-3">
-          <div className={`${minimalistPanel} pointer-events-auto px-4 py-3`}>
-            <div className="text-[10px] uppercase tracking-[0.25em] text-white/45">Navigation</div>
-            <div className="mt-1 text-sm font-semibold text-white">{navLabel}</div>
-          </div>
-
-          <button
-            onClick={onExit}
-            className={`${minimalistPanel} pointer-events-auto flex h-12 w-12 items-center justify-center text-white/80 transition hover:text-white`}
-          >
-            <X size={18} />
-          </button>
-        </div>
-      </div>
+      <div 
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: `${100 - progress}%`,
+          backgroundColor: 'rgba(0,0,0,0.6)',
+          pointerEvents: 'none'
+        }}
+      />
     );
-  }
+  };
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-50 select-none">
-      <div className="absolute inset-x-6 top-6 flex items-start justify-between gap-4">
-        <div className={`${minimalistPanel} pointer-events-auto min-w-[260px] px-5 py-4`}>
-          <button onClick={() => setShowNav((v) => !v)} className="flex w-full items-center justify-between gap-4 text-left">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.28em] text-white/40">Current Sector</div>
-              <div className="mt-1 text-xl font-semibold tracking-tight text-white">{navLabel}</div>
+    <div className="absolute inset-0 z-50 pointer-events-none select-none">
+      {/* Ship HUD */}
+      {!isMobile && (
+        <div className="absolute inset-0 p-8 flex flex-col justify-between">
+          {/* Top Bar */}
+          <div className="flex justify-between items-start">
+            <div className="flex flex-col gap-4">
+              <div 
+                className="bg-[#151619] p-4 rounded-xl border border-white/10 flex items-center gap-4 pointer-events-auto cursor-pointer hover:border-cyan-500/50 transition-all shadow-2xl" 
+                onClick={() => setShowNav(!showNav)}
+              >
+                <div className="relative w-12 h-12 flex items-center justify-center">
+                  <div className="absolute inset-0 border border-dashed border-cyan-500/30 rounded-full animate-spin-slow" />
+                  <Navigation className="text-cyan-400" size={20} />
+                </div>
+                <div>
+                  <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-0.5">Navigation System</div>
+                  <div className="text-white font-black tracking-tighter text-lg">{currentPlanetId ? currentPlanetId.toUpperCase() : 'DEEP SPACE'}</div>
+                </div>
+              </div>
+
+              {showNav && (
+                <div className="bg-[#151619] p-6 rounded-2xl border border-white/10 flex flex-col gap-3 w-72 pointer-events-auto max-h-[60vh] overflow-y-auto custom-scrollbar shadow-2xl">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-zinc-500 text-[10px] font-mono tracking-[0.3em] uppercase">Sector Map</div>
+                    <Compass size={12} className="text-zinc-600" />
+                  </div>
+                  
+                  <button 
+                    className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all group ${currentPlanetId === null ? 'bg-cyan-500/10 border-cyan-500/50' : 'bg-white/5 border-white/5 hover:border-white/20'}`}
+                    onClick={() => {
+                      if (setCurrentPlanetId) setCurrentPlanetId(null);
+                    }}
+                  >
+                    <div className="flex flex-col items-start">
+                      <span className={`text-sm font-black tracking-tight ${currentPlanetId === null ? 'text-cyan-400' : 'text-white'}`}>VOID SECTOR</span>
+                      <span className="text-[10px] font-mono text-zinc-500">0.0.0.0</span>
+                    </div>
+                    <LogOut size={16} className={currentPlanetId === null ? 'text-cyan-400' : 'text-zinc-600 group-hover:text-white'} />
+                  </button>
+
+                  <div className="h-px bg-white/5 my-2" />
+
+                  {planets.map(planet => {
+                    const isCurrent = planet.id === currentPlanetId;
+                    const isLocked = lockedTarget?.id === planet.id;
+                    return (
+                      <div 
+                        key={planet.id} 
+                        className={`p-4 rounded-xl border flex items-center justify-between transition-all ${isCurrent ? 'bg-cyan-500/10 border-cyan-500/50' : 'bg-white/5 border-white/5 hover:border-white/20'}`}
+                      >
+                        <div className="flex flex-col">
+                          <span className={`text-sm font-black tracking-tight ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{planet.name.toUpperCase()}</span>
+                          <span className="text-[10px] font-mono text-zinc-500">R: {planet.radius.toFixed(0)}km</span>
+                        </div>
+                        {!isCurrent && (
+                          <button 
+                            className={`p-2 rounded-lg transition-all ${isLocked ? 'bg-cyan-500 text-black' : 'bg-white/5 hover:bg-white/10 text-white'}`}
+                            onClick={() => setLockedTarget({ id: planet.id, type: 'planet' })}
+                          >
+                            <Target size={16} />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {lockedTarget?.type === 'planet' && (
+                    <button 
+                      className={`mt-6 w-full py-4 rounded-xl border font-black tracking-[0.2em] transition-all flex flex-col items-center justify-center gap-1 ${isJumping ? 'bg-red-500/20 border-red-500/50 text-red-500' : 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/30'}`}
+                      onClick={() => setIsJumping(!isJumping)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Zap size={18} />
+                        <span>{isJumping ? 'ABORT JUMP' : 'INITIATE JUMP'}</span>
+                      </div>
+                      <div className="text-[8px] font-mono opacity-50">WARP DRIVE READY</div>
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/12 bg-white/5 text-cyan-300">
-              <Navigation size={18} />
+            
+            <div className="flex gap-4">
+              {/* Resources Panel */}
+              <div className="bg-[#151619] p-4 rounded-xl border border-white/10 flex flex-col gap-4 w-56 shadow-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="text-zinc-500 text-[10px] font-mono tracking-[0.3em] uppercase">Cargo Bay</div>
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                </div>
+                
+                <div className="grid grid-cols-1 gap-3">
+                  <div className="flex items-center justify-between bg-white/5 p-2 rounded-lg border border-white/5">
+                    <div className="text-[10px] font-mono text-zinc-400 uppercase">Common</div>
+                    <div className="text-white font-black font-mono">{userData ? userData.commonResources : 0}</div>
+                  </div>
+                  <div className="flex items-center justify-between bg-fuchsia-500/10 p-2 rounded-lg border border-fuchsia-500/20">
+                    <div className="text-[10px] font-mono text-fuchsia-400 uppercase">Aetherium</div>
+                    <div className="text-fuchsia-300 font-black font-mono">{userData ? userData.rareResources : 0}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Weapons Panel */}
+              <div className="bg-[#151619] p-4 rounded-xl border border-white/10 flex flex-col gap-4 w-56 shadow-2xl">
+                <div className="flex items-center justify-between">
+                  <div className="text-zinc-500 text-[10px] font-mono tracking-[0.3em] uppercase">Weapon Systems</div>
+                  <Crosshair size={12} className="text-zinc-600" />
+                </div>
+                
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono text-zinc-400 uppercase">Light Laser</span>
+                      <span className="text-yellow-500 font-black font-mono">{userData ? userData.machineGunAmmo : '∞'}</span>
+                    </div>
+                    <WeaponCooldown lastFireTime={lastMgFire} cooldownDuration={100} color="bg-yellow-500" />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono text-zinc-400 uppercase">Heavy Laser</span>
+                      <span className="text-red-500 font-black font-mono">{userData ? userData.missileAmmo : '∞'}</span>
+                    </div>
+                    <WeaponCooldown lastFireTime={lastMissileFire} cooldownDuration={1000} color="bg-red-500" />
+                  </div>
+                </div>
+              </div>
             </div>
+          </div>
+          
+          {/* Target Info Panel */}
+          {lockedTarget && (
+            <div className="absolute top-32 right-8 bg-[#151619] p-6 rounded-2xl border border-cyan-500/30 w-72 pointer-events-none shadow-2xl">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex flex-col">
+                  <div className="text-cyan-500 text-[10px] font-mono tracking-[0.3em] uppercase mb-1">Target Locked</div>
+                  <div className="text-xl font-black tracking-tight text-white">{(lockedTarget.name || lockedTarget.id || '').toUpperCase()}</div>
+                </div>
+                <div className="w-10 h-10 rounded-full border border-cyan-500/30 flex items-center justify-center">
+                  <Target size={18} className="text-cyan-400 animate-pulse" />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/5">
+                  <span className="text-[10px] font-mono text-zinc-500 uppercase">Range</span>
+                  <span className="text-white font-black font-mono">
+                    {shipPosition.distanceTo(lockedTarget.position || new THREE.Vector3()).toFixed(0)}m
+                  </span>
+                </div>
+
+                {lockedTarget.health !== undefined && (
+                  <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                    <div className="flex justify-between text-[10px] font-mono text-zinc-500 uppercase mb-2">
+                      <span>Integrity</span>
+                      <span className="text-white">{lockedTarget.health}%</span>
+                    </div>
+                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-300 ${lockedTarget.health > 50 ? 'bg-emerald-500' : lockedTarget.health > 20 ? 'bg-amber-500' : 'bg-red-500'}`}
+                        style={{ width: `${lockedTarget.health}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Bottom HUD: Ship Integrity */}
+          <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex gap-12 pointer-events-none">
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-[10px] font-mono text-cyan-500 tracking-[0.2em] uppercase">Shield Matrix</div>
+              <div className="relative w-48 h-2 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                <div 
+                  className="h-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.5)] transition-all duration-300" 
+                  style={{ width: `${shield}%` }} 
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-[10px] font-mono text-amber-500 tracking-[0.2em] uppercase">Engine Boost</div>
+              <div className="relative w-48 h-2 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                <div 
+                  className="h-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)] transition-all duration-300" 
+                  style={{ width: `${boostEnergy}%` }} 
+                />
+              </div>
+            </div>
+            
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-[10px] font-mono text-red-500 tracking-[0.2em] uppercase">Hull Integrity</div>
+              <div className="relative w-48 h-2 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                <div 
+                  className="h-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)] transition-all duration-300" 
+                  style={{ width: `${health}%` }} 
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Flight Data: Monospace Timecodes Style */}
+          <div className="absolute bottom-12 left-12 flex flex-col gap-8 pointer-events-none">
+            <div className="flex flex-col">
+              <div className="text-[10px] font-mono text-zinc-500 tracking-[0.3em] uppercase mb-2">Velocity Vector</div>
+              <div className="flex items-baseline gap-2">
+                <div className="text-5xl font-black text-white font-mono tracking-tighter">{velocity.toFixed(1)}</div>
+                <div className="text-xs font-mono text-zinc-600 uppercase">m/s</div>
+              </div>
+            </div>
+            
+            <div className="flex flex-col">
+              <div className="text-[10px] font-mono text-zinc-500 tracking-[0.3em] uppercase mb-2">Altimeter Data</div>
+              <div className="flex items-baseline gap-2">
+                <div className="text-5xl font-black text-white font-mono tracking-tighter">{altitude.toFixed(0)}</div>
+                <div className="text-xs font-mono text-zinc-600 uppercase">m</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Jumping Overlay */}
+          {isJumping && (
+            <div className="absolute inset-0 flex items-center justify-center bg-cyan-500/5 backdrop-blur-sm z-50 pointer-events-none">
+              <div className="flex flex-col items-center gap-6">
+                <div className="text-cyan-400 text-7xl font-black tracking-[1.5em] animate-pulse drop-shadow-[0_0_30px_rgba(34,211,238,0.5)]">WARP</div>
+                <div className="w-80 h-[2px] bg-white/10 relative overflow-hidden">
+                  <div className="absolute inset-0 bg-cyan-400 animate-loading" />
+                </div>
+                <div className="text-cyan-500 font-mono text-xs tracking-[0.5em] uppercase">Folding Space-Time</div>
+              </div>
+            </div>
+          )}
+
+          {/* Crosshair */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="relative w-16 h-16 flex items-center justify-center">
+              <div className="absolute inset-0 border border-white/20 rounded-full" />
+              <div className="absolute w-full h-[1px] bg-white/20" />
+              <div className="absolute h-full w-[1px] bg-white/20" />
+              <Crosshair className="text-white/80" size={24} strokeWidth={1} />
+            </div>
+            {lockedTarget && (
+              <div className="absolute flex flex-col items-center gap-2 mt-32">
+                <div className="text-cyan-400 text-[10px] font-mono font-bold tracking-[0.5em] uppercase animate-pulse">Tracking Active</div>
+                <div className="text-white text-xs font-mono bg-cyan-500/20 px-3 py-1 rounded border border-cyan-500/30">{(lockedTarget.name || lockedTarget.id || '').toUpperCase()}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {isMobile && (
+        <>
+          {/* Exit Button */}
+          <button 
+            style={{ pointerEvents: 'auto', position: 'absolute', top: 20, right: 20, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '10px', borderRadius: '50%' }}
+            onClick={(e) => { e.stopPropagation(); onExit(); }}
+          >
+            <X size={24} />
+          </button>
+
+          {/* Nav Toggle Button */}
+          <button 
+            style={{ pointerEvents: 'auto', position: 'absolute', top: 20, left: 20, background: showNav ? 'rgba(34,211,238,0.5)' : 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '10px', borderRadius: '50%' }}
+            onClick={(e) => { e.stopPropagation(); setShowNav(!showNav); }}
+          >
+            <Navigation size={24} />
           </button>
 
           {showNav && (
-            <div className="mt-4 space-y-2 border-t border-white/8 pt-4">
-              <button
-                className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 transition ${currentPlanetId === null ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-300' : 'border-white/8 bg-white/4 text-white/80 hover:bg-white/8'}`}
-                onClick={() => setCurrentPlanetId?.(null)}
-              >
-                <div>
-                  <div className="text-sm font-medium">Deep Space</div>
-                  <div className="text-[10px] uppercase tracking-[0.24em] text-white/35">Free orbit</div>
-                </div>
-                <LogOut size={16} />
-              </button>
-
-              {planets.map((planet) => {
+            <div className="absolute top-20 left-5 bg-black/80 backdrop-blur-xl p-4 rounded-xl border border-white/10 flex flex-col gap-2 w-48 pointer-events-auto max-h-[50vh] overflow-y-auto custom-scrollbar">
+              {planets.map(planet => {
                 const isCurrent = planet.id === currentPlanetId;
-                const isLocked = lockedTarget?.id === planet.id;
                 return (
-                  <div
-                    key={planet.id}
-                    className={`flex items-center justify-between rounded-xl border px-4 py-3 transition ${isCurrent ? 'border-cyan-400/40 bg-cyan-400/10' : 'border-white/8 bg-white/4 hover:bg-white/8'}`}
+                  <div 
+                    key={planet.id} 
+                    className={`p-2 rounded-lg border flex items-center justify-between ${isCurrent ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10'}`}
+                    onClick={() => !isCurrent && setLockedTarget({ id: planet.id, type: 'planet' })}
                   >
-                    <div>
-                      <div className={`text-sm font-medium ${isCurrent ? 'text-cyan-300' : 'text-white'}`}>{planet.name}</div>
-                      <div className="text-[10px] uppercase tracking-[0.24em] text-white/35">Radius {planet.radius.toFixed(0)} km</div>
-                    </div>
-                    {!isCurrent && (
-                      <button
-                        className={`rounded-lg border px-3 py-2 transition ${isLocked ? 'border-cyan-400/40 bg-cyan-400 text-black' : 'border-white/8 bg-white/5 text-white/80 hover:bg-white/10'}`}
-                        onClick={() => setLockedTarget({ id: planet.id, name: planet.name, type: 'planet' })}
-                      >
-                        <Target size={15} />
-                      </button>
-                    )}
+                    <span className={`text-xs font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{(planet.id || '').toUpperCase()}</span>
+                    {lockedTarget?.id === planet.id && <Target size={12} className="text-cyan-400" />}
                   </div>
                 );
               })}
-
-              {lockedTarget?.type === 'planet' && (
-                <button
-                  className={`mt-2 flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition ${isJumping ? 'border-red-400/40 bg-red-500/15 text-red-300' : 'border-cyan-400/40 bg-cyan-500/15 text-cyan-300 hover:bg-cyan-500/20'}`}
-                  onClick={() => setIsJumping(!isJumping)}
-                >
-                  <Zap size={16} />
-                  {isJumping ? 'Abort jump' : `Jump to ${lockedTarget.name ?? 'target'}`}
-                </button>
-              )}
             </div>
           )}
-        </div>
-
-        <div className="flex gap-4">
-          <div className={`${minimalistPanel} w-[220px] px-5 py-4`}>
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <div className="text-[10px] uppercase tracking-[0.25em] text-white/40">Flight</div>
-                <div className="mt-1 text-base font-semibold text-white">Ship status</div>
-              </div>
-              <Rocket size={16} className="text-white/40" />
-            </div>
-
-            <div className="space-y-3">
-              <StatBar label="Hull" value={health} color="bg-emerald-400" />
-              <StatBar label="Shield" value={shield} color="bg-cyan-400" />
-              <StatBar label="Boost" value={boostEnergy} color="bg-violet-400" />
-            </div>
-
-            <div className="mt-4 grid grid-cols-2 gap-2 border-t border-white/8 pt-4 text-xs">
-              <div className="rounded-xl border border-white/8 bg-white/4 px-3 py-3">
-                <div className="mb-1 flex items-center gap-2 text-white/45"><Gauge size={12} /> Speed</div>
-                <div className="font-mono text-white">{velocity.toFixed(1)}</div>
-              </div>
-              <div className="rounded-xl border border-white/8 bg-white/4 px-3 py-3">
-                <div className="mb-1 flex items-center gap-2 text-white/45"><Compass size={12} /> Altitude</div>
-                <div className="font-mono text-white">{altitude.toFixed(2)}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className={`${minimalistPanel} w-[220px] px-5 py-4`}>
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <div className="text-[10px] uppercase tracking-[0.25em] text-white/40">Weapons</div>
-                <div className="mt-1 text-base font-semibold text-white">Combat systems</div>
-              </div>
-              <Crosshair size={16} className="text-white/40" />
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <div className="mb-1 flex items-center justify-between text-xs text-white/75">
-                  <span>Pulse laser</span>
-                  <span className="font-mono text-white">{userData ? userData.machineGunAmmo : '∞'}</span>
-                </div>
-                <WeaponCooldown lastFireTime={lastMgFire} cooldownDuration={100} color="bg-amber-400" />
-              </div>
-
-              <div>
-                <div className="mb-1 flex items-center justify-between text-xs text-white/75">
-                  <span>Heavy laser</span>
-                  <span className="font-mono text-white">{userData ? userData.missileAmmo : '∞'}</span>
-                </div>
-                <WeaponCooldown lastFireTime={lastMissileFire} cooldownDuration={1000} color="bg-rose-400" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 pt-2 text-xs">
-                <div className="rounded-xl border border-white/8 bg-white/4 px-3 py-3">
-                  <div className="mb-1 flex items-center gap-2 text-white/45"><Shield size={12} /> Lock</div>
-                  <div className="truncate font-medium text-white">{lockedTarget?.name || lockedTarget?.id || 'None'}</div>
-                </div>
-                <div className="rounded-xl border border-white/8 bg-white/4 px-3 py-3">
-                  <div className="mb-1 flex items-center gap-2 text-white/45"><Zap size={12} /> Jump</div>
-                  <div className={`font-medium ${isJumping ? 'text-cyan-300' : 'text-white'}`}>{isJumping ? 'Charging' : 'Standby'}</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <button
-            onClick={onExit}
-            className={`${minimalistPanel} pointer-events-auto flex h-[60px] w-[60px] items-center justify-center text-white/75 transition hover:text-white`}
+          
+          {/* Boost Button */}
+          <button 
+            style={{ ...btnStyle, bottom: 40, right: 40, background: isBoosting ? 'rgba(255,68,68,0.8)' : 'rgba(0,0,0,0.5)' }}
+            onPointerDown={(e) => { e.stopPropagation(); setIsBoosting(true); }}
+            onPointerUp={(e) => { e.stopPropagation(); setIsBoosting(false); }}
+            onPointerLeave={(e) => { e.stopPropagation(); setIsBoosting(false); }}
           >
-            <X size={18} />
+            <Rocket size={28} />
           </button>
-        </div>
-      </div>
+
+          {/* Machine Gun Button */}
+          <button 
+            style={{ ...btnStyle, bottom: 110, right: 40, background: mobileKeys.mg ? 'rgba(255,170,0,0.8)' : 'rgba(0,0,0,0.5)' }}
+            onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, mg: true})); }}
+            onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, mg: false})); }}
+            onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, mg: false})); }}
+          >
+            <Zap size={24} color={!userData || userData.machineGunAmmo ? '#fff' : '#555'} />
+            <MobileCooldownOverlay lastFireTime={lastMgFire} cooldownDuration={100} />
+            <span style={{ position: 'absolute', bottom: -20, fontSize: '10px', color: '#ffaa00', fontWeight: 'bold' }}>{userData ? userData.machineGunAmmo : '∞'}</span>
+          </button>
+
+          {/* Missile Button */}
+          <button 
+            style={{ ...btnStyle, bottom: 40, right: 110, background: mobileKeys.missile ? 'rgba(255,0,0,0.8)' : 'rgba(0,0,0,0.5)' }}
+            onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, missile: true})); }}
+            onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, missile: false})); }}
+            onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, missile: false})); }}
+          >
+            <Flame size={24} color={!userData || userData.missileAmmo ? '#fff' : '#555'} />
+            <MobileCooldownOverlay lastFireTime={lastMissileFire} cooldownDuration={1000} />
+            <span style={{ position: 'absolute', bottom: -20, fontSize: '10px', color: '#ff0000', fontWeight: 'bold' }}>{userData ? userData.missileAmmo : '∞'}</span>
+          </button>
+
+          {/* Target Lock Button */}
+          <button 
+            style={{ ...btnStyle, position: 'absolute', bottom: 110, right: 110, background: lockedTarget ? 'rgba(255,0,0,0.5)' : (mobileKeys.lock ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)') }}
+            onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, lock: true})); }}
+            onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, lock: false})); }}
+            onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, lock: false})); }}
+          >
+            <Target size={24} color={lockedTarget ? '#ff0000' : '#fff'} />
+          </button>
+          
+          {/* Joystick */}
+          <div style={{ position: 'absolute', bottom: 40, left: 40, zIndex: 100 }}>
+            <Joystick 
+              size={120} 
+              baseColor="rgba(0,0,0,0.5)" 
+              stickColor="rgba(255,255,255,0.5)" 
+              move={(e) => {
+                setMobileKeys((k: any) => ({
+                  ...k,
+                  w: e.y && e.y > 0.2,
+                  s: e.y && e.y < -0.2,
+                  a: e.x && e.x < -0.2,
+                  d: e.x && e.x > 0.2
+                }));
+              }} 
+              stop={() => {
+                setMobileKeys((k: any) => ({
+                  ...k,
+                  w: false,
+                  s: false,
+                  a: false,
+                  d: false
+                }));
+              }} 
+            />
+          </div>
+          
+          {/* Instructions */}
+          <div style={{ position: 'absolute', top: 20, left: '50%', transform: 'translateX(-50%)', color: 'rgba(255,255,255,0.5)', fontSize: '12px', textAlign: 'center', pointerEvents: 'none' }}>
+            Right side: Look around
+          </div>
+        </>
+      )}
     </div>
   );
 }

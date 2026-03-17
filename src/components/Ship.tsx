@@ -305,7 +305,7 @@ export function Ship({
           const planetPos = getPlanetPos(body.id);
           const distToPlanet = worldPos.distanceTo(planetPos);
           
-          if (distToPlanet < (body as PlanetData).radius * 18) {
+          if (distToPlanet < (body as PlanetData).radius * 12) {
             if (setCurrentPlanetId) {
               // Convert current world position to new local position
               const newLocalPos = worldPos.clone().sub(planetPos);
@@ -322,7 +322,7 @@ export function Ship({
       if (!switched && currentPlanetId !== null) {
         const currentPlanet = solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData;
         
-        if (currentPlanet && position.current.length() > currentPlanet.radius * 24) {
+        if (currentPlanet && position.current.length() > currentPlanet.radius * 15) {
           if (setCurrentPlanetId) {
             // Convert local position to world position
             position.current.copy(worldPos);
@@ -724,11 +724,11 @@ export function Ship({
     }
 
     if (cameraRef.current) {
-      const targetFov = isBoostingActive ? 82 : 58;
+      const targetFov = isBoostingActive ? 100 : 60;
       cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFov, 0.1);
       cameraRef.current.updateProjectionMatrix();
       
-      const targetZ = isBoostingActive ? 0.03 : 0.022;
+      const targetZ = isBoostingActive ? 0.025 : 0.015;
       cameraRef.current.position.lerp(new THREE.Vector3(0, 0.004, targetZ), 0.05);
     }
 
@@ -831,49 +831,34 @@ export function Ship({
 
       <group ref={shipRef}>
         {/* The ship's base position Z (-0.005) gets overridden by the recoil logic dynamically */}
-        <group ref={shipModelRef} position={[0, -0.00015, -0.0006]} scale={0.001}>
-          <mesh position={[0, 0, -0.1]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.18, 0.26, 2.9, 18, 1, false]} />
-            <meshStandardMaterial color="#d4d4d8" metalness={0.92} roughness={0.14} />
+        <group ref={shipModelRef} position={[0, -0.0002, -0.0005]} scale={0.001}>
+          <mesh position={[0, 0, 0]}>
+            <boxGeometry args={[0.6, 0.4, 2.5]} />
+            <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
           </mesh>
-          <mesh position={[0, 0.02, -1.68]} rotation={[-Math.PI / 2, 0, 0]}>
-            <coneGeometry args={[0.24, 0.9, 18]} />
-            <meshStandardMaterial color="#fafafa" metalness={0.88} roughness={0.12} />
+          <mesh position={[0, 0, -1.5]} rotation={[-Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.3, 1, 4]} />
+            <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
           </mesh>
-          <mesh position={[0, 0.16, -0.58]} rotation={[-0.22, 0, 0]}>
-            <sphereGeometry args={[0.23, 18, 18, 0, Math.PI * 2, 0, Math.PI / 2]} />
-            <meshStandardMaterial color="#7dd3fc" emissive="#38bdf8" emissiveIntensity={0.9} metalness={0.45} roughness={0.04} transparent opacity={0.88} />
+          <mesh position={[0, 0.3, -0.5]}>
+            <boxGeometry args={[0.4, 0.3, 1]} />
+            <meshStandardMaterial color="#00ffff" metalness={1} roughness={0} transparent opacity={0.8} />
           </mesh>
-          <mesh position={[0, -0.05, 0.45]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.14, 0.18, 1.2, 16]} />
-            <meshStandardMaterial color="#52525b" metalness={0.86} roughness={0.2} />
+          <mesh position={[0, 0, 0.2]}>
+            <boxGeometry args={[3.5, 0.05, 1]} />
+            <meshStandardMaterial color="#2a2a2a" metalness={0.8} roughness={0.2} />
           </mesh>
-
-          <mesh position={[0, -0.02, 0.05]}>
-            <boxGeometry args={[2.8, 0.05, 1.05]} />
-            <meshStandardMaterial color="#27272a" metalness={0.8} roughness={0.24} />
+          <mesh position={[-0.2, 0.4, 1]}>
+            <boxGeometry args={[0.05, 0.8, 0.5]} />
+            <meshStandardMaterial color="#ff3333" metalness={0.5} roughness={0.5} />
           </mesh>
-          <mesh position={[0, -0.01, -0.15]}>
-            <boxGeometry args={[1.55, 0.03, 1.7]} />
-            <meshStandardMaterial color="#71717a" metalness={0.78} roughness={0.28} />
+          <mesh position={[0.2, 0.4, 1]}>
+            <boxGeometry args={[0.05, 0.8, 0.5]} />
+            <meshStandardMaterial color="#ff3333" metalness={0.5} roughness={0.5} />
           </mesh>
-
-          {[-1, 1].map((side) => (
-            <group key={side} position={[side * 1.1, 0.02, 0.5]}>
-              <mesh rotation={[0, 0, side * 0.28]}>
-                <boxGeometry args={[0.16, 0.42, 0.72]} />
-                <meshStandardMaterial color="#3f3f46" metalness={0.84} roughness={0.2} />
-              </mesh>
-              <mesh position={[0, 0.03, 0.42]}>
-                <sphereGeometry args={[0.11, 16, 16]} />
-                <meshStandardMaterial color="#fb7185" emissive="#ef4444" emissiveIntensity={0.8} metalness={0.6} roughness={0.2} />
-              </mesh>
-            </group>
-          ))}
-
-          <mesh position={[0, -0.01, 1.38]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.16, 0.1, 0.24, 16]} />
-            <meshStandardMaterial color="#67e8f9" emissive="#22d3ee" emissiveIntensity={2.8} />
+          <mesh position={[0, 0, 1.26]}>
+            <boxGeometry args={[0.4, 0.2, 0.05]} />
+            <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={3} />
           </mesh>
 
           <Trail width={0.08} length={isMobile ? 2 : 4} color={new THREE.Color('#00ffff')} attenuation={(t) => t * t}>

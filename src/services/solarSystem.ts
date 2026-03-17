@@ -43,10 +43,13 @@ function hashString(str: string): string {
 }
 
 const PLANET_NAMES = [
-  'Astra Prime', 'Nyx', 'Solace', 'Eidolon', 'Vanta', 'Caelum', 'Oberon', 'Mira', 'Kairo', 'Talos',
-  'Virel', 'Lunara', 'Oris', 'Seren', 'Drift', 'Axiom', 'Noctis', 'Helia', 'Cinder', 'Nexus',
-  'Velora', 'Taris', 'Eclipse', 'Iona', 'Cobalt', 'Arden', 'Zephra', 'Riven', 'Thalor', 'Aurex',
-  'Sable', 'Nerida', 'Halo', 'Vesper', 'Rhea', 'Altis', 'Corin', 'Solis', 'Umbra', 'Kestrel'
+  'Aethelgard', 'Borealis', 'Coriolis', 'Dravonis', 'Elysium', 'Falkor', 'Gideon', 'Helios', 'Icarus', 'Jovian',
+  'Krypton', 'Lyra', 'Mandalore', 'Nebula', 'Orion', 'Pegasus', 'Quasar', 'Rigel', 'Sirius', 'Tatooine',
+  'Umbriel', 'Valkyrie', 'Wyvern', 'Xenon', 'Yggdrasil', 'Zephyr', 'Aethelred', 'Balthazar', 'Cassiopeia', 'Draco',
+  'Eridanus', 'Fornax', 'Gemini', 'Hydra', 'Indus', 'Janus', 'Kaelen', 'Lupus', 'Mensae', 'Norma',
+  'Octans', 'Pictor', 'Reticulum', 'Scutum', 'Taurus', 'Ursa', 'Vela', 'Volans', 'Zeta', 'Altair',
+  'Bellatrix', 'Capella', 'Deneb', 'Enif', 'Fomalhaut', 'Gacrux', 'Hadar', 'Izar', 'Kaus', 'Lesath',
+  'Markab', 'Nunki', 'Polaris', 'Regulus', 'Spica', 'Thuban', 'Unukalhai', 'Vega', 'Wezen', 'Zaurak'
 ];
 
 const solarSystemCache: Record<string, SolarSystemData> = {};

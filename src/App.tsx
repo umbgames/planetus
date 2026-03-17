@@ -139,7 +139,7 @@ export default function App() {
         geographyManager.initializeTopicRegions();
         
         // Show welcome message
-        const planetName = planet.name;
+        const planetName = planet.id.replace('planet_', 'PLANET-');
         const descriptions = [
           "Entering Orbital Sector",
           "Atmospheric Entry Confirmed",
@@ -679,14 +679,13 @@ export default function App() {
       {isShipMode && <ShipUI onExit={handleExitShip} userData={userData} solarSystem={solarSystem} currentPlanetId={currentPlanetId} setCurrentPlanetId={setCurrentPlanetId} />}
 
       {/* UI Overlay */}
-      <div className="absolute top-0 left-0 z-40 flex w-full items-start justify-between p-6 pointer-events-none">
-        <div className="rounded-2xl border border-white/10 bg-black/45 px-5 py-4 backdrop-blur-xl shadow-[0_12px_40px_rgba(0,0,0,0.35)]">
-          <div className="text-[10px] uppercase tracking-[0.28em] text-white/40">Planet Us</div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">
-            {currentPlanetId && solarSystem ? ((solarSystem.bodies.find(b => b.id === currentPlanetId && b.type === 'planet') as PlanetData | undefined)?.name ?? 'Deep Space') : 'Deep Space'}
+      <div className="absolute top-0 left-0 w-full p-6 pointer-events-none flex justify-between items-start z-40">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-cyan-400">
+            PLANET:US
           </h1>
-          <p className="mt-1 text-sm text-white/55">
-            Minimal command interface
+          <p className="text-xs font-semibold text-zinc-400 tracking-widest mt-1 mb-2">
+            EXPLORE, BUILD,TAKE..
           </p>
         </div>
         

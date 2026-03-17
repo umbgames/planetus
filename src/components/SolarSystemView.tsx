@@ -1,5 +1,4 @@
 import React, { useRef, useMemo, useState, memo } from 'react';
-import { Billboard, Text } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { SolarSystemData, PlanetData, AsteroidBeltData } from '../services/solarSystem';
@@ -88,7 +87,6 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
 }: OrbitingPlanetProps) {
   const groupRef = useRef<THREE.Group>(null);
   const [isActive, setIsActive] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
   const { camera } = useThree();
   const worldPos = useMemo(() => new THREE.Vector3(), []);
 
@@ -162,11 +160,9 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
         setCurrentPlanetId(planet.id);
       }}
       onPointerOver={() => {
-        setIsHovered(true);
         document.body.style.cursor = 'pointer';
       }}
       onPointerOut={() => {
-        setIsHovered(false);
         document.body.style.cursor = 'auto';
       }}
     >
@@ -191,27 +187,6 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
           <ringGeometry args={[scaledRadius * 1.2, scaledRadius * 1.3, 64]} />
           <meshBasicMaterial color="#00ffff" side={THREE.DoubleSide} transparent opacity={0.5} />
         </mesh>
-      )}
-
-      {(isSelected || isHovered) && (
-        <Billboard position={[0, scaledRadius * 1.8, 0]}>
-          <group>
-            <mesh position={[0, 0, -0.01]}>
-              <planeGeometry args={[Math.max(8, planet.name.length * 0.85), 2.2]} />
-              <meshBasicMaterial color="#000000" transparent opacity={0.2} />
-            </mesh>
-            <Text
-              fontSize={0.85}
-              color={isSelected ? '#a5f3fc' : '#ffffff'}
-              anchorX="center"
-              anchorY="middle"
-              outlineWidth={0.03}
-              outlineColor="#000000"
-            >
-              {planet.name}
-            </Text>
-          </group>
-        </Billboard>
       )}
     </group>
   );
