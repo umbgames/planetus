@@ -22,6 +22,52 @@ type BiomeName = 'tundra' | 'snow_forest' | 'grassland' | 'forest' | 'desert' | 
 
 const geometryCache = new Map<string, CachedGeographyData>();
 
+const TEXTURE_CACHE_VERSION = 'v3';
+const TEXTURE_CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
+const TEXTURE_CACHE_PREFIX = `planetus|texture-cache|${TEXTURE_CACHE_VERSION}|`;
+const TEXTURE_CACHE_INDEX_KEY = `${TEXTURE_CACHE_PREFIX}index`;
+const TEXTURE_CACHE_LIMIT = 12;
+
+interface PersistentTextureCacheEntry {
+  key: string;
+  updatedAt: number;
+  textureDataUrl: string;
+  displacementDataUrl: string;
+}
+
+function safeLocalStorageGet(key: string) {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeLocalStorageSet(key: string, value: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Ignore quota errors.
+  }
+}
+
+function readTextureCacheIndex(): string[] {
+  const raw = safeLocalStorageGet(TEXTURE_CACHE_INDEX_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeTextureCacheIndex(keys: string[]) {
+  safeLocalStorageSet(TEXTURE_CACHE_INDEX_KEY, JSON.stringify(keys.slice(0, TEXTURE_CACHE_LIMIT)));
+}
+
 export class GeographyManager {
   regions: Region[] = [];
   noiseScale = 1.5;
@@ -61,10 +107,10 @@ export class GeographyManager {
     }
   }
 
-  static warmCache(seed: string, noiseScale: number, landThreshold: number, textureDetail: TextureDetail = 'enhanced') {
+  static async warmCache(seed: string, noiseScale: number, landThreshold: number, textureDetail: TextureDetail = 'enhanced') {
     const manager = new GeographyManager();
     manager.setSeed(seed, noiseScale, landThreshold, textureDetail);
-    manager.initializeTopicRegions();
+    await manager.initializeTopicRegions();
     return manager;
   }
 
@@ -101,7 +147,7 @@ export class GeographyManager {
     return this.getTerrain(x, y, z) > this.landThreshold;
   }
 
-  initializeTopicRegions() {
+  async initializeTopicRegions() {
     const cached = geometryCache.get(this.getCacheKey());
     if (cached) {
       this.regions = cached.regions.map((region) => ({
@@ -161,7 +207,14 @@ export class GeographyManager {
     }
 
     this.regions = newRegions;
-    this.generateTexture();
+
+    const restored = await this.restorePersistentTextureCache();
+    if (!restored) {
+      this.generateTexture();
+    } else if (this.onTextureUpdate && this.texture && this.displacementMap) {
+      this.onTextureUpdate(this.texture, this.displacementMap);
+      requestAnimationFrame(() => this.generateTexture());
+    }
   }
 
   getRegionForPoint(x: number, y: number, z: number): Region | null {
@@ -264,6 +317,90 @@ export class GeographyManager {
   dispCanvas: HTMLCanvasElement | null = null;
   dispCtx: CanvasRenderingContext2D | null = null;
   dispImgData: ImageData | null = null;
+
+
+  private async restorePersistentTextureCache() {
+    const key = this.getCacheKey();
+    const raw = safeLocalStorageGet(`${TEXTURE_CACHE_PREFIX}${key}`);
+    if (!raw) return false;
+    try {
+      const entry = JSON.parse(raw) as PersistentTextureCacheEntry;
+      if (!entry?.textureDataUrl || !entry?.displacementDataUrl || Date.now() - entry.updatedAt > TEXTURE_CACHE_MAX_AGE_MS) {
+        return false;
+      }
+
+      const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = src;
+      });
+
+      const [textureImage, displacementImage] = await Promise.all([loadImage(entry.textureDataUrl), loadImage(entry.displacementDataUrl)]);
+
+      this.canvas = document.createElement('canvas');
+      this.canvas.width = textureImage.width;
+      this.canvas.height = textureImage.height;
+      this.ctx = this.canvas.getContext('2d')!;
+      this.ctx.drawImage(textureImage, 0, 0);
+      this.imgData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+
+      this.dispCanvas = document.createElement('canvas');
+      this.dispCanvas.width = displacementImage.width;
+      this.dispCanvas.height = displacementImage.height;
+      this.dispCtx = this.dispCanvas.getContext('2d')!;
+      this.dispCtx.drawImage(displacementImage, 0, 0);
+      this.dispImgData = this.dispCtx.getImageData(0, 0, this.dispCanvas.width, this.dispCanvas.height);
+
+      this.texture = new THREE.CanvasTexture(this.canvas);
+      this.texture.colorSpace = THREE.SRGBColorSpace;
+      this.displacementMap = new THREE.CanvasTexture(this.dispCanvas);
+      this.texture.needsUpdate = true;
+      this.displacementMap.needsUpdate = true;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private persistTextureCache() {
+    if (typeof window === 'undefined' || !this.canvas || !this.dispCanvas) return;
+    try {
+      const previewCanvas = document.createElement('canvas');
+      previewCanvas.width = 384;
+      previewCanvas.height = 192;
+      const previewCtx = previewCanvas.getContext('2d');
+      if (!previewCtx) return;
+      previewCtx.drawImage(this.canvas, 0, 0, previewCanvas.width, previewCanvas.height);
+
+      const previewDispCanvas = document.createElement('canvas');
+      previewDispCanvas.width = 384;
+      previewDispCanvas.height = 192;
+      const previewDispCtx = previewDispCanvas.getContext('2d');
+      if (!previewDispCtx) return;
+      previewDispCtx.drawImage(this.dispCanvas, 0, 0, previewDispCanvas.width, previewDispCanvas.height);
+
+      const key = this.getCacheKey();
+      const entry: PersistentTextureCacheEntry = {
+        key,
+        updatedAt: Date.now(),
+        textureDataUrl: previewCanvas.toDataURL('image/webp', 0.82),
+        displacementDataUrl: previewDispCanvas.toDataURL('image/webp', 0.76),
+      };
+      safeLocalStorageSet(`${TEXTURE_CACHE_PREFIX}${key}`, JSON.stringify(entry));
+      const index = readTextureCacheIndex().filter((existingKey) => existingKey !== key);
+      index.unshift(key);
+      const stale = index.slice(TEXTURE_CACHE_LIMIT);
+      stale.forEach((staleKey) => {
+        try {
+          window.localStorage.removeItem(`${TEXTURE_CACHE_PREFIX}${staleKey}`);
+        } catch {}
+      });
+      writeTextureCacheIndex(index);
+    } catch {
+      // Ignore persistence failures.
+    }
+  }
 
   generateTexture() {
     const width = this.textureDetail === 'enhanced' ? 1536 : 1024;
@@ -374,6 +511,8 @@ export class GeographyManager {
       texture: this.texture,
       displacementMap: this.displacementMap!,
     });
+
+    this.persistTextureCache();
 
     if (this.onTextureUpdate) {
       this.onTextureUpdate(this.texture, this.displacementMap!);

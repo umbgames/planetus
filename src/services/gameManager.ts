@@ -15,6 +15,15 @@ export interface BaseData {
   createdAt: string;
 }
 
+export interface LivePlayerState {
+  systemSeed: string;
+  currentPlanetId: string | null;
+  position: { x: number; y: number; z: number };
+  rotation: { x: number; y: number; z: number };
+  velocity: number;
+  updatedAt: string;
+}
+
 export interface UserData {
   uid: string;
   displayName: string;
@@ -31,6 +40,7 @@ export interface UserData {
     position: { x: number; y: number; z: number };
     rotation: { x: number; y: number; z: number };
   };
+  liveState?: LivePlayerState | null;
 }
 
 export interface MarketOffer {
@@ -64,6 +74,7 @@ class GameManager {
   onSatelliteUsersUpdate: ((users: { uid?: string; name: string; bases: number; info: string; health: number }[]) => void) | null = null;
   onMarketOffersUpdate: ((offers: MarketOffer[]) => void) | null = null;
   onResourcesUpdate: ((resources: ResourceNode[]) => void) | null = null;
+  onPlayersUpdate: ((players: UserData[]) => void) | null = null;
   unsubscribeBases: (() => void) | null = null;
   unsubscribeUser: (() => void) | null = null;
   unsubscribeSatellites: (() => void) | null = null;
@@ -181,6 +192,7 @@ class GameManager {
     // Since we don't have an index setup in firestore.rules for this, we'll just listen to all users
     this.unsubscribeSatellites = onSnapshot(collection(db, 'users'), (snapshot) => {
       const users = snapshot.docs.map(doc => doc.data() as UserData);
+      if (this.onPlayersUpdate) this.onPlayersUpdate(users);
       const satUsers = users.filter(u => u.hasSatellite).map(u => {
         const userBases = this.bases.filter(b => b.ownerId === u.uid).length;
         return {
@@ -220,12 +232,12 @@ class GameManager {
 
   startRespawnTimer() {
     if (this.respawnInterval) return;
-    this.respawnInterval = setInterval(() => {
+    this.respawnInterval = setInterval(async () => {
       if (!auth.currentUser) return;
       const inactiveResources = this.resources.filter(r => !r.active);
       if (inactiveResources.length > 0) {
         const resToRespawn = inactiveResources[Math.floor(Math.random() * inactiveResources.length)];
-        geographyManager.initializeTopicRegions();
+        await geographyManager.initializeTopicRegions();
         
         let validRegions = geographyManager.regions;
         if (resToRespawn.type === 'rare') {
@@ -250,7 +262,7 @@ class GameManager {
 
   async initializeResources() {
     if (!auth.currentUser) return;
-    geographyManager.initializeTopicRegions();
+    await geographyManager.initializeTopicRegions();
     const planetRadius = 10;
     const numCommon = 80;
     const numRare = 20;
@@ -296,7 +308,7 @@ class GameManager {
 
   async initializeNPCBases() {
     if (!auth.currentUser) return;
-    geographyManager.initializeTopicRegions();
+    await geographyManager.initializeTopicRegions();
     const planetRadius = 10;
     const numBases = 50;
     
@@ -448,6 +460,20 @@ class GameManager {
         lastPlanetID: planetId,
         position: { x: position.x, y: position.y, z: position.z },
         rotation: { x: rotation.x, y: rotation.y, z: rotation.z }
+      }
+    });
+  }
+
+  async updateLivePlayerState(systemSeed: string, currentPlanetId: string | null, position: THREE.Vector3, rotation: THREE.Euler, velocity: number) {
+    if (!auth.currentUser || !this.userData) return;
+    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+      liveState: {
+        systemSeed,
+        currentPlanetId,
+        position: { x: position.x, y: position.y, z: position.z },
+        rotation: { x: rotation.x, y: rotation.y, z: rotation.z },
+        velocity,
+        updatedAt: new Date().toISOString(),
       }
     });
   }

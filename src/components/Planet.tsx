@@ -178,21 +178,11 @@ export const Planet = memo(function Planet({
   const [geographyManager] = useState(() => new GeographyManager());
 
   useEffect(() => {
+    let disposed = false;
     geographyManager.setSeed(seed, noiseScale, landThreshold, textureDetail);
-    geographyManager.initializeTopicRegions();
-
-    const nextTexture = geographyManager.texture ?? null;
-    const nextDisplacement = geographyManager.displacementMap ?? null;
-    setTexture((prev) => {
-      if (prev && prev !== nextTexture) prev.dispose();
-      return nextTexture;
-    });
-    setDisplacementMap((prev) => {
-      if (prev && prev !== nextDisplacement) prev.dispose();
-      return nextDisplacement;
-    });
 
     geographyManager.onTextureUpdate = (newTexture, newDisplacementMap) => {
+      if (disposed) return;
       setTexture((prev) => {
         if (prev && prev !== newTexture) prev.dispose();
         return newTexture;
@@ -203,7 +193,22 @@ export const Planet = memo(function Planet({
       });
     };
 
+    void geographyManager.initializeTopicRegions().then(() => {
+      if (disposed) return;
+      const nextTexture = geographyManager.texture ?? null;
+      const nextDisplacement = geographyManager.displacementMap ?? null;
+      setTexture((prev) => {
+        if (prev && prev !== nextTexture) prev.dispose();
+        return nextTexture;
+      });
+      setDisplacementMap((prev) => {
+        if (prev && prev !== nextDisplacement) prev.dispose();
+        return nextDisplacement;
+      });
+    });
+
     return () => {
+      disposed = true;
       geographyManager.onTextureUpdate = null;
     };
   }, [geographyManager, seed, noiseScale, landThreshold, textureDetail]);

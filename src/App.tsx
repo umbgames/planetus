@@ -15,11 +15,14 @@ import { gameManager, UserData, BaseData } from './services/gameManager';
 import { auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { geographyManager, GeographyManager } from './services/geography';
-import { useShipStore } from './services/shipStore';
+import { minimapCameraQuaternionRef, useShipStore } from './services/shipStore';
 import { generateSolarSystem, SolarSystemData, PlanetData } from './services/solarSystem';
 import { createPRNG, hashCombine } from './utils/random';
 import { SolarSystemView } from './components/SolarSystemView';
-import { getScaledPlanetRadius, getScaledStarRadius } from './services/orbitUtils';
+import { buildOrbitMap, getBodyWorldPosition, getScaledPlanetRadius, getScaledStarRadius } from './services/orbitUtils';
+import { getPlanetName, getPlanetNames } from './services/planetNames';
+import { OrbitBanner } from './components/OrbitBanner';
+import { SystemMinimap } from './components/SystemMinimap';
 
 export const planetRotationRef = { current: 0 };
 
@@ -229,6 +232,7 @@ export default function App() {
   const [shipPosition, setShipPosition] = useState<THREE.Vector3 | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [satelliteUsers, setSatelliteUsers] = useState<{ uid?: string; name: string; bases: number; info: string; health: number }[]>([]);
+  const [activePlayers, setActivePlayers] = useState<UserData[]>([]);
   const [isMobile, setIsMobile] = useState(false);
   const [screenShake, setScreenShake] = useState(false);
   const [hitEffect, setHitEffect] = useState(false);
@@ -274,6 +278,75 @@ export default function App() {
     return planet ? getScaledPlanetRadius(planet.radius) : PLANET_RADIUS;
   }, [solarSystem, currentPlanetId]);
 
+
+  const shipTelemetry = useShipStore((state) => ({
+    position: state.shipPosition,
+    velocity: state.velocity,
+  }));
+
+  const orbitMap = useMemo(() => solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>(), [solarSystem]);
+
+  const planetNameMap = useMemo(() => {
+    if (!solarSystem) return {} as Record<string, string>;
+    return getPlanetNames(currentSystemSeed, solarSystem.bodies.filter((body): body is PlanetData => body.type === 'planet').map((planet) => planet.id));
+  }, [solarSystem, currentSystemSeed]);
+
+  const selfAbsolutePosition = useMemo(() => {
+    if (!solarSystem) return shipTelemetry.position.clone();
+    const elapsed = performance.now() / 1000;
+    const anchor = getBodyWorldPosition(currentPlanetId, solarSystem, elapsed, orbitMap, new THREE.Vector3());
+    return shipTelemetry.position.clone().add(anchor);
+  }, [solarSystem, currentPlanetId, orbitMap, shipTelemetry.position]);
+
+  const minimapPlayers = useMemo(() => {
+    if (!solarSystem) return [];
+    const elapsed = performance.now() / 1000;
+    const staleCutoff = Date.now() - 15000;
+    return activePlayers
+      .filter((player) => {
+        if (!player.liveState || player.liveState.systemSeed !== currentSystemSeed) return false;
+        return new Date(player.liveState.updatedAt).getTime() >= staleCutoff;
+      })
+      .map((player) => {
+        const liveState = player.liveState!;
+        const anchor = getBodyWorldPosition(liveState.currentPlanetId, solarSystem, elapsed, orbitMap, new THREE.Vector3());
+        const absolutePosition = new THREE.Vector3(liveState.position.x, liveState.position.y, liveState.position.z).add(anchor);
+        return {
+          uid: player.uid,
+          name: player.displayName,
+          isSelf: auth.currentUser?.uid === player.uid,
+          absolutePosition,
+          active: auth.currentUser?.uid === player.uid || absolutePosition.distanceTo(selfAbsolutePosition) < 3200,
+        };
+      });
+  }, [activePlayers, currentSystemSeed, solarSystem, orbitMap, selfAbsolutePosition]);
+
+  const lastLiveSyncRef = useRef({
+    time: 0,
+    position: new THREE.Vector3(Number.POSITIVE_INFINITY, 0, 0),
+    rotation: new THREE.Euler(Number.POSITIVE_INFINITY, 0, 0),
+  });
+
+  useEffect(() => {
+    if (!isShipMode || !solarSystem || !auth.currentUser) return;
+    const interval = window.setInterval(() => {
+      const now = performance.now();
+      const movedEnough = lastLiveSyncRef.current.position.distanceToSquared(shipTelemetry.position) > 0.35;
+      if (!movedEnough && now - lastLiveSyncRef.current.time < 1200) return;
+      const rotation = new THREE.Euler().setFromQuaternion(minimapCameraQuaternionRef.current, 'YXZ');
+      const deltaRot = Math.abs(rotation.x - lastLiveSyncRef.current.rotation.x) + Math.abs(rotation.y - lastLiveSyncRef.current.rotation.y) + Math.abs(rotation.z - lastLiveSyncRef.current.rotation.z);
+      if (!movedEnough && deltaRot < 0.08 && now - lastLiveSyncRef.current.time < 2500) return;
+      lastLiveSyncRef.current = {
+        time: now,
+        position: shipTelemetry.position.clone(),
+        rotation: rotation.clone(),
+      };
+      gameManager.updateLivePlayerState(currentSystemSeed, currentPlanetId, shipTelemetry.position, rotation, shipTelemetry.velocity).catch(console.error);
+    }, 250);
+
+    return () => window.clearInterval(interval);
+  }, [isShipMode, solarSystem, currentSystemSeed, currentPlanetId, shipTelemetry.position, shipTelemetry.velocity]);
+
   useEffect(() => {
     const system = generateSolarSystem(currentSystemSeed);
     setSolarSystem(system);
@@ -295,12 +368,11 @@ export default function App() {
         setLoadingStatus({
           active: true,
           progress: i / Math.max(planets.length, 1),
-          label: `Generating ${planet.id.replace('planet_', 'PLANET-')} in ${currentSystemSeed}...`,
+          label: `Generating ${getPlanetName(currentSystemSeed, planet.id)} in ${currentSystemSeed}...`,
         });
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() => {
-            GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold, 'enhanced');
-            resolve();
+            GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold, 'enhanced').finally(() => resolve());
           });
         });
       }
@@ -324,10 +396,10 @@ export default function App() {
       const planet = solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData;
       if (planet) {
         geographyManager.setSeed(planet.seed, planet.noiseScale, planet.landThreshold);
-        geographyManager.initializeTopicRegions();
+        void geographyManager.initializeTopicRegions();
         
         // Show welcome message
-        const planetName = planet.id.replace('planet_', 'PLANET-');
+        const planetName = getPlanetName(currentSystemSeed, planet.id);
         const descriptions = [
           "Entering Orbital Sector",
           "Atmospheric Entry Confirmed",
@@ -442,11 +514,15 @@ export default function App() {
     gameManager.onSatelliteUsersUpdate = (users) => {
       setSatelliteUsers(users);
     };
+    gameManager.onPlayersUpdate = (players) => {
+      setActivePlayers(players);
+    };
     
     return () => {
       gameManager.onUserDataUpdate = null;
       gameManager.onBasesUpdate = null;
       gameManager.onSatelliteUsersUpdate = null;
+      gameManager.onPlayersUpdate = null;
     };
   }, []);
 
@@ -691,7 +767,7 @@ export default function App() {
   const dpr = qualityPreset === 'low' ? [1, 1.2] as [number, number] : qualityPreset === 'medium' ? [1, 1.5] as [number, number] : [1, 2] as [number, number];
   const enableEnvironment = qualityPreset !== 'low';
   const bodyCount = solarSystem?.bodies.filter(b => b.type === 'planet').length ?? 0;
-  const activePlanetName = currentPlanetId ? currentPlanetId.replace('planet_', 'PLANET-') : 'SOL';
+  const activePlanetName = currentPlanetId ? getPlanetName(currentSystemSeed, currentPlanetId) : 'Sol';
 
   return (
     <motion.div 
@@ -904,18 +980,23 @@ export default function App() {
             initial={{ opacity: 1 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[80] bg-black flex items-center justify-center pointer-events-auto"
+            className="absolute inset-0 z-[80] bg-black flex items-center justify-center pointer-events-auto overflow-hidden"
           >
-            <div className="w-full max-w-md px-8">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.14),transparent_35%),linear-gradient(180deg,rgba(8,47,73,0.26),transparent_50%)]" />
+            <div className="absolute inset-0 opacity-30">
+              <div className="sleek-grid h-full w-full" />
+            </div>
+            <div className="absolute h-[420px] w-[420px] rounded-full border border-cyan-400/10 animate-pulse-slow" />
+            <div className="w-full max-w-md px-8 relative">
               <div className="flex items-center justify-center gap-3 mb-6">
                 <LoaderCircle size={28} className="text-cyan-400 animate-spin" />
                 <div className="text-white text-2xl font-black tracking-wider">PLANET:US</div>
               </div>
-              <div className="text-center text-zinc-400 text-sm mb-4">{loadingStatus.label}</div>
+              <div className="text-center text-zinc-400 text-sm mb-4 tracking-[0.18em] uppercase">{loadingStatus.label}</div>
               <div className="h-3 bg-zinc-800 rounded-full overflow-hidden border border-zinc-700">
                 <motion.div className="h-full bg-cyan-500" initial={{ width: 0 }} animate={{ width: `${Math.round(loadingStatus.progress * 100)}%` }} />
               </div>
-              <div className="text-center text-cyan-300 text-xs mt-3 font-mono">{Math.round(loadingStatus.progress * 100)}% CACHED</div>
+              <div className="text-center text-cyan-300 text-xs mt-3 font-mono tracking-[0.28em]">{Math.round(loadingStatus.progress * 100)}% SYNCHRONIZED</div>
             </div>
           </motion.div>
         )}
@@ -1058,36 +1139,18 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Welcome Message Overlay */}
-      <AnimatePresence>
-        {welcomeMessage && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 1.2 }}
-            className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
-          >
-            <div className="bg-black/40 backdrop-blur-md px-12 py-8 rounded-3xl border border-white/10 text-center">
-              <motion.div
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.2 }}
-              >
-                <div className="text-blue-400 text-xs font-bold tracking-[0.3em] uppercase mb-2">
-                  Welcome to
-                </div>
-                <h2 className="text-6xl font-black tracking-tighter text-white uppercase italic">
-                  {welcomeMessage.name}
-                </h2>
-                <div className="h-1 w-24 bg-blue-500 mx-auto mt-6 rounded-full" />
-                <p className="text-zinc-400 mt-6 text-sm font-medium tracking-widest uppercase">
-                  {welcomeMessage.desc}
-                </p>
-              </motion.div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <OrbitBanner message={welcomeMessage} />
+
+      {solarSystem && isShipMode && (
+        <SystemMinimap
+          solarSystem={solarSystem}
+          currentPlanetId={currentPlanetId}
+          selfAbsolutePosition={selfAbsolutePosition}
+          cameraQuaternion={minimapCameraQuaternionRef.current}
+          players={minimapPlayers}
+          planetNames={planetNameMap}
+        />
+      )}
 
       {/* Spawn Ship Button */}
       <AnimatePresence>
