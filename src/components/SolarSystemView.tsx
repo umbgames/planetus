@@ -1,7 +1,8 @@
 import React, { useRef, useMemo, useState, memo } from 'react';
+import { Billboard, Text } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { SolarSystemData, PlanetData, AsteroidBeltData, getScaledPlanetRadius, VISUAL_SCALE, buildOrbitMap, getPlanetWorldPosition } from '../services/solarSystem';
+import { SolarSystemData, PlanetData, AsteroidBeltData } from '../services/solarSystem';
 import { Planet } from './Planet';
 import { Sun } from './Sun';
 import { createPRNG } from '../utils/random';
@@ -13,6 +14,62 @@ interface SolarSystemViewProps {
   setCurrentPlanetId: (id: string | null) => void;
 }
 
+/**
+ * Visual tuning constants.
+ * These do NOT change the simulation data itself.
+ * They only remap sizes/distances for presentation.
+ */
+export const VISUAL_SCALE = {
+  STAR_RADIUS_MULTIPLIER: 4.5,      // makes sun feel dominant
+  PLANET_RADIUS_MULTIPLIER: 0.9,    // slightly reduce planets if they feel too big
+  ORBIT_DISTANCE_MULTIPLIER: 2.8,   // spreads planets farther apart
+  MIN_ORBIT_GAP: 18,                // minimum spacing between consecutive orbit bands
+  ASTEROID_DISTANCE_MULTIPLIER: 2.8,
+  ASTEROID_WIDTH_MULTIPLIER: 1.4,
+  PLANET_LOD_DISTANCE_MULTIPLIER: 1.8,
+};
+
+export function getScaledPlanetRadius(radius: number) {
+  return radius * VISUAL_SCALE.PLANET_RADIUS_MULTIPLIER;
+}
+
+function buildOrbitMap(bodies: SolarSystemData['bodies']) {
+  const planets = bodies
+    .filter((b): b is PlanetData => b.type === 'planet')
+    .slice()
+    .sort((a, b) => a.orbitDistance - b.orbitDistance);
+
+  const scaledOrbitMap = new Map<string, number>();
+
+  let lastScaledOrbit = 0;
+  let lastOriginalOrbit = 0;
+
+  planets.forEach((planet, index) => {
+    const baseScaled =
+      planet.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
+
+    if (index === 0) {
+      scaledOrbitMap.set(planet.id, baseScaled);
+      lastScaledOrbit = baseScaled;
+      lastOriginalOrbit = planet.orbitDistance;
+      return;
+    }
+
+    const originalGap = planet.orbitDistance - lastOriginalOrbit;
+    const scaledGap = Math.max(
+      originalGap * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER,
+      VISUAL_SCALE.MIN_ORBIT_GAP
+    );
+
+    const nextOrbit = lastScaledOrbit + scaledGap;
+    scaledOrbitMap.set(planet.id, nextOrbit);
+
+    lastScaledOrbit = nextOrbit;
+    lastOriginalOrbit = planet.orbitDistance;
+  });
+
+  return scaledOrbitMap;
+}
 
 interface OrbitingPlanetProps {
   planet: PlanetData;
@@ -31,6 +88,7 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
 }: OrbitingPlanetProps) {
   const groupRef = useRef<THREE.Group>(null);
   const [isActive, setIsActive] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const { camera } = useThree();
   const worldPos = useMemo(() => new THREE.Vector3(), []);
 
@@ -46,7 +104,16 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
     if (!groupRef.current) return;
 
     const time = state.clock.getElapsedTime();
-    const { x, y, z } = getPlanetWorldPosition(planet, time, new Map([[planet.id, scaledOrbitDistance]]));
+    const angle = planet.initialAngle + time * planet.orbitSpeed;
+
+    const x = Math.cos(angle) * scaledOrbitDistance;
+    const z = Math.sin(angle) * scaledOrbitDistance;
+
+    // Preserve orbital tilt look
+    const y =
+      x * Math.sin(planet.orbitTiltZ) +
+      z * Math.sin(planet.orbitTiltX);
+
     groupRef.current.position.set(x, y, z);
 
     // axial spin
@@ -95,9 +162,11 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
         setCurrentPlanetId(planet.id);
       }}
       onPointerOver={() => {
+        setIsHovered(true);
         document.body.style.cursor = 'pointer';
       }}
       onPointerOut={() => {
+        setIsHovered(false);
         document.body.style.cursor = 'auto';
       }}
     >
@@ -122,6 +191,27 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
           <ringGeometry args={[scaledRadius * 1.2, scaledRadius * 1.3, 64]} />
           <meshBasicMaterial color="#00ffff" side={THREE.DoubleSide} transparent opacity={0.5} />
         </mesh>
+      )}
+
+      {(isSelected || isHovered) && (
+        <Billboard position={[0, scaledRadius * 1.8, 0]}>
+          <group>
+            <mesh position={[0, 0, -0.01]}>
+              <planeGeometry args={[Math.max(8, planet.name.length * 0.85), 2.2]} />
+              <meshBasicMaterial color="#000000" transparent opacity={0.2} />
+            </mesh>
+            <Text
+              fontSize={0.85}
+              color={isSelected ? '#a5f3fc' : '#ffffff'}
+              anchorX="center"
+              anchorY="middle"
+              outlineWidth={0.03}
+              outlineColor="#000000"
+            >
+              {planet.name}
+            </Text>
+          </group>
+        </Billboard>
       )}
     </group>
   );
@@ -220,7 +310,14 @@ export function SolarSystemView({
           planet.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
 
         const time = state.clock.getElapsedTime();
-        const { x, y, z } = getPlanetWorldPosition(planet, time, orbitMap);
+        const angle = planet.initialAngle + time * planet.orbitSpeed;
+
+        const x = Math.cos(angle) * scaledOrbitDistance;
+        const z = Math.sin(angle) * scaledOrbitDistance;
+        const y =
+          x * Math.sin(planet.orbitTiltZ) +
+          z * Math.sin(planet.orbitTiltX);
+
         groupRef.current.position.set(-x, -y, -z);
       }
     } else {

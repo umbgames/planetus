@@ -19,7 +19,6 @@ export class GeographyManager {
   texture: THREE.CanvasTexture | null = null;
   displacementMap: THREE.CanvasTexture | null = null;
   onTextureUpdate: ((texture: THREE.CanvasTexture, displacementMap: THREE.CanvasTexture) => void) | null = null;
-  private textureCache = new Map<string, { texture: THREE.CanvasTexture; displacementMap: THREE.CanvasTexture }>();
   
   private prng: () => number;
   private noise3D: (x: number, y: number, z: number) => number;
@@ -409,7 +408,6 @@ export class GeographyManager {
     this.texture.needsUpdate = true;
     this.displacementMap.needsUpdate = true;
 
-    this.textureCache.set(`${this.seed}:${this.noiseScale}:${this.landThreshold}:${this.visualClass}`, { texture: this.texture, displacementMap: this.displacementMap });
     if (this.onTextureUpdate) {
       this.onTextureUpdate(this.texture, this.displacementMap);
     }

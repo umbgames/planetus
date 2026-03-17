@@ -1,4 +1,4 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -26,6 +26,26 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 0, 0), []);
   const spaceColor = useMemo(() => new THREE.Color('#000000'), []);
   const skyColor = useMemo(() => new THREE.Color('#cda077'), []);
+
+  useEffect(() => {
+    if (currentPlanetId && solarSystem) {
+      const planet = solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData;
+      if (planet) {
+        switch (planet.visualClass) {
+          case 'lush': skyColor.set('#87CEEB'); break;
+          case 'oceanic': skyColor.set('#4682B4'); break;
+          case 'desert': skyColor.set('#F4A460'); break;
+          case 'arid_rocky': skyColor.set('#CD853F'); break;
+          case 'barren_gray': skyColor.set('#696969'); break;
+          case 'icy': skyColor.set('#E0FFFF'); break;
+          case 'volcanic': skyColor.set('#8B0000'); break;
+          default: skyColor.set('#cda077');
+        }
+      }
+    } else {
+      skyColor.set('#cda077');
+    }
+  }, [currentPlanetId, solarSystem, skyColor]);
   
   useFrame((state) => {
     const planetCenter = new THREE.Vector3();

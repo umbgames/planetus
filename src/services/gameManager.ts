@@ -1,7 +1,58 @@
-import { collection, doc, setDoc, getDoc, updateDoc, onSnapshot, query, getDocs, deleteDoc, arrayUnion } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, updateDoc, onSnapshot, query, getDocs, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import * as THREE from 'three';
 import { geographyManager } from './geography';
+
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  // We don't throw here to avoid crashing the app, just log for debugging
+}
 
 export interface BaseData {
   id: string;
@@ -109,13 +160,6 @@ export interface ResourceNode {
 }
 
 class GameManager {
-  private handleListenerError(scope: string, error: any) {
-    if (error?.code === 'permission-denied') {
-      console.warn(`[Firestore] ${scope} listener disabled: insufficient permissions.`);
-      return;
-    }
-    console.error(`[Firestore] ${scope} listener error`, error);
-  }
   bases: BaseData[] = [];
   userData: UserData | null = null;
   planetStates: { [planetId: string]: PlanetState } = {};
@@ -224,6 +268,22 @@ class GameManager {
       if (doc.exists()) {
         const data = doc.data() as UserData;
         
+        // Ensure backward compatibility for existing users
+        if (data.machineGunAmmo === undefined) data.machineGunAmmo = 500;
+        if (data.missileAmmo === undefined) data.missileAmmo = 20;
+        if (data.taxAgreements === undefined) data.taxAgreements = {};
+        if (data.shipConfig === undefined) {
+          data.shipConfig = {
+            type: 'scout',
+            health: 100,
+            maxHealth: 100,
+            speed: 1,
+            agility: 1,
+            damage: 10,
+            addons: []
+          };
+        }
+        
         // Apply pending updates to prevent jitter
         if (this.pendingAmmoUpdates.mg > 0) {
           data.machineGunAmmo = Math.max(0, data.machineGunAmmo - this.pendingAmmoUpdates.mg);
@@ -235,7 +295,7 @@ class GameManager {
         this.userData = data;
         if (this.onUserDataUpdate) this.onUserDataUpdate(this.userData);
       }
-    }, (error) => this.handleListenerError('user', error));
+    }, (error) => handleFirestoreError(error, OperationType.GET, 'users/' + uid));
   }
 
   listenToBases() {
@@ -254,7 +314,7 @@ class GameManager {
       
       if (this.onBasesUpdate) this.onBasesUpdate(this.bases);
       this.updateHegemony(); // Recalculate hegemon when bases change
-    }, (error) => this.handleListenerError('bases', error));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'bases'));
   }
 
   listenToPlanetStates() {
@@ -267,7 +327,7 @@ class GameManager {
       this.planetStates = states;
       if (this.onPlanetStatesUpdate) this.onPlanetStatesUpdate(states);
       this.processTaxes();
-    }, (error) => this.handleListenerError('planet_states', error));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'planet_states'));
   }
 
   private hegemonyInterval: any = null;
@@ -386,7 +446,7 @@ class GameManager {
     this.unsubscribeMarket = onSnapshot(collection(db, 'market_offers'), (snapshot) => {
       this.marketOffers = snapshot.docs.map(doc => doc.data() as MarketOffer);
       if (this.onMarketOffersUpdate) this.onMarketOffersUpdate(this.marketOffers);
-    }, (error) => this.handleListenerError('market', error));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'market_offers'));
   }
 
   listenToSatellites() {
@@ -408,7 +468,7 @@ class GameManager {
       });
       this.satelliteUsers = satUsers;
       if (this.onSatelliteUsersUpdate) this.onSatelliteUsersUpdate(satUsers);
-    }, (error) => this.handleListenerError('satellites', error));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
   }
 
   addResourceListener(listener: (resources: ResourceNode[]) => void) {
@@ -426,7 +486,7 @@ class GameManager {
     this.unsubscribeResources = onSnapshot(collection(db, 'resources'), (snapshot) => {
       this.resources = snapshot.docs.map(doc => doc.data() as ResourceNode);
       this.resourceListeners.forEach(listener => listener(this.resources));
-    }, (error) => this.handleListenerError('resources', error));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'resources'));
   }
 
   async initializeNPCBases() {
@@ -599,7 +659,7 @@ class GameManager {
         });
       
       if (this.onActivePlayersUpdate) this.onActivePlayersUpdate(players);
-    }, (error) => this.handleListenerError('active_players', error));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
   }
 
   listenToSpaceStations() {
@@ -607,7 +667,7 @@ class GameManager {
     this.unsubscribeSpaceStations = onSnapshot(collection(db, 'space_stations'), (snapshot) => {
       this.spaceStations = snapshot.docs.map(doc => doc.data() as SpaceStation);
       if (this.onSpaceStationsUpdate) this.onSpaceStationsUpdate(this.spaceStations);
-    }, (error) => this.handleListenerError('space_stations', error));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'space_stations'));
   }
 
   listenToClans() {
@@ -615,7 +675,7 @@ class GameManager {
     this.unsubscribeClans = onSnapshot(collection(db, 'clans'), (snapshot) => {
       this.clans = snapshot.docs.map(doc => doc.data() as Clan);
       if (this.onClansUpdate) this.onClansUpdate(this.clans);
-    }, (error) => this.handleListenerError('clans', error));
+    }, (error) => handleFirestoreError(error, OperationType.LIST, 'clans'));
   }
 
   async createClan(name: string) {
@@ -648,11 +708,33 @@ class GameManager {
     if (!clanSnap.exists()) throw new Error("Clan not found.");
     
     const clan = clanSnap.data() as Clan;
-    if (clan.members.includes(auth.currentUser.uid)) throw new Error('Already in this clan.');
     await updateDoc(clanRef, {
-      members: arrayUnion(auth.currentUser.uid)
+      members: [...clan.members, auth.currentUser.uid]
     });
     await updateDoc(doc(db, 'users', auth.currentUser.uid), { clanId });
+  }
+
+  async leaveClan(clanId: string) {
+    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
+    
+    const clanRef = doc(db, 'clans', clanId);
+    const clanSnap = await getDoc(clanRef);
+    if (!clanSnap.exists()) throw new Error("Clan not found.");
+    
+    const clan = clanSnap.data() as Clan;
+    const newMembers = clan.members.filter(m => m !== auth.currentUser?.uid);
+    
+    if (newMembers.length === 0) {
+      await deleteDoc(clanRef);
+    } else {
+      const updates: any = { members: newMembers };
+      if (clan.leaderId === auth.currentUser.uid) {
+        updates.leaderId = newMembers[0];
+      }
+      await updateDoc(clanRef, updates);
+    }
+    
+    await updateDoc(doc(db, 'users', auth.currentUser.uid), { clanId: null });
   }
 
   async buyShip(type: ShipConfig['type']) {
@@ -991,6 +1073,13 @@ class GameManager {
     const newHealth = Math.max(0, base.health - remainingDamage);
     
     if (newHealth === 0) {
+      // First, destroy the base
+      await updateDoc(doc(db, 'bases', baseId), {
+        health: 0,
+        shieldHealth: newShieldHealth,
+        shieldActive
+      });
+      
       // Take over base
       await updateDoc(doc(db, 'bases', baseId), {
         health: 100,

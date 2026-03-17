@@ -127,7 +127,7 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
             onPointerOver={() => document.body.style.cursor = 'pointer'}
             onPointerOut={() => document.body.style.cursor = 'auto'}
           >
-            <group scale={[0.4, 0.4, 0.4]}>
+            <group scale={[0.04, 0.04, 0.04]}>
               {/* Main body */}
               <mesh rotation={[Math.PI / 2, 0, 0]}>
                 <cylinderGeometry args={[0.2, 0.2, 0.8, 16]} />

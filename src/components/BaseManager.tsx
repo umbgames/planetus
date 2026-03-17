@@ -13,9 +13,9 @@ interface BaseManagerProps {
   geographyManager: GeographyManager;
 }
 
-const CUBE_WIDTH = 0.06
-const CUBE_HEIGHT = 0.02
-const CUBE_DEPTH = 0.06
+const CUBE_WIDTH = 0.008
+const CUBE_HEIGHT = 0.0016
+const CUBE_DEPTH = 0.008
 
 const baseGeometry = new THREE.BoxGeometry(1,1,1)
 
@@ -87,7 +87,7 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
 
     const normal = pos.clone().normalize()
 
-    groupRef.current.position.copy(pos)
+    groupRef.current.position.copy(pos.clone().add(normal.clone().multiplyScalar(-0.014)))
 
     groupRef.current.quaternion.setFromUnitVectors(
       new THREE.Vector3(0,1,0),
@@ -104,13 +104,13 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
 
     /** FLOATING MOTION **/
 
-    const hover = Math.sin(time*1.2) * 0.03
+    const hover = Math.sin(time*1.2) * 0.003
 
     const normal = basePos.current.clone().normalize()
 
     const offset = normal.multiplyScalar(hover)
 
-    groupRef.current.position.copy(basePos.current.clone().add(offset))
+    groupRef.current.position.copy(basePos.current.clone().add(basePos.current.clone().normalize().multiplyScalar(-0.014)).add(offset))
 
     /** RADAR ROTATION **/
 
@@ -274,15 +274,15 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
 
         {/* PLATFORM */}
 
-        <mesh position={[0,0.02,0]}>
-          <cylinderGeometry args={[CUBE_WIDTH*2.2,CUBE_WIDTH*2.4,0.02,24]} />
+        <mesh position={[0,0.008,0]}>
+          <cylinderGeometry args={[CUBE_WIDTH*2.4,CUBE_WIDTH*2.8,0.012,32]} />
           <meshStandardMaterial color={color} metalness={0.8} roughness={0.45}/>
         </mesh>
 
         {/* COMMAND TOWER */}
 
-        <mesh position={[0,totalHeight*0.5+0.04,0]}>
-          <cylinderGeometry args={[0.04,0.05,totalHeight,16]}/>
+        <mesh position={[0,totalHeight*0.45+0.022,0]}>
+          <cylinderGeometry args={[0.026,0.038,totalHeight * 0.88,20]}/>
           <meshStandardMaterial
             color={color}
             emissive={color}
@@ -296,9 +296,9 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
 
         <mesh
           rotation={[Math.PI/2,0,0]}
-          position={[0,totalHeight*0.7+0.05,0]}
+          position={[0,totalHeight*0.62+0.03,0]}
         >
-          <torusGeometry args={[0.09,0.008,12,40]} />
+          <torusGeometry args={[0.065,0.006,12,40]} />
           <meshStandardMaterial
             color="#22d3ee"
             emissive="#22d3ee"
@@ -308,8 +308,8 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
 
         {/* REACTOR CORE */}
 
-        <mesh position={[0,totalHeight+0.06,0]}>
-          <sphereGeometry args={[0.025,16,16]}/>
+        <mesh position={[0,totalHeight*0.88+0.028,0]}>
+          <sphereGeometry args={[0.018,18,18]}/>
           <meshStandardMaterial
             color="#a855f7"
             emissive="#a855f7"

@@ -199,8 +199,7 @@ export const Planet = memo(function Planet({
 
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
   const [displacementMap, setDisplacementMap] = useState<THREE.CanvasTexture | null>(null);
-  const [planetSegments, setPlanetSegments] = useState(isMobile ? 48 : 96);
-  const [materialRevision, setMaterialRevision] = useState(0);
+  const [planetSegments, setPlanetSegments] = useState(isMobile ? 64 : 128);
 
   const frameCount = useRef(0);
 
@@ -215,9 +214,9 @@ export const Planet = memo(function Planet({
     
     let targetSegments;
     if (dist < radius * 3) {
-      targetSegments = isMobile ? 96 : 160;
+      targetSegments = isMobile ? 128 : 256;
     } else if (dist < radius * 8) {
-      targetSegments = isMobile ? 64 : 112;
+      targetSegments = isMobile ? 64 : 128;
     } else {
       targetSegments = isMobile ? 32 : 64;
     }
@@ -232,7 +231,6 @@ export const Planet = memo(function Planet({
 
   useEffect(() => {
     geographyManager.onTextureUpdate = (newTexture, newDisplacementMap) => {
-      setMaterialRevision((prev) => prev + 1);
       setTexture((prev) => {
         if (prev && prev !== newTexture) prev.dispose();
         return newTexture;
@@ -317,7 +315,7 @@ export const Planet = memo(function Planet({
     <group>
       <mesh ref={planetRef} castShadow receiveShadow frustumCulled>
         <sphereGeometry args={[radius, planetSegments, planetSegments]} />
-        <meshStandardMaterial key={`${seed}-${materialRevision}-${texture?.uuid ?? 'nomap'}`} {...materialProps} />
+        <meshStandardMaterial {...materialProps} />
       </mesh>
 
       <mesh frustumCulled>

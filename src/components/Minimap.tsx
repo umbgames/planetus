@@ -1,240 +1,247 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
+import { SolarSystemData } from '../services/solarSystem';
+import { UserData } from '../services/gameManager';
 import * as THREE from 'three';
-import { useShipStore } from '../services/shipStore';
-import {
-  SolarSystemData,
-  PlanetData,
-  buildOrbitMap,
-  getPlanetWorldPosition,
-} from '../services/solarSystem';
 
 interface MinimapProps {
   solarSystem: SolarSystemData | null;
   currentPlanetId: string | null;
-  range?: number;
+  shipPosition: THREE.Vector3;
+  activePlayers: UserData[];
 }
 
-type PointItem = {
-  id: string;
-  color: string;
-  x: number;
-  y: number;
-  z: number;
-  size: number;
-  opacity: number;
-  isCurrent: boolean;
-};
-
-export const Minimap: React.FC<MinimapProps> = ({
-  solarSystem,
-  currentPlanetId,
-  range = 1400,
-}) => {
-  const navShipPosition = useShipStore((s) => s.navShipPosition);
-  const navShipYaw = useShipStore((s) => s.navShipYaw);
-  const navCameraPitch = useShipStore((s) => s.navCameraPitch);
-  const navTime = useShipStore((s) => s.navTime);
-  const navVisible = useShipStore((s) => s.navVisible);
-
-  const size = 170;
-  const half = size / 2;
-  const renderRadius = size * 0.44;
+export const Minimap: React.FC<MinimapProps> = ({ solarSystem, currentPlanetId, shipPosition, activePlayers }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const size = 200;
+  const padding = 20;
+  const innerSize = size - padding * 2;
 
   const mapData = useMemo(() => {
-    if (!solarSystem || !navVisible) return null;
+    if (!solarSystem) return null;
 
-    const orbitMap = buildOrbitMap(solarSystem.bodies);
-    const planets = solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet');
-    if (!planets.length) return null;
+    const maxDist = Math.max(...solarSystem.bodies.map(b => b.orbitDistance), 1);
+    const scale = innerSize / (maxDist * 2.2);
 
-    const cosYaw = Math.cos(-navShipYaw);
-    const sinYaw = Math.sin(-navShipYaw);
+    return {
+      scale,
+      planets: solarSystem.bodies.map(b => {
+        let color = "#ffffff";
+        if (b.type === 'planet') {
+          switch (b.visualClass) {
+            case 'lush': color = "#10b981"; break;
+            case 'oceanic': color = "#3b82f6"; break;
+            case 'desert': color = "#fbbf24"; break;
+            case 'arid_rocky': color = "#d97706"; break;
+            case 'barren_gray': color = "#9ca3af"; break;
+            case 'icy': color = "#60a5fa"; break;
+            case 'volcanic': color = "#ef4444"; break;
+          }
+        } else {
+          color = "#4b5563";
+        }
 
-    const clampedPitch = THREE.MathUtils.clamp(navCameraPitch, -0.95, 0.95);
-    const pitchFlatten = THREE.MathUtils.lerp(0.82, 0.18, Math.abs(clampedPitch));
-    const pitchLift = Math.sin(clampedPitch) * 0.38;
+        return {
+          id: b.id,
+          name: b.type === 'planet' ? b.name : 'Asteroid Belt',
+          color,
+          orbitDistance: b.orbitDistance,
+          orbitSpeed: b.orbitSpeed,
+          orbitTiltX: b.type === 'planet' ? b.orbitTiltX : 0,
+          orbitTiltZ: b.type === 'planet' ? b.orbitTiltZ : 0,
+          initialAngle: b.initialAngle,
+          type: b.type
+        };
+      })
+    };
+  }, [solarSystem, innerSize]);
 
-    const points: PointItem[] = [];
+  useEffect(() => {
+    if (!mapData || !canvasRef.current) return;
 
-    for (const planet of planets) {
-      const pos = getPlanetWorldPosition(planet, navTime, orbitMap);
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-      const lx = pos.x - navShipPosition.x;
-      const ly = pos.y - navShipPosition.y;
-      const lz = pos.z - navShipPosition.z;
+    let animationFrameId: number;
 
-      const dist = Math.sqrt(lx * lx + ly * ly + lz * lz);
-      const isCurrent = planet.id === currentPlanetId;
+    const render = () => {
+      // Clear canvas
+      ctx.clearRect(0, 0, size, size);
+      
+      const cx = size / 2;
+      const cy = size / 2;
+      
+      // Time in seconds, roughly matching Three.js clock
+      const time = performance.now() / 1000;
 
-      if (dist > range && !isCurrent) continue;
-
-      const rx = lx * cosYaw - lz * sinYaw;
-      const rz = lx * sinYaw + lz * cosYaw;
-      const ry = ly;
-
-      const px = rx;
-      const py = rz * pitchFlatten - ry * (0.18 + Math.abs(pitchLift));
-
-      const radialScale = renderRadius / Math.max(range, 1);
-      const sx = px * radialScale;
-      const sy = py * radialScale;
-
-      const screenR = Math.sqrt(sx * sx + sy * sy);
-      if (screenR > renderRadius && !isCurrent) continue;
-
-      let color = '#cfd4da';
-      switch (planet.visualClass) {
-        case 'lush':
-          color = '#9fbf9f';
-          break;
-        case 'oceanic':
-          color = '#8ea8c9';
-          break;
-        case 'desert':
-          color = '#c7aa72';
-          break;
-        case 'arid_rocky':
-          color = '#a88162';
-          break;
-        case 'barren_gray':
-          color = '#9a9a9a';
-          break;
-        case 'icy':
-          color = '#b7c6cf';
-          break;
-        case 'volcanic':
-          color = '#b06060';
-          break;
+      // Draw 3D-like grid
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 10; i++) {
+        const y = (i / 10) * size;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(size, y);
+        ctx.stroke();
+        
+        const x = (i / 10) * size;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, size);
+        ctx.stroke();
       }
 
-      const normalized = Math.min(dist / range, 1);
-      const depthFactor = THREE.MathUtils.clamp((rz / range + 1) * 0.5, 0.2, 1);
+      // Draw Radar Sweep
+      const sweepAngle = (time * 2) % (Math.PI * 2);
+      const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, size / 2);
+      gradient.addColorStop(0, 'transparent');
+      gradient.addColorStop(1, 'rgba(34, 211, 238, 0.05)');
+      
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, size / 2, sweepAngle, sweepAngle + 0.5);
+      ctx.lineTo(cx, cy);
+      ctx.fillStyle = 'rgba(34, 211, 238, 0.1)';
+      ctx.fill();
 
-      const size = isCurrent
-        ? THREE.MathUtils.lerp(2.4, 3.8, depthFactor)
-        : THREE.MathUtils.lerp(1.2, 2.2, depthFactor);
-
-      const opacity = isCurrent
-        ? THREE.MathUtils.lerp(0.85, 1.0, 1 - normalized)
-        : THREE.MathUtils.lerp(0.35, 0.85, 1 - normalized);
-
-      points.push({
-        id: planet.id,
-        color,
-        x: sx,
-        y: sy,
-        z: rz,
-        size,
-        opacity,
-        isCurrent,
+      // Draw orbits with perspective tilt
+      const tilt = 0.4; // Perspective tilt factor
+      
+      mapData.planets.forEach(p => {
+        if (p.type === 'planet') {
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, p.orbitDistance * mapData.scale, p.orbitDistance * mapData.scale * tilt, 0, 0, Math.PI * 2);
+          ctx.strokeStyle = p.id === currentPlanetId ? 'rgba(34, 211, 238, 0.3)' : 'rgba(255, 255, 255, 0.05)';
+          ctx.lineWidth = p.id === currentPlanetId ? 2 : 1;
+          ctx.stroke();
+        }
       });
-    }
 
-    points.sort((a, b) => a.z - b.z);
+      // Draw Sun
+      ctx.beginPath();
+      ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#fbbf24';
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = '#fbbf24';
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      
+      // Draw Planets
+      mapData.planets.forEach(p => {
+        const angle = p.initialAngle + time * p.orbitSpeed;
+        
+        // Calculate 3D position
+        const x3d = Math.cos(angle) * p.orbitDistance;
+        const z3d = Math.sin(angle) * p.orbitDistance;
+        
+        // Project to 2D with tilt
+        const x = cx + x3d * mapData.scale;
+        const y = cy + z3d * mapData.scale * tilt;
 
-    const sweepAngle = (navTime * 1.2) % (Math.PI * 2);
+        ctx.beginPath();
+        ctx.arc(x, y, p.id === currentPlanetId ? 5 : 3, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.fill();
 
-    return { points, sweepAngle };
-  }, [solarSystem, navVisible, navShipYaw, navCameraPitch, navShipPosition, navTime, currentPlanetId, range]);
+        if (p.id === currentPlanetId) {
+          ctx.strokeStyle = 'white';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          
+          // Ping effect
+          const pingRadius = 5 + (time % 1) * 6;
+          ctx.beginPath();
+          ctx.arc(x, y, pingRadius, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(255, 255, 255, ${1 - (time % 1)})`;
+          ctx.lineWidth = 1;
+          ctx.stroke();
 
-  if (!navVisible || !mapData) return null;
+          // Label
+          ctx.fillStyle = 'white';
+          ctx.font = 'bold 10px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(p.name.toUpperCase(), x, y - 12);
+        }
+      });
 
-  const sweepLen = renderRadius;
-  const sweepX = half + Math.cos(mapData.sweepAngle - Math.PI / 2) * sweepLen;
-  const sweepY = half + Math.sin(mapData.sweepAngle - Math.PI / 2) * sweepLen * 0.92;
+      // Draw other players
+      activePlayers.forEach(player => {
+        if (player.playerSave?.position) {
+          const px = cx + player.playerSave.position.x * mapData.scale;
+          const py = cy + player.playerSave.position.z * mapData.scale * tilt;
+          
+          ctx.beginPath();
+          ctx.arc(px, py, 3, 0, Math.PI * 2);
+          ctx.fillStyle = '#eab308'; // yellow-500
+          ctx.shadowBlur = 5;
+          ctx.shadowColor = '#eab308';
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+      });
+
+      // Draw player ship
+      if (shipPosition) {
+        const sx = cx + shipPosition.x * mapData.scale;
+        const sy = cy + shipPosition.z * mapData.scale * tilt;
+        
+        ctx.beginPath();
+        ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#ef4444'; // red-500
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#ef4444';
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        
+        // Direction indicator
+        const dirAngle = time * 2; // In a real app, use ship rotation
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx + Math.cos(dirAngle) * 8, sy + Math.sin(dirAngle) * 8 * tilt);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, [mapData, currentPlanetId, shipPosition, activePlayers, size]);
+
+  if (!mapData) return null;
 
   return (
-    <div
-      className="absolute bottom-5 right-5 pointer-events-none select-none"
-      style={{ width: size, height: size, background: 'transparent' }}
+    <div 
+      className="absolute bottom-6 right-6 bg-[#151619]/80 backdrop-blur-md border border-cyan-500/20 rounded-full overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.5)] group"
+      style={{ width: size, height: size }}
     >
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ overflow: 'visible' }}>
-        <ellipse
-          cx={half}
-          cy={half}
-          rx={renderRadius}
-          ry={renderRadius * 0.52}
-          fill="none"
-          stroke="rgba(255,255,255,0.08)"
-          strokeWidth="0.8"
-        />
+      <div className="absolute inset-0 border-[4px] border-double border-white/5 rounded-full pointer-events-none" />
+      
+      <canvas 
+        ref={canvasRef}
+        width={size} 
+        height={size}
+        className="absolute inset-0"
+      />
+      
+      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+        <div className="w-full h-px bg-cyan-500/10" />
+        <div className="h-full w-px bg-cyan-500/10" />
+        <div className="absolute inset-0 border border-dashed border-white/5 rounded-full m-8" />
+      </div>
 
-        <line
-          x1={half - 8}
-          y1={half}
-          x2={half + 8}
-          y2={half}
-          stroke="rgba(255,255,255,0.18)"
-          strokeWidth="0.8"
-        />
-        <line
-          x1={half}
-          y1={half - 8}
-          x2={half}
-          y2={half + 8}
-          stroke="rgba(255,255,255,0.18)"
-          strokeWidth="0.8"
-        />
+      <div className="absolute top-3 left-0 w-full text-center pointer-events-none">
+        <div className="text-[8px] font-mono text-cyan-400/40 uppercase tracking-[0.3em] font-black">Tactical Overlay</div>
+      </div>
 
-        <line
-          x1={half}
-          y1={half}
-          x2={sweepX}
-          y2={sweepY}
-          stroke="rgba(255,255,255,0.22)"
-          strokeWidth="1"
-          strokeLinecap="round"
-        />
-
-        <circle cx={sweepX} cy={sweepY} r={1.2} fill="rgba(255,255,255,0.32)" />
-
-        {mapData.points.map((p) => {
-          const x = half + p.x;
-          const y = half + p.y;
-
-          return (
-            <g key={p.id}>
-              <circle cx={x} cy={y} r={p.size} fill={p.color} opacity={p.opacity} />
-              {p.isCurrent && (
-                <circle
-                  cx={x}
-                  cy={y}
-                  r={p.size + 4}
-                  fill="none"
-                  stroke={p.color}
-                  strokeWidth="0.75"
-                  opacity="0.75"
-                />
-              )}
-            </g>
-          );
-        })}
-
-        <g>
-          <circle cx={half} cy={half} r={2.7} fill="#ff3b30" />
-          <path
-            d={`
-              M ${half} ${half - 9}
-              L ${half - 4.2} ${half + 4.8}
-              L ${half} ${half + 1.5}
-              L ${half + 4.2} ${half + 4.8}
-              Z
-            `}
-            fill="#ff3b30"
-            opacity="0.95"
-          />
-        </g>
-
-        <line
-          x1={half}
-          y1={half - 16}
-          x2={half}
-          y2={half - 28}
-          stroke="rgba(255,255,255,0.38)"
-          strokeWidth="0.9"
-          strokeLinecap="round"
-        />
-      </svg>
+      <div className="absolute bottom-3 left-0 w-full text-center pointer-events-none">
+        <span className="text-[8px] font-mono text-white/20 uppercase tracking-[0.2em]">Nav-Sys v4.2</span>
+      </div>
     </div>
   );
 };

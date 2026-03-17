@@ -79,7 +79,7 @@ function OtherPlayerShip({
 
   return (
     <group ref={groupRef}>
-      <group ref={shipRef}>
+      <group ref={shipRef} scale={0.001}>
         {/* Simple Ship Model */}
         <mesh rotation={[Math.PI / 2, 0, 0]}>
           <coneGeometry args={[0.3, 1, 8]} />
