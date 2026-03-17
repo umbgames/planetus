@@ -181,40 +181,49 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
 
 export function Satellite({ satellites, onSatelliteClick, solarSystem, currentPlanetId }: SatelliteProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const { camera } = useThree();
 
   useFrame((state) => {
-    if (!groupRef.current || !solarSystem || !currentPlanetId) {
-      if (groupRef.current) groupRef.current.visible = false;
-      return;
+    if (groupRef.current && solarSystem) {
+      const mainPlanet = solarSystem.bodies.find(b => b.type === 'planet') as PlanetData;
+      if (mainPlanet) {
+        const time = state.clock.getElapsedTime();
+        const angle = mainPlanet.initialAngle + time * mainPlanet.orbitSpeed;
+        
+        const x = Math.cos(angle) * mainPlanet.orbitDistance;
+        const z = Math.sin(angle) * mainPlanet.orbitDistance;
+        const y = x * Math.sin(mainPlanet.orbitTiltZ) + z * Math.sin(mainPlanet.orbitTiltX);
+        
+        const mainPlanetPos = new THREE.Vector3(x, y, z);
+
+        if (currentPlanetId) {
+          const currentPlanet = solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData;
+          if (currentPlanet) {
+            const cAngle = currentPlanet.initialAngle + time * currentPlanet.orbitSpeed;
+            const cx = Math.cos(cAngle) * currentPlanet.orbitDistance;
+            const cz = Math.sin(cAngle) * currentPlanet.orbitDistance;
+            const cy = cx * Math.sin(currentPlanet.orbitTiltZ) + cz * Math.sin(currentPlanet.orbitTiltX);
+            
+            const currentPlanetPos = new THREE.Vector3(cx, cy, cz);
+            groupRef.current.position.subVectors(mainPlanetPos, currentPlanetPos);
+          } else {
+            // If currentPlanetId is set but not found (e.g. sun), it's at (0,0,0)
+            groupRef.current.position.copy(mainPlanetPos);
+          }
+        } else {
+          // Solar system view (centered on sun)
+          groupRef.current.position.copy(mainPlanetPos);
+        }
+      }
     }
-
-    const currentPlanet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId);
-    if (!currentPlanet) {
-      groupRef.current.visible = false;
-      return;
-    }
-
-    const time = state.clock.getElapsedTime();
-    const angle = currentPlanet.initialAngle + time * currentPlanet.orbitSpeed;
-    const x = Math.cos(angle) * currentPlanet.orbitDistance;
-    const z = Math.sin(angle) * currentPlanet.orbitDistance;
-    const y = x * Math.sin(currentPlanet.orbitTiltZ) + z * Math.sin(currentPlanet.orbitTiltX);
-
-    groupRef.current.position.set(x, y, z);
-
-    const distanceToPlanet = camera.position.distanceTo(groupRef.current.position);
-    const revealDistance = Math.max(18, currentPlanet.radius * 4.5);
-    groupRef.current.visible = distanceToPlanet < revealDistance;
   });
 
   return (
-    <group ref={groupRef} visible={false}>
+    <group ref={groupRef}>
       {satellites.map((tag) => (
-        <SingleSatellite
-          key={tag.name}
-          tag={tag}
-          onClick={() => onSatelliteClick?.(tag)}
+        <SingleSatellite 
+          key={tag.name} 
+          tag={tag} 
+          onClick={() => onSatelliteClick?.(tag)} 
         />
       ))}
     </group>

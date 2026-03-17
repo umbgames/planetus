@@ -1,110 +1,91 @@
 import React, { useMemo } from 'react';
+import { SolarSystemData, PlanetData, buildOrbitMap, getPlanetDisplayName, getPlanetWorldPosition } from '../services/solarSystem';
 import * as THREE from 'three';
-import { SolarSystemData, PlanetData, buildOrbitMap, getPlanetWorldPosition } from '../services/solarSystem';
 
 interface MinimapProps {
   solarSystem: SolarSystemData | null;
   currentPlanetId: string | null;
   shipPosition: THREE.Vector3;
-  shipHeading?: number;
 }
 
-const colorForClass = (visualClass: PlanetData["visualClass"]) => {
-  switch (visualClass) {
-    case 'lush': return '#22c55e';
-    case 'oceanic': return '#38bdf8';
-    case 'desert': return '#f59e0b';
-    case 'arid_rocky': return '#b45309';
-    case 'barren_gray': return '#a1a1aa';
-    case 'icy': return '#bfdbfe';
-    case 'volcanic': return '#ef4444';
-    default: return '#ffffff';
-  }
-};
-
-export const Minimap: React.FC<MinimapProps> = ({ solarSystem, currentPlanetId, shipPosition, shipHeading = 0 }) => {
-  const size = 180;
-  const center = size / 2;
+export const Minimap: React.FC<MinimapProps> = ({ solarSystem, currentPlanetId, shipPosition }) => {
+  const size = 220;
+  const padding = 20;
+  const innerSize = size - padding * 2;
 
   const mapData = useMemo(() => {
     if (!solarSystem) return null;
     const orbitMap = buildOrbitMap(solarSystem.bodies);
     const planets = solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet');
+    const maxDist = Math.max(...planets.map(p => orbitMap.get(p.id) ?? p.orbitDistance), 1);
+    const scale = innerSize / (maxDist * 2.3);
     const elapsed = performance.now() / 1000;
-    const range = Math.max(140, ...planets.map((p) => (orbitMap.get(p.id) ?? p.orbitDistance) * 0.22));
-
-    const rotate = (vec: THREE.Vector3) => {
-      const c = Math.cos(-shipHeading);
-      const s = Math.sin(-shipHeading);
-      return new THREE.Vector3(vec.x * c - vec.z * s, vec.y, vec.x * s + vec.z * c);
-    };
-
-    const shipWorld = shipPosition.clone();
-
     return {
-      range,
+      scale,
       planets: planets.map((planet) => {
-        const world = getPlanetWorldPosition(planet, elapsed, orbitMap);
-        const rel = new THREE.Vector3(world.x, world.y, world.z).sub(shipWorld);
-        const rotated = rotate(rel);
-        const normalized = rotated.clone().divideScalar(range);
-        const clamped = normalized.length() > 1 ? normalized.normalize() : normalized;
-        const depth = THREE.MathUtils.clamp((rotated.y / range) * 0.9, -0.9, 0.9);
-        return {
-          id: planet.id,
-          x: clamped.x,
-          y: clamped.z,
-          depth,
-          color: colorForClass(planet.visualClass),
-          current: planet.id === currentPlanetId,
-        };
+        let color = '#ffffff';
+        switch (planet.visualClass) {
+          case 'lush': color = '#10b981'; break;
+          case 'oceanic': color = '#3b82f6'; break;
+          case 'desert': color = '#fbbf24'; break;
+          case 'arid_rocky': color = '#d97706'; break;
+          case 'barren_gray': color = '#9ca3af'; break;
+          case 'icy': color = '#7dd3fc'; break;
+          case 'volcanic': color = '#ef4444'; break;
+        }
+        const pos = getPlanetWorldPosition(planet, elapsed, orbitMap);
+        return { id: planet.id, name: getPlanetDisplayName(planet.id, solarSystem), color, orbitDistance: orbitMap.get(planet.id) ?? planet.orbitDistance, pos };
       })
     };
-  }, [solarSystem, currentPlanetId, shipPosition.x, shipPosition.y, shipPosition.z, shipHeading]);
+  }, [solarSystem, innerSize, shipPosition.x, shipPosition.y, shipPosition.z]);
 
   if (!mapData) return null;
 
   return (
-    <div
-      className="absolute bottom-5 right-5 overflow-hidden rounded-3xl border border-cyan-400/30 bg-black/65 shadow-2xl backdrop-blur-xl"
-      style={{ width: size, height: size * 0.82, boxShadow: '0 0 30px rgba(34,211,238,0.15), inset 0 0 30px rgba(34,211,238,0.08)' }}
+    <div 
+      className="absolute bottom-6 right-6 bg-black/60 backdrop-blur border border-white/20 rounded-full overflow-hidden shadow-2xl"
+      style={{ width: size, height: size }}
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.10),transparent_62%)]" />
-      <svg width={size} height={size * 0.82} viewBox={`0 0 ${size} ${size * 0.82}`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        {/* Orbits */}
+        {mapData.planets.map(p => (
+          <ellipse key={`orbit-${p.id}`} cx={size / 2} cy={size / 2} rx={p.orbitDistance * mapData.scale} ry={p.orbitDistance * mapData.scale * 0.45} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+        ))}
+
         <defs>
-          <linearGradient id="gridFade" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="rgba(34,211,238,0.28)" />
-            <stop offset="100%" stopColor="rgba(34,211,238,0.02)" />
-          </linearGradient>
+          <radialGradient id="sunGlow">
+            <stop offset="0%" stopColor="#fde68a" stopOpacity="1" />
+            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
+          </radialGradient>
         </defs>
 
-        <g opacity="0.45">
-          <path d={`M ${22} ${center * 0.98} L ${center} ${26} L ${size - 22} ${center * 0.98} L ${center} ${size * 0.82 - 18} Z`} fill="none" stroke="url(#gridFade)" strokeWidth="1" />
-          <path d={`M ${center} ${22} L ${center} ${size * 0.82 - 16}`} stroke="rgba(34,211,238,0.12)" strokeWidth="1" />
-          <path d={`M ${24} ${center * 0.98} L ${size - 24} ${center * 0.98}`} stroke="rgba(34,211,238,0.12)" strokeWidth="1" />
-        </g>
+        <circle cx={size / 2} cy={size / 2} r={16} fill="url(#sunGlow)" />
+        <circle cx={size / 2} cy={size / 2} r={4} fill="#fbbf24" className="animate-pulse" />
 
-        {mapData.planets.map((p) => {
-          const px = center + p.x * 60;
-          const py = center * 0.98 + p.y * 34 - p.depth * 12;
-          const r = p.current ? 4.5 : THREE.MathUtils.lerp(2, 3.8, (p.depth + 1) / 2);
+        {mapData.planets.map(p => {
+          const x = size / 2 + p.pos.x * mapData.scale;
+          const y = size / 2 + p.pos.z * mapData.scale * 0.45 - p.pos.y * mapData.scale * 0.2;
           return (
-            <g key={p.id}>
-              <circle cx={px} cy={py} r={r * 2.2} fill={p.color} opacity={0.12} />
-              <circle cx={px} cy={py} r={r} fill={p.color} opacity={0.96} />
-              {p.current && <circle cx={px} cy={py} r={r + 5} fill="none" stroke={p.color} strokeWidth="1" opacity={0.8} />}
+            <g key={`planet-${p.id}`}>
+              <circle cx={x} cy={y} r={p.id === currentPlanetId ? 4.5 : 2.8} fill={p.color} opacity={0.95} />
+              {p.id === currentPlanetId && (
+                <circle cx={x} cy={y} r={9} fill="none" stroke={p.color} strokeWidth="1" className="animate-ping" />
+              )}
             </g>
           );
         })}
 
-        <g>
-          <path d={`M ${center} ${center * 0.98 - 13} L ${center - 7} ${center * 0.98 + 10} L ${center} ${center * 0.98 + 4} L ${center + 7} ${center * 0.98 + 10} Z`} fill="#22d3ee" />
-          <circle cx={center} cy={center * 0.98} r="12" fill="none" stroke="rgba(34,211,238,0.22)" strokeWidth="1" />
-        </g>
+        <circle cx={size / 2 + shipPosition.x * mapData.scale} cy={size / 2 + shipPosition.z * mapData.scale * 0.45 - shipPosition.y * mapData.scale * 0.2} r={3.5} fill="#ef4444" />
       </svg>
+      
+      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+        <div className="w-full h-px bg-white/5" />
+        <div className="h-full w-px bg-white/5" />
+      </div>
 
-      <div className="pointer-events-none absolute left-3 top-2 text-[10px] uppercase tracking-[0.35em] text-cyan-300/85">Nav 3D</div>
-      <div className="pointer-events-none absolute bottom-2 left-3 text-[9px] uppercase tracking-[0.28em] text-white/35">Ship-linked tactical map</div>
+      <div className="absolute bottom-2 left-0 w-full text-center">
+        <span className="text-[10px] font-mono text-white/40 uppercase tracking-widest">3D Nav</span>
+      </div>
     </div>
   );
 };

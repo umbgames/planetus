@@ -37,8 +37,6 @@ interface ShipState {
   setBoostEnergy: (e: number) => void;
   isJumping: boolean;
   setIsJumping: (val: boolean) => void;
-  shipHeading: number;
-  setShipHeading: (heading: number) => void;
 }
 
 export const useShipStore = create<ShipState>((set) => ({
@@ -74,6 +72,4 @@ export const useShipStore = create<ShipState>((set) => ({
   setBoostEnergy: (e) => set({ boostEnergy: e }),
   isJumping: false,
   setIsJumping: (val) => set({ isJumping: val }),
-  shipHeading: 0,
-  setShipHeading: (heading) => set({ shipHeading: heading }),
 }));
