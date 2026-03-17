@@ -13,9 +13,9 @@ interface BaseManagerProps {
   geographyManager: GeographyManager;
 }
 
-const CUBE_WIDTH = 0.006
-const CUBE_HEIGHT = 0.002
-const CUBE_DEPTH = 0.006
+const CUBE_WIDTH = 0.06
+const CUBE_HEIGHT = 0.02
+const CUBE_DEPTH = 0.06
 
 const baseGeometry = new THREE.BoxGeometry(1,1,1)
 
@@ -29,9 +29,6 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
   const radarRef = useRef<THREE.Group>(null)
   const levitationRef = useRef<THREE.Mesh>(null)
   const landingLights = useRef<THREE.Group>(null)
-
-  const shieldRef = useRef<THREE.Mesh>(null)
-  const missileBatteryRef = useRef<THREE.Group>(null)
 
   const { camera } = useThree()
   const { lockedTarget, setLockedTarget, projectiles, setProjectiles } = useShipStore()
@@ -57,16 +54,7 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
   const [ammo, setAmmo] = useState(maxAmmo);
   const fireRate = Math.max(0.2, 1.5 - data.level * 0.2); // seconds between shots
   const defenseRange = 40 + data.level * 10;
-  const [baseLasers, setBaseLasers] = useState<{id: string, pos: THREE.Vector3, targetPos: THREE.Vector3, createdAt: number, type: 'laser' | 'missile'}[]>([]);
-  const [shieldFlash, setShieldFlash] = useState(0);
-  const prevShieldHealth = useRef(data.shieldHealth);
-
-  useEffect(() => {
-    if (data.shieldHealth < prevShieldHealth.current) {
-      setShieldFlash(0.5);
-    }
-    prevShieldHealth.current = data.shieldHealth;
-  }, [data.shieldHealth]);
+  const [baseLasers, setBaseLasers] = useState<{id: string, pos: THREE.Vector3, targetPos: THREE.Vector3, createdAt: number}[]>([]);
 
   const handleBaseClick = (e:any) => {
     e.stopPropagation()
@@ -96,7 +84,7 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
 
   },[data.position])
 
-  useFrame((state, delta) => {
+  useFrame((state)=>{
 
     if(!groupRef.current || !highDetailRef.current || !lowDetailRef.current) return
 
@@ -120,44 +108,32 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
 
     /** BASE DEFENSE LOGIC **/
     if (ammo > 0 && time - lastFired.current > fireRate) {
-      // Find nearest enemy projectile or ship
-      let nearestTarget: any = null;
+      // Find nearest enemy projectile
+      let nearestProj = null;
       let minDist = defenseRange;
       
-      // Check projectiles
       for (const proj of projectiles) {
+        // Simple check: if projectile is close to base, it's an enemy projectile
         const dist = proj.pos.distanceTo(basePos.current);
         if (dist < minDist) {
           minDist = dist;
-          nearestTarget = { type: 'projectile', pos: proj.pos.clone(), id: proj.id };
+          nearestProj = proj;
         }
       }
-
-      // Check ship if no projectile or if ship is closer
-      const shipDist = camera.position.distanceTo(basePos.current);
-      if (shipDist < minDist && data.ownerId !== 'npc') { // Only defend against players if not NPC (or adjust logic)
-        // In a real game, we'd check if the ship is an enemy
-        // For now, let's say any ship within range is a target if it's not the owner
-        // But we don't have the ship's owner easily here. 
-        // Let's stick to projectiles for now to avoid friendly fire issues without more state.
-      }
       
-      if (nearestTarget) {
-        const firePos = basePos.current.clone().add(normal.clone().multiplyScalar(totalHeight + 0.5));
-        const isMissile = data.hasMissileBattery && Math.random() > 0.5;
-
+      if (nearestProj) {
+        // Fire laser
         setBaseLasers(prev => [...prev, {
           id: Math.random().toString(),
-          pos: firePos,
-          targetPos: nearestTarget.pos.clone(),
-          createdAt: time,
-          type: isMissile ? 'missile' : 'laser'
+          pos: basePos.current.clone().add(normal.clone().multiplyScalar(totalHeight + 0.5)),
+          targetPos: nearestProj.pos.clone(),
+          createdAt: time
         }]);
         setAmmo(prev => prev - 1);
         lastFired.current = time;
         
-        // Destroy projectile
-        setProjectiles((prev: any[]) => prev.filter(p => p.id !== nearestTarget.id));
+        // Destroy projectile (simple interception)
+        setProjectiles((prev: any[]) => prev.filter(p => p.id !== nearestProj.id));
       }
     }
     
@@ -188,15 +164,6 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
 
       })
 
-    }
-
-    /** SHIELD PULSE **/
-    if (shieldRef.current && data.shieldActive) {
-      const shieldPulse = 0.8 + Math.sin(time * 2) * 0.2;
-      shieldRef.current.scale.setScalar(shieldPulse);
-      const mat = shieldRef.current.material as THREE.MeshStandardMaterial;
-      mat.opacity = (0.15 + Math.sin(time * 2) * 0.05) + shieldFlash;
-      if (shieldFlash > 0) setShieldFlash(prev => Math.max(0, prev - delta * 2));
     }
 
     /** LOD **/
@@ -397,64 +364,7 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
           </group>
         )}
 
-        {/* MISSILE BATTERY */}
-        {data.hasMissileBattery && (
-          <group ref={missileBatteryRef} position={[0.08, 0.05, 0.08]}>
-            <mesh position={[0, 0.02, 0]}>
-              <boxGeometry args={[0.06, 0.04, 0.06]} />
-              <meshStandardMaterial color="#374151" metalness={0.9} roughness={0.1} />
-            </mesh>
-            {/* Launch Tubes */}
-            {[0, 1, 2, 3].map((i) => (
-              <group key={i} position={[(i % 2 === 0 ? -0.015 : 0.015), 0.04, (i < 2 ? -0.015 : 0.015)]}>
-                <mesh>
-                  <cylinderGeometry args={[0.008, 0.008, 0.04, 8]} />
-                  <meshStandardMaterial color="#1f2937" />
-                </mesh>
-                <mesh position={[0, 0.02, 0]}>
-                  <sphereGeometry args={[0.008, 8, 8]} />
-                  <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={0.5} />
-                </mesh>
-              </group>
-            ))}
-          </group>
-        )}
-
-        {/* TAX OFFICE */}
-        {data.hasTaxOffice && (
-          <group position={[-0.08, 0.05, -0.08]}>
-            <mesh position={[0, 0.04, 0]}>
-              <boxGeometry args={[0.06, 0.08, 0.06]} />
-              <meshStandardMaterial color="#065f46" metalness={0.5} roughness={0.5} />
-            </mesh>
-            {/* Antenna on top */}
-            <mesh position={[0, 0.09, 0]}>
-              <cylinderGeometry args={[0.002, 0.002, 0.04, 8]} />
-              <meshStandardMaterial color="#10b981" />
-            </mesh>
-            <mesh position={[0, 0.11, 0]}>
-              <sphereGeometry args={[0.005, 8, 8]} />
-              <meshStandardMaterial color="#10b981" emissive="#10b981" emissiveIntensity={2} />
-            </mesh>
-          </group>
-        )}
-
       </group>
-
-      {/* SHIELD DOME */}
-      {data.shieldActive && (
-        <mesh ref={shieldRef} position={[0, totalHeight / 2, 0]}>
-          <sphereGeometry args={[0.3, 32, 32]} />
-          <meshStandardMaterial 
-            color="#3b82f6" 
-            transparent 
-            opacity={0.3} 
-            side={THREE.DoubleSide}
-            emissive="#3b82f6"
-            emissiveIntensity={0.5}
-          />
-        </mesh>
-      )}
 
       {/* LOW DETAIL */}
 
@@ -492,8 +402,8 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
         
         return (
           <mesh key={laser.id} position={midPoint} quaternion={quaternion}>
-            <cylinderGeometry args={[laser.type === 'missile' ? 0.1 : 0.05, laser.type === 'missile' ? 0.1 : 0.05, length, 8]} />
-            <meshBasicMaterial color={laser.type === 'missile' ? "#ffaa00" : "#ff0000"} transparent opacity={0.8} />
+            <cylinderGeometry args={[0.05, 0.05, length, 8]} />
+            <meshBasicMaterial color="#ff0000" transparent opacity={0.8} />
           </mesh>
         );
       })}
@@ -509,18 +419,18 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
             {/* Defense Stats */}
             <div className="mt-1 pt-1 border-t border-white/20">
               <div className="flex justify-between items-center gap-4">
-                <span className="text-red-400">Health:</span>
-                <span className="text-white">{Math.floor(data.health)}%</span>
+                <span className="text-red-400">Defense:</span>
+                <span className="text-white">Lvl {data.level}</span>
               </div>
-              {data.shieldActive && (
-                <div className="flex justify-between items-center gap-4">
-                  <span className="text-blue-400">Shield:</span>
-                  <span className="text-white">{Math.floor(data.shieldHealth)} / {data.maxShieldHealth}</span>
-                </div>
-              )}
               <div className="flex justify-between items-center gap-4">
                 <span className="text-orange-400">Ammo:</span>
                 <span className="text-white">{ammo} / {maxAmmo}</span>
+              </div>
+              <div className="w-full bg-gray-700 h-1 mt-1 rounded overflow-hidden">
+                <div 
+                  className="bg-orange-500 h-full" 
+                  style={{ width: `${(ammo / maxAmmo) * 100}%` }}
+                />
               </div>
             </div>
           </div>

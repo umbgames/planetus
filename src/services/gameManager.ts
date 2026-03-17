@@ -3,133 +3,28 @@ import { db, auth } from '../firebase';
 import * as THREE from 'three';
 import { geographyManager } from './geography';
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  // We don't throw here to avoid crashing the app, just log for debugging
-}
-
 export interface BaseData {
   id: string;
   ownerId: string;
-  clanId?: string | null;
   position: { x: number; y: number; z: number };
   zone: 'high' | 'mid' | 'low';
   level: number;
   health: number;
-  shieldActive: boolean;
-  shieldHealth: number;
-  maxShieldHealth: number;
   hasMiner?: boolean;
-  hasMissileBattery?: boolean;
-  hasTaxOffice?: boolean;
   lastMinedAt?: string;
   createdAt: string;
-}
-
-export interface ShipConfig {
-  type: 'scout' | 'fighter' | 'interceptor' | 'bomber';
-  health: number;
-  maxHealth: number;
-  speed: number;
-  agility: number;
-  damage: number;
-  addons: string[];
-}
-
-export interface SpaceStation {
-  id: string;
-  ownerId: string;
-  ownerName: string;
-  clanId?: string | null;
-  planetId: string;
-  position: { x: number; y: number; z: number };
-  orbitRadius: number;
-  orbitSpeed: number;
-  initialAngle: number;
-  health: number;
-  maxHealth: number;
-  isControlled: boolean;
-  controlledBy?: string | null;
-  createdAt: string;
-}
-
-export interface Clan {
-  id: string;
-  name: string;
-  leaderId: string;
-  members: string[]; // UIDs
-  commonResources: number;
-  rareResources: number;
-  createdAt: string;
-}
-
-export interface PlanetState {
-  id: string;
-  hegemonId: string | null;
-  taxRate: number; // hourly common resources
-  taxStatus: 'active' | 'inactive';
-  lastTaxProcessAt: string;
 }
 
 export interface UserData {
   uid: string;
   displayName: string;
-  clanId?: string | null;
   commonResources: number;
   rareResources: number;
   hasSatellite: boolean;
+  satelliteHealth: number;
+  satelliteDestroyedAt?: string | null;
   machineGunAmmo: number;
   missileAmmo: number;
-  taxAgreements: { [planetId: string]: boolean }; // Whether user accepted tax
-  lastActiveAt?: string;
-  currentPlanetId?: string | null;
-  shipConfig?: ShipConfig;
   createdAt: string;
   playerSave?: {
     lastPlanetID: string;
@@ -152,7 +47,6 @@ export interface MarketOffer {
 
 export interface ResourceNode {
   id: string;
-  planetId: string;
   type: 'common' | 'rare';
   position: { x: number; y: number; z: number };
   active: boolean;
@@ -162,54 +56,28 @@ export interface ResourceNode {
 class GameManager {
   bases: BaseData[] = [];
   userData: UserData | null = null;
-  planetStates: { [planetId: string]: PlanetState } = {};
-  satelliteUsers: { uid?: string; name: string; bases: number; info: string }[] = [];
+  satelliteUsers: { uid?: string; name: string; bases: number; info: string; health: number }[] = [];
   marketOffers: MarketOffer[] = [];
   resources: ResourceNode[] = [];
-  clans: Clan[] = [];
-  spaceStations: SpaceStation[] = [];
   onBasesUpdate: ((bases: BaseData[]) => void) | null = null;
   onUserDataUpdate: ((userData: UserData | null) => void) | null = null;
-  onPlanetStatesUpdate: ((states: { [planetId: string]: PlanetState }) => void) | null = null;
-  onSatelliteUsersUpdate: ((users: { uid?: string; name: string; bases: number; info: string }[]) => void) | null = null;
-  onActivePlayersUpdate: ((players: UserData[]) => void) | null = null;
+  onSatelliteUsersUpdate: ((users: { uid?: string; name: string; bases: number; info: string; health: number }[]) => void) | null = null;
   onMarketOffersUpdate: ((offers: MarketOffer[]) => void) | null = null;
-  onClansUpdate: ((clans: Clan[]) => void) | null = null;
-  onSpaceStationsUpdate: ((stations: SpaceStation[]) => void) | null = null;
-  resourceListeners: Set<(resources: ResourceNode[]) => void> = new Set();
+  onResourcesUpdate: ((resources: ResourceNode[]) => void) | null = null;
   unsubscribeBases: (() => void) | null = null;
   unsubscribeUser: (() => void) | null = null;
   unsubscribeSatellites: (() => void) | null = null;
-  unsubscribeActivePlayers: (() => void) | null = null;
   unsubscribeMarket: (() => void) | null = null;
   unsubscribeResources: (() => void) | null = null;
-  unsubscribePlanetStates: (() => void) | null = null;
-  unsubscribeClans: (() => void) | null = null;
-  unsubscribeSpaceStations: (() => void) | null = null;
   needsNPCBases: boolean = false;
   needsResources: boolean = false;
-
-  async testConnection() {
-    try {
-      const { getDocFromServer } = await import('firebase/firestore');
-      await getDocFromServer(doc(db, 'test', 'connection'));
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('the client is offline')) {
-        console.error("Please check your Firebase configuration. The client is offline.");
-      }
-    }
-  }
 
   init() {
     this.listenToBases();
     this.listenToSatellites();
-    this.listenToActivePlayers();
     this.listenToMarket();
     this.listenToResources();
-    this.listenToPlanetStates();
-    this.listenToClans();
-    this.listenToSpaceStations();
-    this.testConnection();
+    this.startRespawnTimer();
     
     auth.onAuthStateChanged(async (user) => {
       if (user) {
@@ -219,8 +87,10 @@ class GameManager {
           this.initializeNPCBases();
           this.needsNPCBases = false;
         }
-        // Check for hegemony updates periodically
-        this.startHegemonyCheck();
+        if (this.needsResources) {
+          this.initializeResources();
+          this.needsResources = false;
+        }
       } else {
         this.userData = null;
         if (this.onUserDataUpdate) this.onUserDataUpdate(null);
@@ -243,18 +113,10 @@ class GameManager {
         commonResources: 0,
         rareResources: 0,
         hasSatellite: false,
+        satelliteHealth: 100,
+        satelliteDestroyedAt: null,
         machineGunAmmo: 500,
         missileAmmo: 20,
-        taxAgreements: {},
-        shipConfig: {
-          type: 'scout',
-          health: 100,
-          maxHealth: 100,
-          speed: 1,
-          agility: 1,
-          damage: 10,
-          addons: []
-        },
         createdAt: new Date().toISOString()
       };
       await setDoc(userRef, newUser);
@@ -267,22 +129,8 @@ class GameManager {
     this.unsubscribeUser = onSnapshot(doc(db, 'users', uid), (doc) => {
       if (doc.exists()) {
         const data = doc.data() as UserData;
-        
-        // Ensure backward compatibility for existing users
-        if (data.machineGunAmmo === undefined) data.machineGunAmmo = 500;
-        if (data.missileAmmo === undefined) data.missileAmmo = 20;
-        if (data.taxAgreements === undefined) data.taxAgreements = {};
-        if (data.shipConfig === undefined) {
-          data.shipConfig = {
-            type: 'scout',
-            health: 100,
-            maxHealth: 100,
-            speed: 1,
-            agility: 1,
-            damage: 10,
-            addons: []
-          };
-        }
+        if (typeof data.satelliteHealth !== 'number') data.satelliteHealth = 100;
+        if (!('satelliteDestroyedAt' in data)) data.satelliteDestroyedAt = null;
         
         // Apply pending updates to prevent jitter
         if (this.pendingAmmoUpdates.mg > 0) {
@@ -295,7 +143,7 @@ class GameManager {
         this.userData = data;
         if (this.onUserDataUpdate) this.onUserDataUpdate(this.userData);
       }
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'users/' + uid));
+    });
   }
 
   listenToBases() {
@@ -313,131 +161,7 @@ class GameManager {
       }
       
       if (this.onBasesUpdate) this.onBasesUpdate(this.bases);
-      this.updateHegemony(); // Recalculate hegemon when bases change
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'bases'));
-  }
-
-  listenToPlanetStates() {
-    if (this.unsubscribePlanetStates) this.unsubscribePlanetStates();
-    this.unsubscribePlanetStates = onSnapshot(collection(db, 'planet_states'), (snapshot) => {
-      const states: { [planetId: string]: PlanetState } = {};
-      snapshot.docs.forEach(doc => {
-        states[doc.id] = doc.data() as PlanetState;
-      });
-      this.planetStates = states;
-      if (this.onPlanetStatesUpdate) this.onPlanetStatesUpdate(states);
-      this.processTaxes();
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'planet_states'));
-  }
-
-  private hegemonyInterval: any = null;
-  private startHegemonyCheck() {
-    if (this.hegemonyInterval) return;
-    this.hegemonyInterval = setInterval(() => {
-      this.updateHegemony();
-    }, 60000); // Every minute
-  }
-
-  async updateHegemony() {
-    if (!auth.currentUser) return;
-    
-    // Group bases by planet and owner
-    // For now we only have one planet, but let's assume planetId is 'alpha_centauri'
-    const planetId = 'alpha_centauri';
-    const baseCounts: { [ownerId: string]: number } = {};
-    
-    this.bases.forEach(base => {
-      baseCounts[base.ownerId] = (baseCounts[base.ownerId] || 0) + 1;
     });
-
-    let maxBases = 0;
-    let hegemonId: string | null = null;
-    
-    for (const ownerId in baseCounts) {
-      if (baseCounts[ownerId] > maxBases) {
-        maxBases = baseCounts[ownerId];
-        hegemonId = ownerId;
-      }
-    }
-
-    // Update planet state if hegemon changed
-    const currentState = this.planetStates[planetId];
-    if (!currentState || currentState.hegemonId !== hegemonId) {
-      const planetRef = doc(db, 'planet_states', planetId);
-      await setDoc(planetRef, {
-        id: planetId,
-        hegemonId,
-        taxRate: currentState?.taxRate || 0,
-        taxStatus: currentState?.taxStatus || 'inactive',
-        lastTaxProcessAt: currentState?.lastTaxProcessAt || new Date().toISOString()
-      }, { merge: true });
-    }
-  }
-
-  async setTaxRate(planetId: string, rate: number, status: 'active' | 'inactive') {
-    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
-    const state = this.planetStates[planetId];
-    if (!state || state.hegemonId !== auth.currentUser.uid) {
-      throw new Error("Only the Hegemon can set taxes.");
-    }
-    
-    if (rate < 0 || rate > 100) throw new Error("Tax rate must be between 0 and 100.");
-
-    await updateDoc(doc(db, 'planet_states', planetId), {
-      taxRate: rate,
-      taxStatus: status
-    });
-  }
-
-  async acceptTax(planetId: string, accept: boolean) {
-    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
-    const updates: any = {};
-    updates[`taxAgreements.${planetId}`] = accept;
-    await updateDoc(doc(db, 'users', auth.currentUser.uid), updates);
-  }
-
-  private async processTaxes() {
-    if (!auth.currentUser || !this.userData) return;
-    
-    const planetId = 'alpha_centauri';
-    const state = this.planetStates[planetId];
-    if (!state || state.taxStatus !== 'active' || state.taxRate <= 0) return;
-
-    const now = new Date();
-    const lastProcess = new Date(state.lastTaxProcessAt);
-    const hoursPassed = (now.getTime() - lastProcess.getTime()) / (1000 * 60 * 60);
-
-    if (hoursPassed >= 1) {
-      // Only the Hegemon processes taxes to avoid multiple deductions
-      if (state.hegemonId === auth.currentUser.uid) {
-        const usersSnap = await getDocs(collection(db, 'users'));
-        const users = usersSnap.docs.map(d => d.data() as UserData);
-        
-        let totalCollected = 0;
-        for (const user of users) {
-          if (user.uid === state.hegemonId) continue;
-          if (user.taxAgreements && user.taxAgreements[planetId]) {
-            const taxAmount = Math.floor(state.taxRate * hoursPassed);
-            if (user.commonResources >= taxAmount) {
-              await updateDoc(doc(db, 'users', user.uid), {
-                commonResources: user.commonResources - taxAmount
-              });
-              totalCollected += taxAmount;
-            }
-          }
-        }
-
-        if (totalCollected > 0) {
-          await updateDoc(doc(db, 'users', state.hegemonId), {
-            commonResources: this.userData.commonResources + totalCollected
-          });
-        }
-
-        await updateDoc(doc(db, 'planet_states', planetId), {
-          lastTaxProcessAt: now.toISOString()
-        });
-      }
-    }
   }
 
   listenToMarket() {
@@ -446,7 +170,7 @@ class GameManager {
     this.unsubscribeMarket = onSnapshot(collection(db, 'market_offers'), (snapshot) => {
       this.marketOffers = snapshot.docs.map(doc => doc.data() as MarketOffer);
       if (this.onMarketOffersUpdate) this.onMarketOffersUpdate(this.marketOffers);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'market_offers'));
+    });
   }
 
   listenToSatellites() {
@@ -463,21 +187,13 @@ class GameManager {
           uid: u.uid,
           name: u.displayName,
           bases: userBases,
-          info: `A powerful explorer with ${userBases} bases.`
+          info: `A powerful explorer with ${userBases} bases.`,
+          health: typeof u.satelliteHealth === 'number' ? u.satelliteHealth : 100
         };
       });
       this.satelliteUsers = satUsers;
       if (this.onSatelliteUsersUpdate) this.onSatelliteUsersUpdate(satUsers);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
-  }
-
-  addResourceListener(listener: (resources: ResourceNode[]) => void) {
-    this.resourceListeners.add(listener);
-    listener(this.resources);
-  }
-
-  removeResourceListener(listener: (resources: ResourceNode[]) => void) {
-    this.resourceListeners.delete(listener);
+    });
   }
 
   listenToResources() {
@@ -485,8 +201,97 @@ class GameManager {
     
     this.unsubscribeResources = onSnapshot(collection(db, 'resources'), (snapshot) => {
       this.resources = snapshot.docs.map(doc => doc.data() as ResourceNode);
-      this.resourceListeners.forEach(listener => listener(this.resources));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'resources'));
+      
+      if (snapshot.empty) {
+        if (auth.currentUser) {
+          this.initializeResources();
+        } else {
+          this.needsResources = true;
+        }
+      } else {
+        // We will handle respawning in a separate interval
+      }
+      
+      if (this.onResourcesUpdate) this.onResourcesUpdate(this.resources);
+    });
+  }
+
+  private respawnInterval: any = null;
+
+  startRespawnTimer() {
+    if (this.respawnInterval) return;
+    this.respawnInterval = setInterval(() => {
+      if (!auth.currentUser) return;
+      const inactiveResources = this.resources.filter(r => !r.active);
+      if (inactiveResources.length > 0) {
+        const resToRespawn = inactiveResources[Math.floor(Math.random() * inactiveResources.length)];
+        geographyManager.initializeTopicRegions();
+        
+        let validRegions = geographyManager.regions;
+        if (resToRespawn.type === 'rare') {
+          validRegions = validRegions.filter(r => r.resourceZone === 'high');
+        }
+        
+        if (validRegions.length > 0) {
+          const region = validRegions[Math.floor(Math.random() * validRegions.length)];
+          const planetRadius = 10;
+          const pos = geographyManager.getRandomPointForTopic(region.id, planetRadius);
+          const height = geographyManager.getHeightAtPoint(pos[0], pos[1], pos[2], planetRadius, 0.8);
+          const snappedPos = new THREE.Vector3(pos[0], pos[1], pos[2]).normalize().multiplyScalar(height);
+          
+          updateDoc(doc(db, 'resources', resToRespawn.id), {
+            active: true,
+            position: { x: snappedPos.x, y: snappedPos.y, z: snappedPos.z }
+          }).catch(console.error);
+        }
+      }
+    }, 10000); // Try to respawn one resource every 10 seconds
+  }
+
+  async initializeResources() {
+    if (!auth.currentUser) return;
+    geographyManager.initializeTopicRegions();
+    const planetRadius = 10;
+    const numCommon = 80;
+    const numRare = 20;
+    
+    const spawnResource = async (type: 'common' | 'rare', index: number) => {
+      let validRegions = geographyManager.regions;
+      if (type === 'rare') {
+        validRegions = validRegions.filter(r => r.resourceZone === 'high');
+      }
+      if (validRegions.length === 0) return;
+      
+      const region = validRegions[Math.floor(Math.random() * validRegions.length)];
+      
+      const pos = geographyManager.getRandomPointForTopic(region.id, planetRadius);
+      const height = geographyManager.getHeightAtPoint(pos[0], pos[1], pos[2], planetRadius, 0.8);
+      const snappedPos = new THREE.Vector3(pos[0], pos[1], pos[2]).normalize().multiplyScalar(height);
+      
+      const resourceId = `res_${type}_${index}_${Date.now()}`;
+      
+      try {
+        const resRef = doc(db, 'resources', resourceId);
+        const resData: ResourceNode = {
+          id: resourceId,
+          type,
+          position: { x: snappedPos.x, y: snappedPos.y, z: snappedPos.z },
+          active: true,
+          createdAt: new Date().toISOString()
+        };
+        
+        await setDoc(resRef, resData);
+      } catch (e) {
+        console.error("Failed to create resource", e);
+      }
+    };
+
+    for (let i = 0; i < numCommon; i++) {
+      await spawnResource('common', i);
+    }
+    for (let i = 0; i < numRare; i++) {
+      await spawnResource('rare', i);
+    }
   }
 
   async initializeNPCBases() {
@@ -522,9 +327,6 @@ class GameManager {
           zone,
           level: 1,
           health: 100,
-          shieldActive: false,
-          shieldHealth: 0,
-          maxShieldHealth: 100,
           lastMinedAt: new Date().toISOString(),
           createdAt: new Date().toISOString()
         };
@@ -569,9 +371,6 @@ class GameManager {
       zone,
       level: 1,
       health: 100,
-      shieldActive: false,
-      shieldHealth: 0,
-      maxShieldHealth: 100,
       lastMinedAt: new Date().toISOString(),
       createdAt: new Date().toISOString()
     };
@@ -642,216 +441,6 @@ class GameManager {
     }
   }
 
-  listenToActivePlayers() {
-    if (this.unsubscribeActivePlayers) this.unsubscribeActivePlayers();
-    
-    // Listen to all users who have been active in the last 5 minutes
-    // Note: In a real app, we'd use a query with an index on lastActiveAt
-    this.unsubscribeActivePlayers = onSnapshot(collection(db, 'users'), (snapshot) => {
-      const now = new Date();
-      const players = snapshot.docs
-        .map(doc => doc.data() as UserData)
-        .filter(u => {
-          if (!u.lastActiveAt || !u.playerSave) return false;
-          const lastActive = new Date(u.lastActiveAt);
-          const diffMs = now.getTime() - lastActive.getTime();
-          return diffMs < 300000; // 5 minutes
-        });
-      
-      if (this.onActivePlayersUpdate) this.onActivePlayersUpdate(players);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
-  }
-
-  listenToSpaceStations() {
-    if (this.unsubscribeSpaceStations) this.unsubscribeSpaceStations();
-    this.unsubscribeSpaceStations = onSnapshot(collection(db, 'space_stations'), (snapshot) => {
-      this.spaceStations = snapshot.docs.map(doc => doc.data() as SpaceStation);
-      if (this.onSpaceStationsUpdate) this.onSpaceStationsUpdate(this.spaceStations);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'space_stations'));
-  }
-
-  listenToClans() {
-    if (this.unsubscribeClans) this.unsubscribeClans();
-    this.unsubscribeClans = onSnapshot(collection(db, 'clans'), (snapshot) => {
-      this.clans = snapshot.docs.map(doc => doc.data() as Clan);
-      if (this.onClansUpdate) this.onClansUpdate(this.clans);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'clans'));
-  }
-
-  async createClan(name: string) {
-    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
-    if (this.userData.clanId) throw new Error("Already in a clan.");
-    
-    const clanId = Math.random().toString(36).substring(2, 15);
-    const clanRef = doc(db, 'clans', clanId);
-    
-    const clan: Clan = {
-      id: clanId,
-      name,
-      leaderId: auth.currentUser.uid,
-      members: [auth.currentUser.uid],
-      commonResources: 0,
-      rareResources: 0,
-      createdAt: new Date().toISOString()
-    };
-    
-    await setDoc(clanRef, clan);
-    await updateDoc(doc(db, 'users', auth.currentUser.uid), { clanId });
-  }
-
-  async joinClan(clanId: string) {
-    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
-    if (this.userData.clanId) throw new Error("Already in a clan.");
-    
-    const clanRef = doc(db, 'clans', clanId);
-    const clanSnap = await getDoc(clanRef);
-    if (!clanSnap.exists()) throw new Error("Clan not found.");
-    
-    const clan = clanSnap.data() as Clan;
-    await updateDoc(clanRef, {
-      members: [...clan.members, auth.currentUser.uid]
-    });
-    await updateDoc(doc(db, 'users', auth.currentUser.uid), { clanId });
-  }
-
-  async leaveClan(clanId: string) {
-    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
-    
-    const clanRef = doc(db, 'clans', clanId);
-    const clanSnap = await getDoc(clanRef);
-    if (!clanSnap.exists()) throw new Error("Clan not found.");
-    
-    const clan = clanSnap.data() as Clan;
-    const newMembers = clan.members.filter(m => m !== auth.currentUser?.uid);
-    
-    if (newMembers.length === 0) {
-      await deleteDoc(clanRef);
-    } else {
-      const updates: any = { members: newMembers };
-      if (clan.leaderId === auth.currentUser.uid) {
-        updates.leaderId = newMembers[0];
-      }
-      await updateDoc(clanRef, updates);
-    }
-    
-    await updateDoc(doc(db, 'users', auth.currentUser.uid), { clanId: null });
-  }
-
-  async buyShip(type: ShipConfig['type']) {
-    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
-    
-    const prices = {
-      scout: { common: 0, rare: 0 },
-      fighter: { common: 2000, rare: 500 },
-      interceptor: { common: 5000, rare: 1500 },
-      bomber: { common: 10000, rare: 3000 }
-    };
-    
-    const price = prices[type];
-    if (this.userData.commonResources < price.common || this.userData.rareResources < price.rare) {
-      throw new Error("Insufficient resources.");
-    }
-    
-    const configs: { [key: string]: ShipConfig } = {
-      scout: { type: 'scout', health: 100, maxHealth: 100, speed: 1, agility: 1, damage: 10, addons: [] },
-      fighter: { type: 'fighter', health: 250, maxHealth: 250, speed: 1.2, agility: 0.8, damage: 25, addons: [] },
-      interceptor: { type: 'interceptor', health: 150, maxHealth: 150, speed: 2.0, agility: 1.5, damage: 15, addons: [] },
-      bomber: { type: 'bomber', health: 500, maxHealth: 500, speed: 0.7, agility: 0.4, damage: 60, addons: [] }
-    };
-    
-    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-      commonResources: this.userData.commonResources - price.common,
-      rareResources: this.userData.rareResources - price.rare,
-      shipConfig: configs[type]
-    });
-  }
-
-  async buySpaceStation(planetId: string) {
-    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
-    const price = { common: 25000, rare: 10000 };
-    
-    if (this.userData.commonResources < price.common || this.userData.rareResources < price.rare) {
-      throw new Error("Insufficient resources.");
-    }
-    
-    const stationId = Math.random().toString(36).substring(2, 15);
-    const stationRef = doc(db, 'space_stations', stationId);
-    
-    const station: SpaceStation = {
-      id: stationId,
-      ownerId: auth.currentUser.uid,
-      ownerName: this.userData.displayName,
-      clanId: this.userData.clanId,
-      planetId,
-      position: { x: 0, y: 0, z: 0 },
-      orbitRadius: 100,
-      orbitSpeed: 0.001,
-      initialAngle: Math.random() * Math.PI * 2,
-      health: 5000,
-      maxHealth: 5000,
-      isControlled: false,
-      createdAt: new Date().toISOString()
-    };
-    
-    await setDoc(stationRef, station);
-    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-      commonResources: this.userData.commonResources - price.common,
-      rareResources: this.userData.rareResources - price.rare
-    });
-  }
-
-  async transferResourcesOnKill(victimUid: string) {
-    if (!auth.currentUser || !this.userData) return;
-    
-    const victimRef = doc(db, 'users', victimUid);
-    const victimSnap = await getDoc(victimRef);
-    if (!victimSnap.exists()) return;
-    
-    const victimData = victimSnap.data() as UserData;
-    const commonToTransfer = Math.floor(victimData.commonResources * 0.5);
-    const rareToTransfer = Math.floor(victimData.rareResources * 0.5);
-    
-    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-      commonResources: this.userData.commonResources + commonToTransfer,
-      rareResources: this.userData.rareResources + rareToTransfer
-    });
-    
-    await updateDoc(victimRef, {
-      commonResources: victimData.commonResources - commonToTransfer,
-      rareResources: victimData.rareResources - rareToTransfer
-    });
-  }
-
-  async damagePlayer(uid: string, damage: number): Promise<boolean> {
-    const userRef = doc(db, 'users', uid);
-    const userSnap = await getDoc(userRef);
-    if (!userSnap.exists()) return false;
-    
-    const userData = userSnap.data() as UserData;
-    const currentHealth = userData.shipConfig?.health || 100;
-    const newHealth = Math.max(0, currentHealth - damage);
-    
-    await updateDoc(userRef, {
-      'shipConfig.health': newHealth
-    });
-    
-    return newHealth <= 0;
-  }
-
-  async syncPlayerPosition(planetId: string, position: THREE.Vector3, rotation: THREE.Euler) {
-    if (!auth.currentUser || !this.userData) return;
-    
-    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-      lastActiveAt: new Date().toISOString(),
-      currentPlanetId: planetId,
-      playerSave: {
-        lastPlanetID: planetId,
-        position: { x: position.x, y: position.y, z: position.z },
-        rotation: { x: rotation.x, y: rotation.y, z: rotation.z }
-      }
-    });
-  }
-
   async savePlayerState(planetId: string, position: THREE.Vector3, rotation: THREE.Euler) {
     if (!auth.currentUser || !this.userData) return;
     await updateDoc(doc(db, 'users', auth.currentUser.uid), {
@@ -916,77 +505,6 @@ class GameManager {
     }
   }
 
-  async buyShield(baseId: string) {
-    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
-    const base = this.bases.find(b => b.id === baseId);
-    if (!base || base.ownerId !== auth.currentUser.uid) throw new Error("You don't own this base.");
-    if (base.shieldActive) throw new Error("Shield already active.");
-
-    const costCommon = 300;
-    const costRare = 80;
-
-    if (this.userData.commonResources >= costCommon && this.userData.rareResources >= costRare) {
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-        commonResources: this.userData.commonResources - costCommon,
-        rareResources: this.userData.rareResources - costRare
-      });
-      
-      await updateDoc(doc(db, 'bases', baseId), {
-        shieldActive: true,
-        shieldHealth: 200,
-        maxShieldHealth: 200
-      });
-    } else {
-      throw new Error(`Not enough resources. Need ${costCommon} Common and ${costRare} Rare.`);
-    }
-  }
-
-  async buyMissileBattery(baseId: string) {
-    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
-    const base = this.bases.find(b => b.id === baseId);
-    if (!base || base.ownerId !== auth.currentUser.uid) throw new Error("You don't own this base.");
-    if (base.hasMissileBattery) throw new Error("Missile battery already installed.");
-
-    const costCommon = 400;
-    const costRare = 120;
-
-    if (this.userData.commonResources >= costCommon && this.userData.rareResources >= costRare) {
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-        commonResources: this.userData.commonResources - costCommon,
-        rareResources: this.userData.rareResources - costRare
-      });
-      
-      await updateDoc(doc(db, 'bases', baseId), {
-        hasMissileBattery: true
-      });
-    } else {
-      throw new Error(`Not enough resources. Need ${costCommon} Common and ${costRare} Rare.`);
-    }
-  }
-
-  async buyTaxOffice(baseId: string) {
-    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
-    const base = this.bases.find(b => b.id === baseId);
-    if (!base || base.ownerId !== auth.currentUser.uid) throw new Error("You don't own this base.");
-    if (base.hasTaxOffice) throw new Error("Tax office already installed.");
-
-    const costCommon = 1000;
-    const costRare = 250;
-
-    if (this.userData.commonResources >= costCommon && this.userData.rareResources >= costRare) {
-      await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-        commonResources: this.userData.commonResources - costCommon,
-        rareResources: this.userData.rareResources - costRare
-      });
-      
-      await updateDoc(doc(db, 'bases', baseId), {
-        hasTaxOffice: true
-      });
-    } else {
-      throw new Error(`Not enough resources. Need ${costCommon} Common and ${costRare} Rare.`);
-    }
-  }
-
   async claimMinerResources(baseId: string) {
     if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
     const base = this.bases.find(b => b.id === baseId);
@@ -1043,7 +561,9 @@ class GameManager {
       await updateDoc(doc(db, 'users', auth.currentUser.uid), {
         commonResources: this.userData.commonResources - costCommon,
         rareResources: this.userData.rareResources - costRare,
-        hasSatellite: true
+        hasSatellite: true,
+        satelliteHealth: 100,
+        satelliteDestroyedAt: null
       });
     } else {
       throw new Error(`Not enough resources. Need ${costCommon} Common and ${costRare} Rare.`);
@@ -1055,40 +575,13 @@ class GameManager {
     const base = this.bases.find(b => b.id === baseId);
     if (!base || base.ownerId === auth.currentUser.uid) throw new Error("You can't attack your own base.");
     
-    let remainingDamage = damage;
-    let newShieldHealth = base.shieldHealth;
-    let shieldActive = base.shieldActive;
-
-    if (shieldActive && newShieldHealth > 0) {
-      if (newShieldHealth >= remainingDamage) {
-        newShieldHealth -= remainingDamage;
-        remainingDamage = 0;
-      } else {
-        remainingDamage -= newShieldHealth;
-        newShieldHealth = 0;
-        shieldActive = false;
-      }
-    }
-
-    const newHealth = Math.max(0, base.health - remainingDamage);
+    const newHealth = Math.max(0, base.health - damage);
     
     if (newHealth === 0) {
-      // First, destroy the base
-      await updateDoc(doc(db, 'bases', baseId), {
-        health: 0,
-        shieldHealth: newShieldHealth,
-        shieldActive
-      });
-      
       // Take over base
       await updateDoc(doc(db, 'bases', baseId), {
         health: 100,
-        ownerId: auth.currentUser.uid,
-        shieldActive: false,
-        shieldHealth: 0,
-        hasMiner: false,
-        hasMissileBattery: false,
-        hasTaxOffice: false
+        ownerId: auth.currentUser.uid
       });
       
       // Reward for taking over a base
@@ -1100,9 +593,7 @@ class GameManager {
       });
     } else {
       await updateDoc(doc(db, 'bases', baseId), {
-        health: newHealth,
-        shieldHealth: newShieldHealth,
-        shieldActive
+        health: newHealth
       });
     }
   }
@@ -1180,7 +671,25 @@ class GameManager {
   async destroySatellite(userId: string) {
     if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
     await updateDoc(doc(db, 'users', userId), {
-      hasSatellite: false
+      hasSatellite: false,
+      satelliteHealth: 0,
+      satelliteDestroyedAt: new Date().toISOString()
+    });
+  }
+
+  async damageSatellite(userId: string, damage: number) {
+    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
+    if (!userId || damage <= 0) return;
+    if (userId === auth.currentUser.uid) return;
+
+    const target = this.satelliteUsers.find(s => s.uid === userId);
+    if (!target) throw new Error("Satellite not found.");
+
+    const nextHealth = Math.max(0, (target.health ?? 100) - damage);
+    await updateDoc(doc(db, 'users', userId), {
+      satelliteHealth: nextHealth,
+      hasSatellite: nextHealth > 0,
+      satelliteDestroyedAt: nextHealth <= 0 ? new Date().toISOString() : null
     });
   }
 

@@ -1,10 +1,31 @@
-import { createPRNG, cyrb128 } from '../utils/random';
+import { createPRNG, hashCombine, seededRange } from '../utils/random';
 
-export type PlanetVisualClass = 'lush' | 'oceanic' | 'desert' | 'arid_rocky' | 'barren_gray' | 'icy' | 'volcanic';
+export interface MoonData {
+  id: string;
+  seed: string;
+  parentPlanetId: string;
+  radius: number;
+  orbitDistance: number;
+  orbitSpeed: number;
+  orbitTiltX: number;
+  orbitTiltZ: number;
+  initialAngle: number;
+  noiseScale: number;
+  landThreshold: number;
+  paletteSeed: number;
+  hasClouds: boolean;
+}
+
+export interface RingData {
+  innerRadius: number;
+  outerRadius: number;
+  color: string;
+  opacity: number;
+}
 
 export interface PlanetData {
   id: string;
-  name: string;
+  seed: string;
   type: 'planet';
   radius: number;
   orbitDistance: number;
@@ -15,7 +36,15 @@ export interface PlanetData {
   noiseScale: number;
   landThreshold: number;
   colorSeed: number;
-  visualClass: PlanetVisualClass;
+  temperatureBias: number;
+  humidityBias: number;
+  paletteSeed: number;
+  hasClouds: boolean;
+  cloudDensity: number;
+  cloudSpeed: number;
+  cloudRotationSpeed: number;
+  moons: MoonData[];
+  ring: RingData | null;
 }
 
 export interface AsteroidBeltData {
@@ -34,113 +63,116 @@ export type OrbitalBody = PlanetData | AsteroidBeltData;
 export interface SolarSystemData {
   seed: string;
   starRadius: number;
+  starColor: string;
   bodies: OrbitalBody[];
 }
 
-function hashString(str: string): string {
-  const h = cyrb128(str);
-  return h[0].toString(16) + h[1].toString(16) + h[2].toString(16) + h[3].toString(16);
-}
-
-const PLANET_NAMES = [
-  'Aethelgard', 'Borealis', 'Coriolis', 'Dravonis', 'Elysium', 'Falkor', 'Gideon', 'Helios', 'Icarus', 'Jovian',
-  'Krypton', 'Lyra', 'Mandalore', 'Nebula', 'Orion', 'Pegasus', 'Quasar', 'Rigel', 'Sirius', 'Tatooine',
-  'Umbriel', 'Valkyrie', 'Wyvern', 'Xenon', 'Yggdrasil', 'Zephyr', 'Aethelred', 'Balthazar', 'Cassiopeia', 'Draco',
-  'Eridanus', 'Fornax', 'Gemini', 'Hydra', 'Indus', 'Janus', 'Kaelen', 'Lupus', 'Mensae', 'Norma',
-  'Octans', 'Pictor', 'Reticulum', 'Scutum', 'Taurus', 'Ursa', 'Vela', 'Volans', 'Zeta', 'Altair',
-  'Bellatrix', 'Capella', 'Deneb', 'Enif', 'Fomalhaut', 'Gacrux', 'Hadar', 'Izar', 'Kaus', 'Lesath',
-  'Markab', 'Nunki', 'Polaris', 'Regulus', 'Spica', 'Thuban', 'Unukalhai', 'Vega', 'Wezen', 'Zaurak'
-];
-
-const solarSystemCache: Record<string, SolarSystemData> = {};
+const STAR_COLORS = ['#fff4de', '#ffe8b5', '#ffd6a5', '#cfe8ff', '#bcd5ff', '#ffd1dc'];
+const RING_COLORS = ['#d8c3a5', '#c4b5a0', '#bfa88a', '#d9d1c7', '#c7c2b8'];
 
 export function generateSolarSystem(worldSeed: string): SolarSystemData {
-  if (solarSystemCache[worldSeed]) {
-    return solarSystemCache[worldSeed];
-  }
-
   const prng = createPRNG(worldSeed);
-  
-  // Number of planets between 4 and 12
-  const numBodies = Math.floor(prng() * 9) + 4;
-  
+  const numBodies = Math.floor(prng() * 8) + 6;
   const bodies: OrbitalBody[] = [];
-  
-  const baseOrbitDistance = 100;
-  
-  const VISUAL_CLASSES: PlanetVisualClass[] = ['lush', 'oceanic', 'desert', 'arid_rocky', 'barren_gray', 'icy', 'volcanic'];
+  const starRadius = seededRange(hashCombine(worldSeed, 'starRadius'), 8, 16);
+  const starColor = STAR_COLORS[Math.floor(prng() * STAR_COLORS.length) % STAR_COLORS.length];
 
-  // Shuffle names based on seed
-  const shuffledNames = [...PLANET_NAMES].sort(() => prng() - 0.5);
-  let nameIndex = 0;
+  let orbitDistance = 90;
 
   for (let i = 0; i < numBodies; i++) {
-    const bodySeed = hashString(`${worldSeed}_${i}`);
+    const bodySeed = hashCombine(worldSeed, 'body', i);
     const bodyPrng = createPRNG(bodySeed);
-    
-    // 20% chance of asteroid belt, but not the first body
-    const isAsteroidBelt = i > 0 && bodyPrng() < 0.2;
-    
-    // Logarithmic scale for distance
-    const orbitDistance = baseOrbitDistance * Math.pow(1.8, i);
+    const isAsteroidBelt = i > 1 && bodyPrng() < 0.16;
+    orbitDistance += seededRange(hashCombine(bodySeed, 'orbitGap'), 55, 120);
     const initialAngle = bodyPrng() * Math.PI * 2;
-    
+    const radialRatio = i / Math.max(1, numBodies - 1);
+
     if (isAsteroidBelt) {
       bodies.push({
         id: `belt_${i}`,
         type: 'asteroid_belt',
-        orbitDistance: orbitDistance,
-        orbitSpeed: (bodyPrng() * 0.02 + 0.01) * (bodyPrng() > 0.5 ? 1 : -1),
-        width: orbitDistance * 0.1,
-        count: Math.floor(bodyPrng() * 200) + 100,
-        initialAngle: initialAngle,
+        orbitDistance,
+        orbitSpeed: (seededRange(hashCombine(bodySeed, 'speed'), 0.006, 0.018)) * (bodyPrng() > 0.5 ? 1 : -1),
+        width: orbitDistance * seededRange(hashCombine(bodySeed, 'width'), 0.08, 0.16),
+        count: Math.floor(seededRange(hashCombine(bodySeed, 'count'), 180, 520)),
+        initialAngle,
         seed: bodySeed,
       });
-    } else {
-      // Determine visual class based on distance from sun
-      // Closer: volcanic, desert, arid
-      // Middle: lush, oceanic
-      // Far: barren, icy
-      let visualClass: PlanetVisualClass;
-      const distRatio = i / numBodies;
-      
-      if (distRatio < 0.2) {
-        visualClass = bodyPrng() < 0.5 ? 'volcanic' : 'desert';
-      } else if (distRatio < 0.4) {
-        visualClass = bodyPrng() < 0.6 ? 'arid_rocky' : 'desert';
-      } else if (distRatio < 0.7) {
-        visualClass = bodyPrng() < 0.5 ? 'lush' : 'oceanic';
-      } else if (distRatio < 0.85) {
-        visualClass = bodyPrng() < 0.7 ? 'barren_gray' : 'icy';
-      } else {
-        visualClass = 'icy';
-      }
-
-      bodies.push({
-        id: `planet_${i}`,
-        name: shuffledNames[nameIndex % shuffledNames.length],
-        type: 'planet',
-        radius: bodyPrng() * 6 + 4, // 4 to 10
-        orbitDistance: orbitDistance,
-        orbitSpeed: (bodyPrng() * 0.05 + 0.01) * (bodyPrng() > 0.5 ? 1 : -1),
-        orbitTiltX: (bodyPrng() - 0.5) * 0.5,
-        orbitTiltZ: (bodyPrng() - 0.5) * 0.5,
-        initialAngle: initialAngle,
-        noiseScale: bodyPrng() * 2 + 0.5,
-        landThreshold: bodyPrng() * 0.4 + 0.1,
-        colorSeed: bodyPrng(),
-        visualClass,
-      });
-      nameIndex++;
+      continue;
     }
+
+    const giantBias = Math.pow(radialRatio, 1.7);
+    const baseRadius = seededRange(hashCombine(bodySeed, 'radius'), 6.5, 13.5);
+    const giantRoll = seededRange(hashCombine(bodySeed, 'giantRoll'), 0, 1);
+    const giantMultiplier = giantRoll > (0.72 - giantBias * 0.28)
+      ? seededRange(hashCombine(bodySeed, 'giantMultiplier'), 1.5, 3.2 + giantBias * 2.2)
+      : seededRange(hashCombine(bodySeed, 'standardMultiplier'), 0.95, 1.45 + giantBias * 0.45);
+    const radius = baseRadius * giantMultiplier;
+    const hasRing = radius > 12 && bodyPrng() > 0.45;
+    const moonCount = radius > 16
+      ? Math.floor(seededRange(hashCombine(bodySeed, 'moons'), 2, 7))
+      : radius > 10
+        ? Math.floor(seededRange(hashCombine(bodySeed, 'moonsMid'), 0, 4))
+        : bodyPrng() > 0.7
+          ? Math.floor(seededRange(hashCombine(bodySeed, 'moonsSmall'), 0, 2))
+          : 0;
+
+    const moons: MoonData[] = Array.from({ length: moonCount }, (_, moonIndex) => {
+      const moonSeed = hashCombine(bodySeed, 'moon', moonIndex);
+      const moonPrng = createPRNG(moonSeed);
+      return {
+        id: `planet_${i}_moon_${moonIndex}`,
+        seed: moonSeed,
+        parentPlanetId: `planet_${i}`,
+        radius: seededRange(hashCombine(moonSeed, 'radius'), Math.max(1.2, radius * 0.1), Math.max(2.8, radius * 0.26)),
+        orbitDistance: radius * seededRange(hashCombine(moonSeed, 'orbit'), 3.8 + moonIndex * 1.1, 6.6 + moonIndex * 1.6),
+        orbitSpeed: seededRange(hashCombine(moonSeed, 'speed'), 0.014, 0.065) * (moonPrng() > 0.5 ? 1 : -1),
+        orbitTiltX: seededRange(hashCombine(moonSeed, 'tiltX'), -0.28, 0.28),
+        orbitTiltZ: seededRange(hashCombine(moonSeed, 'tiltZ'), -0.28, 0.28),
+        initialAngle: moonPrng() * Math.PI * 2,
+        noiseScale: seededRange(hashCombine(moonSeed, 'noiseScale'), 0.9, 2.6),
+        landThreshold: seededRange(hashCombine(moonSeed, 'landThreshold'), 0.03, 0.33),
+        paletteSeed: seededRange(hashCombine(moonSeed, 'paletteSeed'), 0, 1),
+        hasClouds: moonPrng() > 0.82 && radius > 16,
+      };
+    });
+
+    bodies.push({
+      id: `planet_${i}`,
+      seed: bodySeed,
+      type: 'planet',
+      radius,
+      orbitDistance,
+      orbitSpeed: seededRange(hashCombine(bodySeed, 'orbitSpeed'), 0.004, 0.02) * (bodyPrng() > 0.5 ? 1 : -1),
+      orbitTiltX: seededRange(hashCombine(bodySeed, 'tiltX'), -0.28, 0.28),
+      orbitTiltZ: seededRange(hashCombine(bodySeed, 'tiltZ'), -0.28, 0.28),
+      initialAngle,
+      noiseScale: seededRange(hashCombine(bodySeed, 'noiseScale'), 0.55, 2.9),
+      landThreshold: seededRange(hashCombine(bodySeed, 'landThreshold'), 0.02, 0.42),
+      colorSeed: bodyPrng(),
+      temperatureBias: seededRange(hashCombine(bodySeed, 'temperatureBias'), -0.25, 0.25),
+      humidityBias: seededRange(hashCombine(bodySeed, 'humidityBias'), -0.25, 0.25),
+      paletteSeed: seededRange(hashCombine(bodySeed, 'paletteSeed'), 0, 1),
+      hasClouds: bodyPrng() > 0.22,
+      cloudDensity: seededRange(hashCombine(bodySeed, 'cloudDensity'), 0.4, 1.0),
+      cloudSpeed: seededRange(hashCombine(bodySeed, 'cloudSpeed'), 0.012, 0.05),
+      cloudRotationSpeed: seededRange(hashCombine(bodySeed, 'cloudRotationSpeed'), -0.08, 0.08),
+      moons,
+      ring: hasRing
+        ? {
+            innerRadius: radius * seededRange(hashCombine(bodySeed, 'ringInner'), 1.35, 1.7),
+            outerRadius: radius * seededRange(hashCombine(bodySeed, 'ringOuter'), 1.8, 2.6),
+            color: RING_COLORS[Math.floor(seededRange(hashCombine(bodySeed, 'ringColor'), 0, RING_COLORS.length - 0.001))],
+            opacity: seededRange(hashCombine(bodySeed, 'ringOpacity'), 0.18, 0.42),
+          }
+        : null,
+    });
   }
-  
-  const solarSystem = {
+
+  return {
     seed: worldSeed,
-    starRadius: 8,
+    starRadius,
+    starColor,
     bodies,
   };
-
-  solarSystemCache[worldSeed] = solarSystem;
-  return solarSystem;
 }

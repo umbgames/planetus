@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { Text, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
 import { SolarSystemData, PlanetData } from '../services/solarSystem';
+import { buildOrbitMap, getPlanetWorldPosition } from '../services/orbitUtils';
 
 interface SatelliteProps {
   satellites: any[];
@@ -127,7 +128,7 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
             onPointerOver={() => document.body.style.cursor = 'pointer'}
             onPointerOut={() => document.body.style.cursor = 'auto'}
           >
-            <group scale={[0.04, 0.04, 0.04]}>
+            <group scale={[0.4, 0.4, 0.4]}>
               {/* Main body */}
               <mesh rotation={[Math.PI / 2, 0, 0]}>
                 <cylinderGeometry args={[0.2, 0.2, 0.8, 16]} />
@@ -181,36 +182,26 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
 
 export function Satellite({ satellites, onSatelliteClick, solarSystem, currentPlanetId }: SatelliteProps) {
   const groupRef = useRef<THREE.Group>(null);
+  const orbitMap = useMemo(() => solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>(), [solarSystem]);
+  const mainPlanetPos = useMemo(() => new THREE.Vector3(), []);
+  const currentPlanetPos = useMemo(() => new THREE.Vector3(), []);
 
   useFrame((state) => {
     if (groupRef.current && solarSystem) {
-      const mainPlanet = solarSystem.bodies.find(b => b.type === 'planet') as PlanetData;
+      const mainPlanet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet');
       if (mainPlanet) {
         const time = state.clock.getElapsedTime();
-        const angle = mainPlanet.initialAngle + time * mainPlanet.orbitSpeed;
-        
-        const x = Math.cos(angle) * mainPlanet.orbitDistance;
-        const z = Math.sin(angle) * mainPlanet.orbitDistance;
-        const y = x * Math.sin(mainPlanet.orbitTiltZ) + z * Math.sin(mainPlanet.orbitTiltX);
-        
-        const mainPlanetPos = new THREE.Vector3(x, y, z);
+        getPlanetWorldPosition(mainPlanet, time, orbitMap, mainPlanetPos);
 
         if (currentPlanetId) {
-          const currentPlanet = solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData;
+          const currentPlanet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId);
           if (currentPlanet) {
-            const cAngle = currentPlanet.initialAngle + time * currentPlanet.orbitSpeed;
-            const cx = Math.cos(cAngle) * currentPlanet.orbitDistance;
-            const cz = Math.sin(cAngle) * currentPlanet.orbitDistance;
-            const cy = cx * Math.sin(currentPlanet.orbitTiltZ) + cz * Math.sin(currentPlanet.orbitTiltX);
-            
-            const currentPlanetPos = new THREE.Vector3(cx, cy, cz);
+            getPlanetWorldPosition(currentPlanet, time, orbitMap, currentPlanetPos);
             groupRef.current.position.subVectors(mainPlanetPos, currentPlanetPos);
           } else {
-            // If currentPlanetId is set but not found (e.g. sun), it's at (0,0,0)
             groupRef.current.position.copy(mainPlanetPos);
           }
         } else {
-          // Solar system view (centered on sun)
           groupRef.current.position.copy(mainPlanetPos);
         }
       }

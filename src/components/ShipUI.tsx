@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Joystick } from 'react-joystick-component';
 import { Rocket, X, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Crosshair, Target, Zap, Flame, Compass, Navigation, LogOut } from 'lucide-react';
 import { useShipStore } from '../services/shipStore';
 import { UserData } from '../services/gameManager';
@@ -134,65 +133,70 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
     <div className="absolute inset-0 z-50 pointer-events-none select-none">
       {/* Ship HUD */}
       {!isMobile && (
-        <div className="absolute inset-0 p-8 flex flex-col justify-between">
-          {/* Top Bar */}
+        <div className="absolute inset-0 p-4 flex flex-col justify-between">
           <div className="flex justify-between items-start">
-            <div className="flex flex-col gap-4">
-              <div 
-                className="bg-[#151619] p-4 rounded-xl border border-white/10 flex items-center gap-4 pointer-events-auto cursor-pointer hover:border-cyan-500/50 transition-all shadow-2xl" 
-                onClick={() => setShowNav(!showNav)}
-              >
-                <div className="relative w-12 h-12 flex items-center justify-center">
-                  <div className="absolute inset-0 border border-dashed border-cyan-500/30 rounded-full animate-spin-slow" />
-                  <Navigation className="text-cyan-400" size={20} />
-                </div>
+            <div className="flex flex-col gap-2">
+              <div className="bg-black/50 backdrop-blur-md p-4 rounded-xl border border-white/10 flex items-center gap-3 pointer-events-auto cursor-pointer hover:bg-black/70 transition-colors" onClick={() => setShowNav(!showNav)}>
+                <Navigation className="text-cyan-400" size={24} />
                 <div>
-                  <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest mb-0.5">Navigation System</div>
-                  <div className="text-white font-black tracking-tighter text-lg">{currentPlanetId ? currentPlanetId.toUpperCase() : 'DEEP SPACE'}</div>
+                  <div className="text-white font-bold tracking-wider">NAVIGATION</div>
+                  <div className="text-zinc-400 text-xs">{currentPlanetId || 'Deep Space'}</div>
                 </div>
               </div>
 
               {showNav && (
-                <div className="bg-[#151619] p-6 rounded-2xl border border-white/10 flex flex-col gap-3 w-72 pointer-events-auto max-h-[60vh] overflow-y-auto custom-scrollbar shadow-2xl">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="text-zinc-500 text-[10px] font-mono tracking-[0.3em] uppercase">Sector Map</div>
-                    <Compass size={12} className="text-zinc-600" />
-                  </div>
+                <div className="bg-black/80 backdrop-blur-xl p-4 rounded-xl border border-white/10 flex flex-col gap-2 w-64 pointer-events-auto max-h-[60vh] overflow-y-auto custom-scrollbar">
+                  <div className="text-zinc-500 text-[10px] font-bold tracking-widest uppercase mb-1">Planetary Systems</div>
                   
                   <button 
-                    className={`w-full p-4 rounded-xl border flex items-center justify-between transition-all group ${currentPlanetId === null ? 'bg-cyan-500/10 border-cyan-500/50' : 'bg-white/5 border-white/5 hover:border-white/20'}`}
+                    className={`w-full p-3 rounded-lg border flex items-center justify-between transition-all ${currentPlanetId === null ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
                     onClick={() => {
                       if (setCurrentPlanetId) setCurrentPlanetId(null);
                     }}
                   >
                     <div className="flex flex-col items-start">
-                      <span className={`text-sm font-black tracking-tight ${currentPlanetId === null ? 'text-cyan-400' : 'text-white'}`}>VOID SECTOR</span>
-                      <span className="text-[10px] font-mono text-zinc-500">0.0.0.0</span>
+                      <span className={`text-sm font-bold ${currentPlanetId === null ? 'text-cyan-400' : 'text-white'}`}>DEEP SPACE</span>
+                      <span className="text-[10px] text-zinc-500">Exit planet orbit</span>
                     </div>
-                    <LogOut size={16} className={currentPlanetId === null ? 'text-cyan-400' : 'text-zinc-600 group-hover:text-white'} />
+                    <LogOut size={14} className={currentPlanetId === null ? 'text-cyan-400' : 'text-white'} />
                   </button>
 
-                  <div className="h-px bg-white/5 my-2" />
+                  <div className="h-px bg-white/10 my-1" />
 
                   {planets.map(planet => {
                     const isCurrent = planet.id === currentPlanetId;
-                    const isLocked = lockedTarget?.id === planet.id;
                     return (
-                      <div 
-                        key={planet.id} 
-                        className={`p-4 rounded-xl border flex items-center justify-between transition-all ${isCurrent ? 'bg-cyan-500/10 border-cyan-500/50' : 'bg-white/5 border-white/5 hover:border-white/20'}`}
-                      >
-                        <div className="flex flex-col">
-                          <span className={`text-sm font-black tracking-tight ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{planet.name.toUpperCase()}</span>
-                          <span className="text-[10px] font-mono text-zinc-500">R: {planet.radius.toFixed(0)}km</span>
+                      <div key={planet.id} className="flex flex-col gap-2">
+                        <div className={`p-3 rounded-lg border flex items-center justify-between transition-all ${isCurrent ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}>
+                          <div className="flex flex-col">
+                            <span className={`text-sm font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{(planet.id || '').toUpperCase()}</span>
+                            <span className="text-[10px] text-zinc-500">Radius: {planet.radius.toFixed(1)} · {planet.moons.length} moon{planet.moons.length === 1 ? '' : 's'}</span>
+                          </div>
+                          {!isCurrent && (
+                            <button className="p-1.5 bg-white/10 hover:bg-cyan-500/40 rounded-md transition-colors" onClick={() => setLockedTarget({ id: planet.id, type: 'planet' })}>
+                              <Target size={14} className={lockedTarget?.id === planet.id ? 'text-cyan-400' : 'text-white'} />
+                            </button>
+                          )}
                         </div>
-                        {!isCurrent && (
-                          <button 
-                            className={`p-2 rounded-lg transition-all ${isLocked ? 'bg-cyan-500 text-black' : 'bg-white/5 hover:bg-white/10 text-white'}`}
-                            onClick={() => setLockedTarget({ id: planet.id, type: 'planet' })}
-                          >
-                            <Target size={16} />
-                          </button>
+                        {planet.moons.length > 0 && (
+                          <div className="ml-3 flex flex-col gap-1">
+                            {planet.moons.map((moon) => (
+                              <button
+                                key={moon.id}
+                                className={`w-full text-left px-3 py-2 rounded-lg border flex items-center justify-between ${lockedTarget?.id === moon.id ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                                onClick={() => {
+                                  if (setCurrentPlanetId) setCurrentPlanetId(planet.id);
+                                  setLockedTarget({ id: moon.id, type: 'moon', parentPlanetId: planet.id });
+                                }}
+                              >
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-bold text-zinc-100">{moon.id.toUpperCase()}</span>
+                                  <span className="text-[10px] text-zinc-500">Moon orbit target</span>
+                                </div>
+                                <Target size={12} className={lockedTarget?.id === moon.id ? 'text-cyan-400' : 'text-white'} />
+                              </button>
+                            ))}
+                          </div>
                         )}
                       </div>
                     );
@@ -200,184 +204,158 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
 
                   {lockedTarget?.type === 'planet' && (
                     <button 
-                      className={`mt-6 w-full py-4 rounded-xl border font-black tracking-[0.2em] transition-all flex flex-col items-center justify-center gap-1 ${isJumping ? 'bg-red-500/20 border-red-500/50 text-red-500' : 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/30'}`}
+                      className={`mt-4 w-full py-3 rounded-xl border font-bold tracking-widest transition-all flex items-center justify-center gap-2 ${isJumping ? 'bg-red-500/20 border-red-500/50 text-red-500' : 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400 hover:bg-cyan-500/30'}`}
                       onClick={() => setIsJumping(!isJumping)}
                     >
-                      <div className="flex items-center gap-2">
-                        <Zap size={18} />
-                        <span>{isJumping ? 'ABORT JUMP' : 'INITIATE JUMP'}</span>
-                      </div>
-                      <div className="text-[8px] font-mono opacity-50">WARP DRIVE READY</div>
+                      <Zap size={18} />
+                      {isJumping ? 'ABORT JUMP' : 'INITIATE JUMP'}
                     </button>
                   )}
                 </div>
               )}
             </div>
             
-            <div className="flex gap-4">
-              {/* Resources Panel */}
-              <div className="bg-[#151619] p-4 rounded-xl border border-white/10 flex flex-col gap-4 w-56 shadow-2xl">
-                <div className="flex items-center justify-between">
-                  <div className="text-zinc-500 text-[10px] font-mono tracking-[0.3em] uppercase">Cargo Bay</div>
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                </div>
-                
-                <div className="grid grid-cols-1 gap-3">
-                  <div className="flex items-center justify-between bg-white/5 p-2 rounded-lg border border-white/5">
-                    <div className="text-[10px] font-mono text-zinc-400 uppercase">Common</div>
-                    <div className="text-white font-black font-mono">{userData ? userData.commonResources : 0}</div>
-                  </div>
-                  <div className="flex items-center justify-between bg-fuchsia-500/10 p-2 rounded-lg border border-fuchsia-500/20">
-                    <div className="text-[10px] font-mono text-fuchsia-400 uppercase">Aetherium</div>
-                    <div className="text-fuchsia-300 font-black font-mono">{userData ? userData.rareResources : 0}</div>
-                  </div>
+            <div className="bg-black/50 backdrop-blur-md p-4 rounded-xl border border-white/10 flex flex-col gap-3 text-right w-48">
+              <div className="text-zinc-400 text-xs font-bold tracking-wider">RESOURCES</div>
+              
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 justify-end">
+                  <span className="text-zinc-300 font-mono text-sm">{userData ? userData.commonResources : 0}</span>
+                  <span className="text-white text-xs">Common</span>
                 </div>
               </div>
 
-              {/* Weapons Panel */}
-              <div className="bg-[#151619] p-4 rounded-xl border border-white/10 flex flex-col gap-4 w-56 shadow-2xl">
-                <div className="flex items-center justify-between">
-                  <div className="text-zinc-500 text-[10px] font-mono tracking-[0.3em] uppercase">Weapon Systems</div>
-                  <Crosshair size={12} className="text-zinc-600" />
-                </div>
-                
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono text-zinc-400 uppercase">Light Laser</span>
-                      <span className="text-yellow-500 font-black font-mono">{userData ? userData.machineGunAmmo : '∞'}</span>
-                    </div>
-                    <WeaponCooldown lastFireTime={lastMgFire} cooldownDuration={100} color="bg-yellow-500" />
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono text-zinc-400 uppercase">Heavy Laser</span>
-                      <span className="text-red-500 font-black font-mono">{userData ? userData.missileAmmo : '∞'}</span>
-                    </div>
-                    <WeaponCooldown lastFireTime={lastMissileFire} cooldownDuration={1000} color="bg-red-500" />
-                  </div>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 justify-end">
+                  <span className="text-fuchsia-400 font-mono text-sm">{userData ? userData.rareResources : 0}</span>
+                  <span className="text-white text-xs">Aetherium</span>
                 </div>
               </div>
+
+              <div className="text-zinc-400 text-xs font-bold tracking-wider mt-2">WEAPONS</div>
+              
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 justify-end">
+                  <span className="text-yellow-500 font-mono text-sm">∞</span>
+                  <span className="text-white text-xs">MG (L-Click)</span>
+                </div>
+                <WeaponCooldown lastFireTime={lastMgFire} cooldownDuration={100} color="bg-yellow-500" />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 justify-end">
+                  <span className="text-red-500 font-mono text-sm">∞</span>
+                  <span className="text-white text-xs">MSL (R-Click)</span>
+                </div>
+                <WeaponCooldown lastFireTime={lastMissileFire} cooldownDuration={250} color="bg-red-500" />
+              </div>
+
+              <div className="text-zinc-500 text-[10px] mt-1">Press T to Lock Target</div>
             </div>
           </div>
           
           {/* Target Info Panel */}
-          {lockedTarget && (
-            <div className="absolute top-32 right-8 bg-[#151619] p-6 rounded-2xl border border-cyan-500/30 w-72 pointer-events-none shadow-2xl">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex flex-col">
-                  <div className="text-cyan-500 text-[10px] font-mono tracking-[0.3em] uppercase mb-1">Target Locked</div>
-                  <div className="text-xl font-black tracking-tight text-white">{(lockedTarget.name || lockedTarget.id || '').toUpperCase()}</div>
-                </div>
-                <div className="w-10 h-10 rounded-full border border-cyan-500/30 flex items-center justify-center">
-                  <Target size={18} className="text-cyan-400 animate-pulse" />
-                </div>
+      {lockedTarget && (
+        <div className="absolute top-24 right-8 bg-black/60 backdrop-blur-md border border-white/10 p-4 rounded-xl w-64 pointer-events-none">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-bold text-zinc-500 tracking-widest uppercase">Target Locked</div>
+            <Target size={14} className="text-cyan-400" />
+          </div>
+          <div className="text-lg font-bold text-white mb-1">{(lockedTarget.id || lockedTarget.name || '').toUpperCase()}</div>
+          <div className="flex items-center justify-between text-[10px] text-zinc-400">
+            <span>DISTANCE</span>
+            <span className="text-white font-mono">
+              {shipPosition.distanceTo(lockedTarget.position || new THREE.Vector3()).toFixed(1)}m
+            </span>
+          </div>
+          {lockedTarget.health !== undefined && (
+            <div className="mt-3">
+              <div className="flex justify-between text-[8px] text-zinc-500 mb-1">
+                <span>INTEGRITY</span>
+                <span>{lockedTarget.health}%</span>
               </div>
-
-              <div className="space-y-4">
-                <div className="flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/5">
-                  <span className="text-[10px] font-mono text-zinc-500 uppercase">Range</span>
-                  <span className="text-white font-black font-mono">
-                    {shipPosition.distanceTo(lockedTarget.position || new THREE.Vector3()).toFixed(0)}m
-                  </span>
-                </div>
-
-                {lockedTarget.health !== undefined && (
-                  <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                    <div className="flex justify-between text-[10px] font-mono text-zinc-500 uppercase mb-2">
-                      <span>Integrity</span>
-                      <span className="text-white">{lockedTarget.health}%</span>
-                    </div>
-                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full transition-all duration-300 ${lockedTarget.health > 50 ? 'bg-emerald-500' : lockedTarget.health > 20 ? 'bg-amber-500' : 'bg-red-500'}`}
-                        style={{ width: `${lockedTarget.health}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
+              <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full transition-all duration-300 ${lockedTarget.health > 50 ? 'bg-emerald-500' : lockedTarget.health > 20 ? 'bg-amber-500' : 'bg-red-500'}`}
+                  style={{ width: `${lockedTarget.health}%` }}
+                />
               </div>
             </div>
           )}
+        </div>
+      )}
 
-          {/* Bottom HUD: Ship Integrity */}
-          <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex gap-12 pointer-events-none">
-            <div className="flex flex-col items-center gap-2">
-              <div className="text-[10px] font-mono text-cyan-500 tracking-[0.2em] uppercase">Shield Matrix</div>
-              <div className="relative w-48 h-2 bg-white/5 rounded-full overflow-hidden border border-white/10">
-                <div 
-                  className="h-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.5)] transition-all duration-300" 
-                  style={{ width: `${shield}%` }} 
-                />
-              </div>
-            </div>
+      {/* Ship Integrity */}
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-8 pointer-events-none">
+        <div className="flex flex-col items-center gap-1">
+          <div className="text-[8px] text-cyan-500 font-bold tracking-widest uppercase">Shield</div>
+          <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
+            <div 
+              className="h-full bg-cyan-400 transition-all duration-300" 
+              style={{ width: `${shield}%` }} 
+            />
+          </div>
+        </div>
 
-            <div className="flex flex-col items-center gap-2">
-              <div className="text-[10px] font-mono text-amber-500 tracking-[0.2em] uppercase">Engine Boost</div>
-              <div className="relative w-48 h-2 bg-white/5 rounded-full overflow-hidden border border-white/10">
-                <div 
-                  className="h-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.5)] transition-all duration-300" 
-                  style={{ width: `${boostEnergy}%` }} 
-                />
-              </div>
-            </div>
-            
-            <div className="flex flex-col items-center gap-2">
-              <div className="text-[10px] font-mono text-red-500 tracking-[0.2em] uppercase">Hull Integrity</div>
-              <div className="relative w-48 h-2 bg-white/5 rounded-full overflow-hidden border border-white/10">
-                <div 
-                  className="h-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)] transition-all duration-300" 
-                  style={{ width: `${health}%` }} 
-                />
-              </div>
+        <div className="flex flex-col items-center gap-1">
+          <div className="text-[8px] text-amber-500 font-bold tracking-widest uppercase">Boost</div>
+          <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
+            <div 
+              className="h-full bg-amber-500 transition-all duration-300" 
+              style={{ width: `${boostEnergy}%` }} 
+            />
+          </div>
+        </div>
+        
+        <div className="flex flex-col items-center gap-1">
+          <div className="text-[8px] text-red-500 font-bold tracking-widest uppercase">Hull</div>
+          <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
+            <div 
+              className="h-full bg-red-500 transition-all duration-300" 
+              style={{ width: `${health}%` }} 
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Flight Data */}
+      <div className="absolute bottom-32 left-8 flex flex-col gap-4 pointer-events-none">
+        <div className="flex flex-col">
+          <div className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mb-1">Velocity</div>
+          <div className="flex items-baseline gap-1">
+            <div className="text-3xl font-black text-white font-mono">{velocity.toFixed(0)}</div>
+            <div className="text-xs text-zinc-500">m/s</div>
+          </div>
+        </div>
+        
+        <div className="flex flex-col">
+          <div className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mb-1">Altitude</div>
+          <div className="flex items-baseline gap-1">
+            <div className="text-3xl font-black text-white font-mono">{altitude.toFixed(0)}</div>
+            <div className="text-xs text-zinc-500">m</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Jumping Overlay */}
+      {isJumping && (
+        <div className="absolute inset-0 flex items-center justify-center bg-cyan-500/10 backdrop-blur-sm z-50 pointer-events-none">
+          <div className="flex flex-col items-center gap-4">
+            <div className="text-cyan-400 text-6xl font-black tracking-[1em] animate-pulse">JUMPING</div>
+            <div className="w-64 h-1 bg-white/20 rounded-full overflow-hidden">
+              <div className="h-full bg-cyan-400 animate-loading" style={{ width: '100%' }} />
             </div>
           </div>
+        </div>
+      )}
 
-          {/* Flight Data: Monospace Timecodes Style */}
-          <div className="absolute bottom-12 left-12 flex flex-col gap-8 pointer-events-none">
-            <div className="flex flex-col">
-              <div className="text-[10px] font-mono text-zinc-500 tracking-[0.3em] uppercase mb-2">Velocity Vector</div>
-              <div className="flex items-baseline gap-2">
-                <div className="text-5xl font-black text-white font-mono tracking-tighter">{velocity.toFixed(1)}</div>
-                <div className="text-xs font-mono text-zinc-600 uppercase">m/s</div>
-              </div>
-            </div>
-            
-            <div className="flex flex-col">
-              <div className="text-[10px] font-mono text-zinc-500 tracking-[0.3em] uppercase mb-2">Altimeter Data</div>
-              <div className="flex items-baseline gap-2">
-                <div className="text-5xl font-black text-white font-mono tracking-tighter">{altitude.toFixed(0)}</div>
-                <div className="text-xs font-mono text-zinc-600 uppercase">m</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Jumping Overlay */}
-          {isJumping && (
-            <div className="absolute inset-0 flex items-center justify-center bg-cyan-500/5 backdrop-blur-sm z-50 pointer-events-none">
-              <div className="flex flex-col items-center gap-6">
-                <div className="text-cyan-400 text-7xl font-black tracking-[1.5em] animate-pulse drop-shadow-[0_0_30px_rgba(34,211,238,0.5)]">WARP</div>
-                <div className="w-80 h-[2px] bg-white/10 relative overflow-hidden">
-                  <div className="absolute inset-0 bg-cyan-400 animate-loading" />
-                </div>
-                <div className="text-cyan-500 font-mono text-xs tracking-[0.5em] uppercase">Folding Space-Time</div>
-              </div>
-            </div>
-          )}
-
-          {/* Crosshair */}
+      {/* Crosshair */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="relative w-16 h-16 flex items-center justify-center">
-              <div className="absolute inset-0 border border-white/20 rounded-full" />
-              <div className="absolute w-full h-[1px] bg-white/20" />
-              <div className="absolute h-full w-[1px] bg-white/20" />
-              <Crosshair className="text-white/80" size={24} strokeWidth={1} />
-            </div>
+            <Crosshair className="text-white/50" size={32} strokeWidth={1} />
             {lockedTarget && (
-              <div className="absolute flex flex-col items-center gap-2 mt-32">
-                <div className="text-cyan-400 text-[10px] font-mono font-bold tracking-[0.5em] uppercase animate-pulse">Tracking Active</div>
-                <div className="text-white text-xs font-mono bg-cyan-500/20 px-3 py-1 rounded border border-cyan-500/30">{(lockedTarget.name || lockedTarget.id || '').toUpperCase()}</div>
+              <div className="absolute flex flex-col items-center gap-2 mt-20">
+                <div className="text-cyan-400 text-[10px] font-bold tracking-widest uppercase animate-pulse">Target Locked</div>
+                <div className="text-white text-xs font-mono">{(lockedTarget.id || lockedTarget.name || '').toUpperCase()}</div>
               </div>
             )}
           </div>
@@ -407,13 +385,17 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
               {planets.map(planet => {
                 const isCurrent = planet.id === currentPlanetId;
                 return (
-                  <div 
-                    key={planet.id} 
-                    className={`p-2 rounded-lg border flex items-center justify-between ${isCurrent ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10'}`}
-                    onClick={() => !isCurrent && setLockedTarget({ id: planet.id, type: 'planet' })}
-                  >
-                    <span className={`text-xs font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{(planet.id || '').toUpperCase()}</span>
-                    {lockedTarget?.id === planet.id && <Target size={12} className="text-cyan-400" />}
+                  <div key={planet.id} className="flex flex-col gap-1">
+                    <div className={`p-2 rounded-lg border flex items-center justify-between ${isCurrent ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10'}`} onClick={() => !isCurrent && setLockedTarget({ id: planet.id, type: 'planet' })}>
+                      <span className={`text-xs font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{(planet.id || '').toUpperCase()}</span>
+                      {lockedTarget?.id === planet.id && <Target size={12} className="text-cyan-400" />}
+                    </div>
+                    {planet.moons.map((moon) => (
+                      <div key={moon.id} className={`ml-3 p-2 rounded-lg border flex items-center justify-between ${lockedTarget?.id === moon.id ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10'}`} onClick={() => { if (setCurrentPlanetId) setCurrentPlanetId(planet.id); setLockedTarget({ id: moon.id, type: 'moon', parentPlanetId: planet.id }); }}>
+                        <span className="text-[11px] font-bold text-zinc-100">{moon.id.toUpperCase()}</span>
+                        {lockedTarget?.id === moon.id && <Target size={12} className="text-cyan-400" />}
+                      </div>
+                    ))}
                   </div>
                 );
               })}
@@ -439,7 +421,7 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
           >
             <Zap size={24} color={!userData || userData.machineGunAmmo ? '#fff' : '#555'} />
             <MobileCooldownOverlay lastFireTime={lastMgFire} cooldownDuration={100} />
-            <span style={{ position: 'absolute', bottom: -20, fontSize: '10px', color: '#ffaa00', fontWeight: 'bold' }}>{userData ? userData.machineGunAmmo : '∞'}</span>
+            <span style={{ position: 'absolute', bottom: -20, fontSize: '10px', color: '#ffaa00', fontWeight: 'bold' }}>∞</span>
           </button>
 
           {/* Missile Button */}
@@ -450,8 +432,8 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
             onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, missile: false})); }}
           >
             <Flame size={24} color={!userData || userData.missileAmmo ? '#fff' : '#555'} />
-            <MobileCooldownOverlay lastFireTime={lastMissileFire} cooldownDuration={1000} />
-            <span style={{ position: 'absolute', bottom: -20, fontSize: '10px', color: '#ff0000', fontWeight: 'bold' }}>{userData ? userData.missileAmmo : '∞'}</span>
+            <MobileCooldownOverlay lastFireTime={lastMissileFire} cooldownDuration={250} />
+            <span style={{ position: 'absolute', bottom: -20, fontSize: '10px', color: '#ff0000', fontWeight: 'bold' }}>∞</span>
           </button>
 
           {/* Target Lock Button */}
@@ -464,31 +446,30 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
             <Target size={24} color={lockedTarget ? '#ff0000' : '#fff'} />
           </button>
           
-          {/* Joystick */}
-          <div style={{ position: 'absolute', bottom: 40, left: 40, zIndex: 100 }}>
-            <Joystick 
-              size={120} 
-              baseColor="rgba(0,0,0,0.5)" 
-              stickColor="rgba(255,255,255,0.5)" 
-              move={(e) => {
-                setMobileKeys((k: any) => ({
-                  ...k,
-                  w: e.y && e.y > 0.2,
-                  s: e.y && e.y < -0.2,
-                  a: e.x && e.x < -0.2,
-                  d: e.x && e.x > 0.2
-                }));
-              }} 
-              stop={() => {
-                setMobileKeys((k: any) => ({
-                  ...k,
-                  w: false,
-                  s: false,
-                  a: false,
-                  d: false
-                }));
-              }} 
-            />
+          {/* D-Pad */}
+          <div style={{ position: 'absolute', bottom: 40, left: 40, display: 'grid', gridTemplateColumns: 'repeat(3, 60px)', gap: '10px' }}>
+            <div />
+            <button
+              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, w: true})) }}
+              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, w: false})) }}
+              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, w: false})) }}
+              style={{ ...btnStyle, background: mobileKeys.w ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}><ArrowUp /></button>
+            <div />
+            <button
+              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, a: true})) }}
+              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, a: false})) }}
+              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, a: false})) }}
+              style={{ ...btnStyle, background: mobileKeys.a ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}><ArrowLeft /></button>
+            <button
+              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, s: true})) }}
+              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, s: false})) }}
+              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, s: false})) }}
+              style={{ ...btnStyle, background: mobileKeys.s ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}><ArrowDown /></button>
+            <button
+              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, d: true})) }}
+              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, d: false})) }}
+              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({...k, d: false})) }}
+              style={{ ...btnStyle, background: mobileKeys.d ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}><ArrowRight /></button>
           </div>
           
           {/* Instructions */}

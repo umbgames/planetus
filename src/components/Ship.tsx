@@ -6,6 +6,9 @@ import { geographyManager } from '../services/geography';
 import { BaseData, UserData, gameManager } from '../services/gameManager';
 import { useShipStore } from '../services/shipStore';
 import { SolarSystemData, PlanetData } from '../services/solarSystem';
+import { buildOrbitMap, getBodyWorldPosition, getScaledStarRadius, getScaledPlanetRadius, VISUAL_SCALE } from '../services/orbitUtils';
+
+const INFINITE_TEST_AMMO = true;
 
 interface ShipProps {
   planetRadius: number;
@@ -13,35 +16,23 @@ interface ShipProps {
   bases?: BaseData[];
   userData?: UserData | null;
   satellites?: any[];
-  activePlayers?: UserData[];
   initialPosition?: { x: number; y: number; z: number };
   initialRotation?: { x: number; y: number; z: number };
   currentPlanetId?: string | null;
   setCurrentPlanetId?: (id: string | null) => void;
   solarSystem?: SolarSystemData | null;
+  onSatelliteDamaged?: (satellite: { uid?: string; name: string }, damage: number) => void;
+  respawnNonce?: number;
 }
 
-export function Ship({ 
-  planetRadius, 
-  onExit, 
-  bases = [], 
-  userData = null, 
-  satellites = [], 
-  activePlayers = [],
-  initialPosition, 
-  initialRotation, 
-  currentPlanetId, 
-  setCurrentPlanetId, 
-  solarSystem 
-}: ShipProps) {
+export function Ship({ planetRadius, onExit, bases = [], userData = null, satellites = [], initialPosition, initialRotation, currentPlanetId, setCurrentPlanetId, solarSystem, onSatelliteDamaged, respawnNonce = 0 }: ShipProps) {
   // 1️⃣ Updated useThree to access the scene
   const { camera, gl, scene } = useThree();
   const shipRef = useRef<THREE.Group>(null);
   const [keys, setKeys] = useState<Record<string, boolean>>({});
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
   const [isLocked, setIsLocked] = useState(false);
-  const [isLaunching, setIsLaunching] = useState(false);
-  const [boostVisualActive, setBoostVisualActive] = useState(false);
+  const [isLaunching, setIsLaunching] = useState(!initialPosition);
   
   // Mobile controls state
   const [isMobile, setIsMobile] = useState(false);
@@ -53,37 +44,10 @@ export function Ship({
 
   const cameraRigRef = useRef<THREE.Group>(null);
   const shipModelRef = useRef<THREE.Group>(null);
-  const boosterCoreMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
-  const wingLeftBoosterMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
-  const wingRightBoosterMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
-  const cameraVelocityLag = useRef(new THREE.Vector3());
 
   // 2️⃣ Added atmosphere color refs
-
-  const getSkyColorForPlanet = useMemo(() => (planetId: string | null) => {
-    if (!planetId || !solarSystem) return new THREE.Color('#cda077');
-    const planet = solarSystem.bodies.find(b => b.id === planetId) as PlanetData | undefined;
-    const color = new THREE.Color('#cda077');
-    if (!planet) return color;
-    switch (planet.visualClass) {
-      case 'lush': color.set('#87CEEB'); break;
-      case 'oceanic': color.set('#4682B4'); break;
-      case 'desert': color.set('#F4A460'); break;
-      case 'arid_rocky': color.set('#CD853F'); break;
-      case 'barren_gray': color.set('#696969'); break;
-      case 'icy': color.set('#E0FFFF'); break;
-      case 'volcanic': color.set('#8B0000'); break;
-      default: color.set('#cda077');
-    }
-    return color;
-  }, [solarSystem]);
-
   const spaceColor = useRef(new THREE.Color('#000000'));
   const skyColor = useRef(new THREE.Color('#cda077'));
-
-  useEffect(() => {
-    skyColor.current.copy(getSkyColorForPlanet(currentPlanetId));
-  }, [currentPlanetId, getSkyColorForPlanet]);
 
   // Ship state
   const velocity = useRef(new THREE.Vector3());
@@ -96,16 +60,11 @@ export function Ship({
   const position = useRef(new THREE.Vector3(
     initialPosition ? initialPosition.x : 0, 
     initialPosition ? initialPosition.y : 0, 
-    initialPosition ? initialPosition.z : planetRadius
+    initialPosition ? initialPosition.z : planetRadius + 5
   ));
   const launchProgress = useRef(0);
   const recoilZ = useRef(0); // Tracks the heavy laser recoil kickback
   const boostEnergy = useRef(100);
-  const localPositionRef = useRef(new THREE.Vector3(
-    initialPosition ? initialPosition.x : 0, 
-    initialPosition ? initialPosition.y : 0, 
-    initialPosition ? initialPosition.z : planetRadius
-  ));
 
   // Combat state
   const lastFired = useRef(0);
@@ -114,18 +73,35 @@ export function Ship({
   const [muzzleFlashes, setMuzzleFlashes] = useState<{ id: string; pos: THREE.Vector3; createdAt: number }[]>([]);
 
   const prevPlanetId = useRef(currentPlanetId);
+  const lastRespawnNonce = useRef(respawnNonce);
 
   useEffect(() => {
-    const syncInterval = setInterval(() => {
-      if (currentPlanetId && initialized.current) {
-        gameManager.syncPlayerPosition(currentPlanetId, localPositionRef.current, rotation.current);
-      }
-    }, 2000); // Sync every 2 seconds
+    if (lastRespawnNonce.current === respawnNonce) return;
+    lastRespawnNonce.current = respawnNonce;
 
+    const spawnDistance = Math.max(planetRadius + 20, 36);
+    position.current.set(0, 0, spawnDistance);
+    velocity.current.set(0, 0, 0);
+    rotation.current.set(0, 0, 0, 'YXZ');
+    camera.position.copy(position.current);
+    if (shipRef.current) {
+      shipRef.current.position.copy(position.current);
+      shipRef.current.rotation.set(0, 0, 0);
+      shipRef.current.quaternion.setFromEuler(rotation.current);
+    }
+    if (cameraRigRef.current) {
+      cameraRigRef.current.position.copy(position.current);
+      cameraRigRef.current.rotation.set(0, 0, 0);
+    }
+    setMouse({ x: 0, y: 0 });
+    setIsLaunching(true);
+    launchProgress.current = 0;
+  }, [respawnNonce, planetRadius, camera]);
+
+  useEffect(() => {
     return () => {
-      clearInterval(syncInterval);
       if (currentPlanetId) {
-        gameManager.savePlayerState(currentPlanetId, localPositionRef.current, rotation.current);
+        gameManager.savePlayerState(currentPlanetId, position.current, rotation.current);
       }
     };
   }, [currentPlanetId]);
@@ -228,21 +204,19 @@ export function Ship({
     canvas.addEventListener('touchend', handleTouchEnd);
     canvas.addEventListener('touchcancel', handleTouchEnd);
 
-    if (initialPosition) {
-      position.current.set(initialPosition.x, initialPosition.y, initialPosition.z);
-    } else {
-      // Spawn at the surface in the direction of the camera
-      position.current.copy(camera.position).normalize().multiplyScalar(planetRadius);
-    }
-    velocity.current.set(0, 0, 0);
-    
+    position.current.copy(camera.position);
+    velocity.current.copy(camera.position).normalize().multiplyScalar(20);
     setMouse({ x: 0, y: -Math.PI / 2 });
     rotation.current.set(-Math.PI / 2, 0, 0);
     
     if (cameraRigRef.current) {
-      cameraRigRef.current.position.copy(position.current);
+      cameraRigRef.current.position.copy(camera.position);
     }
     
+    if (!window.matchMedia("(pointer: coarse)").matches && !('ontouchstart' in window)) {
+      gl.domElement.requestPointerLock();
+    }
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
@@ -267,59 +241,42 @@ export function Ship({
 
   const { setShipPosition, setVelocity, setAltitude, setBoostEnergy } = useShipStore();
   const frameCount = useRef(0);
-  const initialized = useRef(false);
+  const orbitMap = useMemo(() => solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>(), [solarSystem]);
 
   useFrame((state, delta) => {
     frameCount.current++;
-    const getPlanetPos = (id: string | null) => {
-      if (!id || !solarSystem) return new THREE.Vector3(0, 0, 0);
-      const planet = solarSystem.bodies.find(b => b.id === id) as PlanetData;
-      if (!planet) return new THREE.Vector3(0, 0, 0);
-      const time = state.clock.getElapsedTime();
-      const angle = planet.initialAngle + time * planet.orbitSpeed;
-      const x = Math.cos(angle) * planet.orbitDistance;
-      const z = Math.sin(angle) * planet.orbitDistance;
-      const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
-      return new THREE.Vector3(x, y, z);
-    };
-
-    const currentPlanetPos = getPlanetPos(currentPlanetId);
-    initialized.current = true;
-    
-    // position.current is LOCAL if currentPlanetId is set, else WORLD.
-    const worldPos = currentPlanetId 
-      ? position.current.clone().add(currentPlanetPos) 
-      : position.current.clone();
-
-    // localPos is always relative to the current planet (or sun if null)
-    const localPos = position.current.clone();
-    localPositionRef.current.copy(localPos);
-
     if (frameCount.current % 10 === 0) {
-      setShipPosition(worldPos);
+      setShipPosition(position.current);
       setVelocity(velocity.current.length());
-      setAltitude(currentPlanetId ? Math.max(0, localPos.length() - planetRadius) : 0);
+      setAltitude(Math.max(0, position.current.length() - planetRadius));
       setBoostEnergy(boostEnergy.current);
     }
 
     if (prevPlanetId.current !== currentPlanetId && solarSystem) {
+      const oldPos = getBodyWorldPosition(prevPlanetId.current, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
+      const newPos = getBodyWorldPosition(currentPlanetId, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
+      const shift = new THREE.Vector3().subVectors(oldPos, newPos);
+      
+      position.current.add(shift);
+      camera.position.add(shift);
+      
       prevPlanetId.current = currentPlanetId;
     }
 
     // Automatic Planet Switching
     if (!isJumping && solarSystem && frameCount.current % 30 === 0) {
+      const currentPlanetPos = getBodyWorldPosition(currentPlanetId, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
+      
       // Check for planets
       let switched = false;
       for (const body of solarSystem.bodies) {
         if (body.type === 'planet' && body.id !== currentPlanetId) {
-          const planetPos = getPlanetPos(body.id);
-          const distToPlanet = worldPos.distanceTo(planetPos);
+          const planetPos = getBodyWorldPosition(body.id, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
+          const relativePlanetPos = new THREE.Vector3().subVectors(planetPos, currentPlanetPos);
+          const distToPlanet = position.current.distanceTo(relativePlanetPos);
           
-          if (distToPlanet < (body as PlanetData).radius * 12) {
+          if (distToPlanet < getScaledPlanetRadius((body as PlanetData).radius) * VISUAL_SCALE.SHIP_SWITCH_RADIUS_MULTIPLIER) {
             if (setCurrentPlanetId) {
-              // Convert current world position to new local position
-              const newLocalPos = worldPos.clone().sub(planetPos);
-              position.current.copy(newLocalPos);
               setCurrentPlanetId(body.id);
             }
             switched = true;
@@ -328,14 +285,14 @@ export function Ship({
         }
       }
 
-      // Check if we left the current planet
+      // Check for Sun if not already switched
       if (!switched && currentPlanetId !== null) {
-        const currentPlanet = solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData;
+        const sunPos = new THREE.Vector3(0, 0, 0);
+        const relativeSunPos = new THREE.Vector3().subVectors(sunPos, currentPlanetPos);
+        const distToSun = position.current.distanceTo(relativeSunPos);
         
-        if (currentPlanet && position.current.length() > currentPlanet.radius * 15) {
+        if (distToSun < getScaledStarRadius(solarSystem.starRadius) * VISUAL_SCALE.SUN_SWITCH_RADIUS_MULTIPLIER) {
           if (setCurrentPlanetId) {
-            // Convert local position to world position
-            position.current.copy(worldPos);
             setCurrentPlanetId(null);
           }
         }
@@ -344,26 +301,19 @@ export function Ship({
 
     // Jump Logic
     if (isJumping && lockedTarget?.type === 'planet' && solarSystem) {
-      // Ensure we are in world space for the jump
-      if (currentPlanetId !== null) {
-        position.current.copy(worldPos);
-        if (setCurrentPlanetId) setCurrentPlanetId(null);
-        return; // Wait for next frame to continue jump in world space
-      }
-
       const targetPlanet = solarSystem.bodies.find(b => b.id === lockedTarget.id);
       if (targetPlanet) {
-        const targetPlanetPos = getPlanetPos(targetPlanet.id);
+        const currentPlanetPos = getBodyWorldPosition(currentPlanetId, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
+        const targetPlanetPos = getBodyWorldPosition(targetPlanet.id, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
+        
+        // Target relative to current planet
+        const relativeTarget = new THREE.Vector3().subVectors(targetPlanetPos, currentPlanetPos);
         
         // Distance to target
-        const distToTarget = position.current.distanceTo(targetPlanetPos);
+        const distToTarget = position.current.distanceTo(relativeTarget);
         
-        if (distToTarget < (targetPlanet as PlanetData).radius * 5) {
+        if (distToTarget < getScaledPlanetRadius((targetPlanet as PlanetData).radius) * 5) {
           // Arrived!
-          // Convert world position to new local position
-          const newLocalPos = position.current.clone().sub(targetPlanetPos);
-          position.current.copy(newLocalPos);
-          
           if (setCurrentPlanetId) {
             setCurrentPlanetId(targetPlanet.id);
           }
@@ -376,12 +326,12 @@ export function Ship({
           perspectiveCamera.updateProjectionMatrix();
         } else {
           // Move towards target at high speed
-          const jumpDir = new THREE.Vector3().subVectors(targetPlanetPos, position.current).normalize();
+          const jumpDir = new THREE.Vector3().subVectors(relativeTarget, position.current).normalize();
           const jumpSpeed = 5000 * delta; // Very fast
           position.current.add(jumpDir.multiplyScalar(jumpSpeed));
           
           // Face target
-          const targetMatrix = new THREE.Matrix4().lookAt(position.current, targetPlanetPos, new THREE.Vector3(0, 1, 0));
+          const targetMatrix = new THREE.Matrix4().lookAt(position.current, relativeTarget, new THREE.Vector3(0, 1, 0));
           const targetQuat = new THREE.Quaternion().setFromRotationMatrix(targetMatrix);
           shipRef.current?.quaternion.slerp(targetQuat, 0.1);
           
@@ -401,32 +351,20 @@ export function Ship({
 
     if (!isLocked && !isLaunching && !isMobile) return;
 
-    // Dynamic atmosphere / approach state for the nearest planet, even before switching planets.
+    // 3️⃣ Inserted Dynamic Atmosphere
+    // ===== Dynamic Atmosphere System =====
+    const distForAtmosphere = position.current.length();
     const R = planetRadius;
-    let atmosphericPlanetId = currentPlanetId;
-    let atmosphereAltitude = currentPlanetId ? localPos.length() - R : Infinity;
-
-    if (solarSystem) {
-      for (const body of solarSystem.bodies) {
-        if (body.type !== 'planet') continue;
-        const planetPos = getPlanetPos(body.id);
-        const altitudeToBody = worldPos.distanceTo(planetPos) - (body as PlanetData).radius;
-        if (altitudeToBody < atmosphereAltitude) {
-          atmosphereAltitude = altitudeToBody;
-          atmosphericPlanetId = body.id;
-        }
-      }
-    }
-
-    skyColor.current.copy(getSkyColorForPlanet(atmosphericPlanetId));
+    const altitude = distForAtmosphere - R;
 
     let tiltFactor = 0;
-    if (Number.isFinite(atmosphereAltitude) && atmosphereAltitude < 10) {
-      tiltFactor = 1 - atmosphereAltitude / 10;
+
+    if (altitude < 4) {
+      tiltFactor = 1 - altitude / 4;
     }
 
     tiltFactor = THREE.MathUtils.clamp(tiltFactor, 0, 1);
-    tiltFactor = tiltFactor * tiltFactor * (3 - 2 * tiltFactor);
+    tiltFactor = tiltFactor * tiltFactor * (3 - 2 * tiltFactor); // smoothstep
 
     // Dynamic sky
     if (!scene.background) {
@@ -446,8 +384,8 @@ export function Ship({
 
     fog.color.copy(skyColor.current);
 
-    const fogNear = THREE.MathUtils.lerp(50, 0.5, Math.pow(tiltFactor, 4));
-    const fogFar = THREE.MathUtils.lerp(100, 4.0, Math.pow(tiltFactor, 4));
+    const fogNear = THREE.MathUtils.lerp(8000, 0.5, Math.pow(tiltFactor, 4));
+    const fogFar = THREE.MathUtils.lerp(30000, 4.0, Math.pow(tiltFactor, 4));
 
     fog.near = fogNear;
     fog.far = fogFar;
@@ -456,7 +394,7 @@ export function Ship({
     if (isLaunching) {
       launchProgress.current += delta;
       
-      if (launchProgress.current > 0.8) {
+      if (launchProgress.current > 1.5) {
         setIsLaunching(false);
       }
       
@@ -482,7 +420,7 @@ export function Ship({
       
       bases.forEach(base => {
         const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
-        const toBase = basePos.clone().sub(localPos);
+        const toBase = basePos.clone().sub(position.current);
         const dist = toBase.length();
         
         if (dist < 50) { 
@@ -492,7 +430,7 @@ export function Ship({
             const score = dot - (dist / 100); 
             if (score > bestScore) {
               bestScore = score;
-              bestTarget = { ...base, position: basePos.clone().add(currentPlanetPos), type: 'base' };
+              bestTarget = { ...base, type: 'base' };
             }
           }
         }
@@ -505,7 +443,7 @@ export function Ship({
         satPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
         satPos.applyEuler(new THREE.Euler(sat.tiltX, sat.tiltY, sat.tiltZ));
 
-        const toSat = satPos.clone().sub(localPos);
+        const toSat = satPos.clone().sub(position.current);
         const dist = toSat.length();
 
         if (dist < 50) {
@@ -515,33 +453,12 @@ export function Ship({
             const score = dot - (dist / 100);
             if (score > bestScore) {
               bestScore = score;
-              bestTarget = { ...sat, position: satPos.clone().add(currentPlanetPos), type: 'satellite', health: 100 }; 
+              bestTarget = { ...sat, position: satPos, type: 'satellite', health: 100 }; 
             }
           }
         }
       });
       
-      activePlayers.forEach(player => {
-        if (player.uid === userData?.uid || player.currentPlanetId !== currentPlanetId) return;
-        if (!player.playerSave) return;
-        
-        const playerPos = new THREE.Vector3(player.playerSave.position.x, player.playerSave.position.y, player.playerSave.position.z).add(currentPlanetPos);
-        const toPlayer = playerPos.clone().sub(position.current);
-        const dist = toPlayer.length();
-        
-        if (dist < 100) {
-          toPlayer.normalize();
-          const dot = shipForward.dot(toPlayer);
-          if (dot > 0.8) {
-            const score = dot - (dist / 200);
-            if (score > bestScore) {
-              bestScore = score;
-              bestTarget = { ...player, position: playerPos, type: 'player' };
-            }
-          }
-        }
-      });
-
       if (bestTarget) {
         setLockedTarget(bestTarget);
       } else {
@@ -550,33 +467,43 @@ export function Ship({
     }
 
     if (lockedTarget && lockedTarget.type === 'satellite') {
-      const time = state.clock.elapsedTime;
-      const angle = time * lockedTarget.speed + lockedTarget.initialAngle;
-      const satPos = new THREE.Vector3(lockedTarget.orbitRadius, 0, 0);
-      satPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
-      satPos.applyEuler(new THREE.Euler(lockedTarget.tiltX, lockedTarget.tiltY, lockedTarget.tiltZ));
-      satPos.add(currentPlanetPos);
-      
-      setLockedTarget(prev => prev ? { ...prev, position: satPos } : null);
+      const liveSatellite = satellites.find((sat) => sat.name === lockedTarget.name);
+      if (!liveSatellite || (liveSatellite.health ?? 0) <= 0) {
+        setLockedTarget(null);
+      } else {
+        const time = state.clock.elapsedTime;
+        const angle = time * liveSatellite.speed + liveSatellite.initialAngle;
+        const satPos = new THREE.Vector3(liveSatellite.orbitRadius, 0, 0);
+        satPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+        satPos.applyEuler(new THREE.Euler(liveSatellite.tiltX, liveSatellite.tiltY, liveSatellite.tiltZ));
+
+        setLockedTarget(prev => prev ? { ...prev, position: satPos, health: liveSatellite.health ?? prev.health } : null);
+      }
     } else if (lockedTarget && lockedTarget.type === 'base') {
       const updatedBase = bases.find(b => b.id === lockedTarget.id);
-      if (updatedBase) {
-        const basePos = new THREE.Vector3(updatedBase.position.x, updatedBase.position.y, updatedBase.position.z).add(currentPlanetPos);
-        setLockedTarget(prev => prev ? { ...prev, position: basePos, health: updatedBase.health } : null);
-      }
-    } else if (lockedTarget && lockedTarget.type === 'player') {
-      const updatedPlayer = activePlayers.find(p => p.uid === lockedTarget.uid);
-      if (updatedPlayer && updatedPlayer.playerSave) {
-        const playerPos = new THREE.Vector3(updatedPlayer.playerSave.position.x, updatedPlayer.playerSave.position.y, updatedPlayer.playerSave.position.z).add(currentPlanetPos);
-        setLockedTarget(prev => prev ? { ...prev, position: playerPos, shipConfig: updatedPlayer.shipConfig } : null);
-      } else {
-        setLockedTarget(null);
+      if (updatedBase && updatedBase.health !== lockedTarget.health) {
+        setLockedTarget(prev => prev ? { ...prev, health: updatedBase.health } : null);
       }
     } else if (lockedTarget && lockedTarget.type === 'planet' && solarSystem) {
-      const targetPlanetPos = getPlanetPos(lockedTarget.id);
+      const currentPlanetPos = getBodyWorldPosition(currentPlanetId, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
+      const targetPlanetPos = getBodyWorldPosition(lockedTarget.id, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
+      const relativeTarget = new THREE.Vector3().subVectors(targetPlanetPos, currentPlanetPos);
       
-      if (!lockedTarget.position || !lockedTarget.position.equals(targetPlanetPos)) {
-        setLockedTarget(prev => prev ? { ...prev, position: targetPlanetPos } : null);
+      if (!lockedTarget.position || !lockedTarget.position.equals(relativeTarget)) {
+        setLockedTarget(prev => prev ? { ...prev, position: relativeTarget } : null);
+      }
+    } else if (lockedTarget && lockedTarget.type === 'moon' && solarSystem) {
+      const currentPlanetPos = getBodyWorldPosition(currentPlanetId, solarSystem, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
+      const parentPlanet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === lockedTarget.parentPlanetId);
+      const moon = parentPlanet?.moons.find((m) => m.id === lockedTarget.id);
+      if (!parentPlanet || !moon) {
+        setLockedTarget(null);
+      } else {
+        const targetMoonPos = getMoonWorldPosition(parentPlanet, moon, state.clock.getElapsedTime(), orbitMap, new THREE.Vector3());
+        const relativeTarget = new THREE.Vector3().subVectors(targetMoonPos, currentPlanetPos);
+        if (!lockedTarget.position || !lockedTarget.position.equals(relativeTarget)) {
+          setLockedTarget(prev => prev ? { ...prev, position: relativeTarget } : null);
+        }
       }
     }
 
@@ -585,10 +512,10 @@ export function Ship({
     
     // Machine Gun (Light Laser)
     if ((keys['MouseLeft'] || mobileKeys.mg) && now - lastFired.current > 100) { 
-      if (!userData || userData.machineGunAmmo > 0) {
+      if (INFINITE_TEST_AMMO || !userData || userData.machineGunAmmo > 0) {
         lastFired.current = now;
         setLastMgFire(now);
-        if (userData) gameManager.fireMachineGun();
+        if (userData && !INFINITE_TEST_AMMO) gameManager.fireMachineGun();
         
         const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
         if (lockedTarget) {
@@ -618,16 +545,16 @@ export function Ship({
     }
 
     // Missile (Heavy Laser)
-    if ((keys['MouseRight'] || mobileKeys.missile) && now - lastMissile.current > 1000) { 
-      if (!userData || userData.missileAmmo > 0) {
+    if ((keys['MouseRight'] || mobileKeys.missile) && now - lastMissile.current > 250) { 
+      if (INFINITE_TEST_AMMO || !userData || userData.missileAmmo > 0) {
         lastMissile.current = now;
         setLastMissileFire(now);
         
         // --- ADD RECOIL HERE ---
         // Pushes the ship model slightly backward along its local Z axis
-        recoilZ.current = 0.008; 
+        recoilZ.current = 0.08; 
         
-        if (userData) gameManager.fireMissile();
+        if (userData && !INFINITE_TEST_AMMO) gameManager.fireMissile();
         
         const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(shipRef.current!.quaternion);
         
@@ -647,7 +574,7 @@ export function Ship({
       const remaining: typeof prev = [];
       prev.forEach(p => {
         // 6️⃣ Slowed projectiles to match new ship speed
-        const speed = p.type === 'mg' ? 4.0 : 2.5; 
+        const speed = p.type === 'mg' ? 40 : 25; 
         
         if (p.type === 'missile' && p.target) {
           const targetPos = new THREE.Vector3(p.target.position.x, p.target.position.y, p.target.position.z);
@@ -660,33 +587,12 @@ export function Ship({
         let hit = false;
         bases.forEach(base => {
           if (hit) return;
-          const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z).add(currentPlanetPos);
+          const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
           if (p.pos.distanceTo(basePos) < 1.0) {
             hit = true;
             const damage = p.type === 'mg' ? 5 : 50;
             gameManager.attackBase(base.id, damage).catch(console.error);
             setExplosions(prev => [...prev, { id: Math.random().toString(), pos: p.pos.clone(), createdAt: now, size: p.type === 'mg' ? 1 : 3 }]);
-          }
-        });
-
-        activePlayers.forEach(player => {
-          if (hit || player.uid === userData?.uid || player.currentPlanetId !== currentPlanetId) return;
-          if (!player.playerSave) return;
-          
-          const playerPos = new THREE.Vector3(player.playerSave.position.x, player.playerSave.position.y, player.playerSave.position.z).add(currentPlanetPos);
-          if (p.pos.distanceTo(playerPos) < 2.0) {
-            hit = true;
-            const damage = p.type === 'mg' ? 10 : 40;
-            setExplosions(prev => [...prev, { id: Math.random().toString(), pos: p.pos.clone(), createdAt: now, size: p.type === 'mg' ? 1 : 3 }]);
-            
-            // Damage player logic
-            if (userData) {
-              gameManager.damagePlayer(player.uid, damage).then(isDead => {
-                if (isDead) {
-                  gameManager.transferResourcesOnKill(player.uid);
-                }
-              }).catch(console.error);
-            }
           }
         });
 
@@ -698,22 +604,20 @@ export function Ship({
             const satPos = new THREE.Vector3(sat.orbitRadius, 0, 0);
             satPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
             satPos.applyEuler(new THREE.Euler(sat.tiltX, sat.tiltY, sat.tiltZ));
-            satPos.add(currentPlanetPos);
 
             if (p.pos.distanceTo(satPos) < 1.0) {
               hit = true;
-              if (sat.uid) {
-                gameManager.destroySatellite(sat.uid).catch(console.error);
-              }
-              setExplosions(prev => [...prev, { id: Math.random().toString(), pos: p.pos.clone(), createdAt: now, size: p.type === 'mg' ? 1 : 3 }]);
+              const damage = p.type === 'mg' ? 12 : 55;
+              onSatelliteDamaged?.(sat, damage);
+              setExplosions(prev => [...prev, { id: Math.random().toString(), pos: p.pos.clone(), createdAt: now, size: p.type === 'mg' ? 1.2 : 3.5 }]);
             }
           });
         }
 
         if (!hit) {
           gameManager.resources.forEach(res => {
-            if (hit || !res.active || res.planetId !== currentPlanetId) return;
-            const resPos = new THREE.Vector3(res.position.x, res.position.y, res.position.z).add(currentPlanetPos);
+            if (hit || !res.active) return;
+            const resPos = new THREE.Vector3(res.position.x, res.position.y, res.position.z);
             if (p.pos.distanceTo(resPos) < 0.8) {
               hit = true;
               gameManager.gatherResource(res.id).catch(console.error);
@@ -735,8 +639,8 @@ export function Ship({
 
     // 4️⃣ Reduced ship speed & acceleration for planetary scale
     const isBoostingActive = (keys['ShiftLeft'] || isBoosting) && boostEnergy.current > 0;
-    const speed = isBoostingActive ? 0.25 : 0.06;
-    const accel = isBoostingActive ? 0.25 * delta : 0.08 * delta;
+    const speed = isBoostingActive ? 2.5 : 0.6;
+    const accel = isBoostingActive ? 2.5 * delta : 0.8 * delta;
     const friction = 0.96;
 
     if (isBoostingActive) {
@@ -745,17 +649,23 @@ export function Ship({
       boostEnergy.current = Math.min(100, boostEnergy.current + 10 * delta);
     }
 
-    if (boostVisualActive !== isBoostingActive) {
-      setBoostVisualActive(isBoostingActive);
-    }
+    const altitudeFromSurface = Math.max(0, position.current.length() - planetRadius);
+    const orbitalFactor = THREE.MathUtils.clamp(altitudeFromSurface / Math.max(planetRadius * 4, 8), 0, 1);
+    const deepSpaceFactor = THREE.MathUtils.clamp(altitudeFromSurface / Math.max(planetRadius * 30, 40), 0, 1);
+    const cruiseMultiplier = THREE.MathUtils.lerp(1, isBoostingActive ? 180 : 36, orbitalFactor);
+    const deepSpaceBoost = THREE.MathUtils.lerp(1, isBoostingActive ? 8 : 3, deepSpaceFactor);
+    const effectiveSpeed = speed * cruiseMultiplier * deepSpaceBoost;
+    const effectiveAccel = accel * THREE.MathUtils.lerp(1, isBoostingActive ? 140 : 28, orbitalFactor) * THREE.MathUtils.lerp(1, isBoostingActive ? 5 : 2.25, deepSpaceFactor);
 
-    const boosterColor = new THREE.Color(isBoostingActive ? '#ff7a18' : '#00e5ff');
-    [boosterCoreMaterialRef.current, wingLeftBoosterMaterialRef.current, wingRightBoosterMaterialRef.current].forEach((mat) => {
-      if (!mat) return;
-      mat.color.copy(boosterColor);
-      mat.emissive.copy(boosterColor);
-      mat.emissiveIntensity = isBoostingActive ? 6 : 3;
-    });
+    if (cameraRef.current) {
+      const targetFov = isBoostingActive ? 100 : 60;
+      cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFov, 0.1);
+      cameraRef.current.far = 250000;
+      cameraRef.current.updateProjectionMatrix();
+      
+      const targetZ = isBoostingActive ? 0.25 : 0.15;
+      cameraRef.current.position.lerp(new THREE.Vector3(0, 0.04, targetZ), 0.05);
+    }
 
     const input = new THREE.Vector3();
     if (!isLaunching) {
@@ -782,7 +692,7 @@ export function Ship({
     
     const yawDelta = rotation.current.y - prevYaw;
 
-    const up = localPos.clone().normalize();
+    const up = position.current.clone().normalize();
     const north = new THREE.Vector3(0, 1, 0);
     let forward = north.projectOnPlane(up).normalize();
     if (forward.lengthSq() < 0.001) {
@@ -797,94 +707,38 @@ export function Ship({
     const quaternion = baseQuat.multiply(yawQuat).multiply(pitchQuat);
 
     const moveVector = input.clone().applyQuaternion(quaternion);
-    velocity.current.add(moveVector.multiplyScalar(accel));
-    velocity.current.multiplyScalar(friction);
+    velocity.current.add(moveVector.multiplyScalar(effectiveAccel));
+    velocity.current.multiplyScalar(THREE.MathUtils.lerp(friction, 0.995, orbitalFactor));
     
-    if (velocity.current.length() > speed) {
-      velocity.current.normalize().multiplyScalar(speed);
+    if (velocity.current.length() > effectiveSpeed) {
+      velocity.current.normalize().multiplyScalar(effectiveSpeed);
     }
 
     position.current.addScaledVector(velocity.current, delta);
-    localPos.addScaledVector(velocity.current, delta);
 
-    const dist = localPos.length();
+    const dist = position.current.length();
     const terrainHeight = geographyManager.getHeightAtPoint(
-      localPos.x, localPos.y, localPos.z,
+      position.current.x, position.current.y, position.current.z,
       planetRadius, 0.3
     );
     const minHeight = terrainHeight + 0.05; 
     if (dist < minHeight) {
-      localPos.normalize().multiplyScalar(minHeight);
-      position.current.copy(localPos);
-      const up = localPos.clone().normalize();
+      position.current.normalize().multiplyScalar(minHeight);
+      const up = position.current.clone().normalize();
       const downwardVelocity = velocity.current.clone().projectOnVector(up);
       if (downwardVelocity.dot(up) < 0) {
         velocity.current.sub(downwardVelocity);
       }
     }
 
-    let resolvedWorldPos = currentPlanetId
-      ? position.current.clone().add(currentPlanetPos)
-      : position.current.clone();
-
-    if (solarSystem) {
-      for (const body of solarSystem.bodies) {
-        if (body.type !== 'planet') continue;
-        const bodyPos = getPlanetPos(body.id);
-        const bodyRadius = (body as PlanetData).radius;
-        const safeDistance = bodyRadius + 0.18;
-        const toShip = resolvedWorldPos.clone().sub(bodyPos);
-        const distToCenter = toShip.length();
-
-        if (distToCenter < safeDistance) {
-          const normal = (distToCenter > 0.0001 ? toShip : new THREE.Vector3(0, 1, 0)).normalize();
-          resolvedWorldPos.copy(bodyPos).add(normal.multiplyScalar(safeDistance));
-          velocity.current.addScaledVector(normal, 0.05);
-
-          if (currentPlanetId !== body.id && setCurrentPlanetId) {
-            const newLocalPos = resolvedWorldPos.clone().sub(bodyPos);
-            position.current.copy(newLocalPos);
-            setCurrentPlanetId(body.id);
-          } else if (currentPlanetId === body.id) {
-            position.current.copy(resolvedWorldPos.clone().sub(bodyPos));
-          }
-          break;
-        }
-      }
-    }
-
     if (shipRef.current) {
-      shipRef.current.position.copy(resolvedWorldPos);
+      shipRef.current.position.copy(position.current);
       shipRef.current.quaternion.copy(quaternion);
     }
 
     if (cameraRigRef.current) {
-      const chaseOffset = new THREE.Vector3(0, isBoostingActive ? 0.006 : 0.0045, isBoostingActive ? 0.028 : 0.018);
-      chaseOffset.x += THREE.MathUtils.clamp(rawInputX * 0.004, -0.004, 0.004);
-      chaseOffset.y += THREE.MathUtils.clamp(velocity.current.y * 0.03, -0.003, 0.003);
-      chaseOffset.applyQuaternion(quaternion);
-      const desiredRigPos = resolvedWorldPos.clone().sub(chaseOffset);
-      cameraRigRef.current.position.lerp(desiredRigPos, 0.12);
-      cameraRigRef.current.quaternion.slerp(quaternion, 0.12);
-    }
-
-    if (cameraRef.current) {
-      const speedRatio = THREE.MathUtils.clamp(velocity.current.length() / 0.25, 0, 1);
-      const targetFov = THREE.MathUtils.lerp(64, isBoostingActive ? 98 : 78, speedRatio);
-      cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFov, 0.08);
-      cameraRef.current.updateProjectionMatrix();
-
-      cameraVelocityLag.current.lerp(velocity.current, 0.08);
-      const cockpitOffset = new THREE.Vector3(
-        THREE.MathUtils.clamp(rawInputX * 0.0015, -0.0015, 0.0015),
-        0.004 + THREE.MathUtils.clamp(-input.y * 0.001, -0.001, 0.001),
-        THREE.MathUtils.lerp(0.016, 0.022, speedRatio),
-      );
-      cockpitOffset.x += THREE.MathUtils.clamp(yawDelta * 0.003, -0.003, 0.003);
-      cockpitOffset.y += Math.sin(state.clock.elapsedTime * (isBoostingActive ? 30 : 18)) * (isBoostingActive ? 0.0006 : 0.0002);
-      cockpitOffset.applyQuaternion(new THREE.Quaternion().setFromEuler(new THREE.Euler(rotation.current.x * 0.08, 0, 0)));
-      cameraRef.current.position.lerp(cockpitOffset, 0.15);
-      cameraRef.current.lookAt(new THREE.Vector3(0, 0.001 + input.y * 0.001, -0.09 - speedRatio * 0.04));
+      cameraRigRef.current.position.lerp(position.current, 0.1);
+      cameraRigRef.current.quaternion.slerp(quaternion, 0.1);
     }
 
     if (shipModelRef.current) {
@@ -896,70 +750,74 @@ export function Ship({
       shipModelRef.current.rotation.x = THREE.MathUtils.lerp(shipModelRef.current.rotation.x, targetPitch, 0.1);
 
       // --- APPLY RECOIL DECAY ---
-      // Smoothly snap the ship back to its baseline Z position (-0.0005)
+      // Smoothly snap the ship back to its baseline Z position (-0.005)
       recoilZ.current = THREE.MathUtils.lerp(recoilZ.current, 0, 0.15);
-      shipModelRef.current.position.z = -0.0005 + Math.max(0, recoilZ.current);
+      shipModelRef.current.position.z = -0.005 + Math.max(0, recoilZ.current);
     }
   });
 
   return (
     <>
       <group ref={cameraRigRef}>
-        <PerspectiveCamera makeDefault ref={cameraRef} position={[0, 0.004, 0.015]} rotation={[-0.1, 0, 0]} fov={60} near={0.0001} far={500} />
+        <PerspectiveCamera makeDefault ref={cameraRef} position={[0, 0.04, 0.15]} rotation={[-0.1, 0, 0]} fov={60} near={0.001} far={250000} />
       </group>
 
       <group ref={shipRef}>
         {/* The ship's base position Z (-0.005) gets overridden by the recoil logic dynamically */}
-        <group ref={shipModelRef} position={[0, -0.0002, -0.0005]} scale={0.00065}>
-          <mesh position={[0, 0, -0.1]}>
-            <boxGeometry args={[0.55, 0.26, 2.2]} />
-            <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.12} />
-          </mesh>
-          <mesh position={[0, 0, -1.45]} rotation={[-Math.PI / 2, 0, 0]}>
-            <coneGeometry args={[0.26, 0.9, 4]} />
+        <group ref={shipModelRef} position={[0, -0.002, -0.005]} scale={0.01}>
+          <mesh position={[0, 0, 0]}>
+            <boxGeometry args={[0.6, 0.4, 2.5]} />
             <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
           </mesh>
-          <mesh position={[0, 0.18, -0.45]}>
-            <boxGeometry args={[0.34, 0.22, 0.9]} />
-            <meshStandardMaterial color="#7fe7ff" metalness={1} roughness={0} transparent opacity={0.82} />
+          <mesh position={[0, 0, -1.5]} rotation={[-Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.3, 1, 4]} />
+            <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
           </mesh>
-          <mesh position={[0, -0.02, 0.12]}>
-            <boxGeometry args={[3.2, 0.05, 0.9]} />
-            <meshStandardMaterial color="#2a2a2a" metalness={0.8} roughness={0.22} />
+          <mesh position={[0, 0.3, -0.5]}>
+            <boxGeometry args={[0.4, 0.3, 1]} />
+            <meshStandardMaterial color="#00ffff" metalness={1} roughness={0} transparent opacity={0.8} />
           </mesh>
-          <mesh position={[-1.28, -0.02, 0.92]}>
-            <cylinderGeometry args={[0.1, 0.12, 0.45, 8]} />
-            <meshStandardMaterial ref={wingLeftBoosterMaterialRef} color="#00e5ff" emissive="#00e5ff" emissiveIntensity={3} />
+          <mesh position={[0, 0, 0.2]}>
+            <boxGeometry args={[3.5, 0.05, 1]} />
+            <meshStandardMaterial color="#2a2a2a" metalness={0.8} roughness={0.2} />
           </mesh>
-          <mesh position={[1.28, -0.02, 0.92]}>
-            <cylinderGeometry args={[0.1, 0.12, 0.45, 8]} />
-            <meshStandardMaterial ref={wingRightBoosterMaterialRef} color="#00e5ff" emissive="#00e5ff" emissiveIntensity={3} />
+          <mesh position={[-0.2, 0.4, 1]}>
+            <boxGeometry args={[0.05, 0.8, 0.5]} />
+            <meshStandardMaterial color="#ff3333" metalness={0.5} roughness={0.5} />
           </mesh>
-          <mesh position={[0, 0, 1.18]}>
-            <boxGeometry args={[0.34, 0.16, 0.12]} />
-            <meshStandardMaterial ref={boosterCoreMaterialRef} color="#00e5ff" emissive="#00e5ff" emissiveIntensity={3} />
+          <mesh position={[0.2, 0.4, 1]}>
+            <boxGeometry args={[0.05, 0.8, 0.5]} />
+            <meshStandardMaterial color="#ff3333" metalness={0.5} roughness={0.5} />
+          </mesh>
+          <mesh position={[0, 0, 1.26]}>
+            <boxGeometry args={[0.4, 0.2, 0.05]} />
+            <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={3} />
           </mesh>
 
-          <Trail width={boostVisualActive ? 0.13 : 0.08} length={isMobile ? 3 : 6} color={new THREE.Color(boostVisualActive ? '#ff7a18' : '#00e5ff')} attenuation={(t) => t * t}>
-            <mesh position={[0, 0, 1.32]}>
+          <Trail width={0.08} length={isMobile ? 2 : 4} color={new THREE.Color('#00ffff')} attenuation={(t) => t * t}>
+            <mesh position={[0, 0, 1.3]}>
               <sphereGeometry args={[0.1]} />
               <meshBasicMaterial transparent opacity={0} />
             </mesh>
           </Trail>
-
-          <Trail width={boostVisualActive ? 0.03 : 0.015} length={isMobile ? 3 : 8} color={new THREE.Color(boostVisualActive ? '#ffd166' : '#ffffff')} attenuation={(t) => t * t}>
-            <mesh position={[-1.6, -0.02, 0.7]}>
-              <sphereGeometry args={[0.05]} />
-              <meshBasicMaterial transparent opacity={0} />
-            </mesh>
-          </Trail>
-
-          <Trail width={boostVisualActive ? 0.03 : 0.015} length={isMobile ? 3 : 8} color={new THREE.Color(boostVisualActive ? '#ffd166' : '#ffffff')} attenuation={(t) => t * t}>
-            <mesh position={[1.6, -0.02, 0.7]}>
-              <sphereGeometry args={[0.05]} />
-              <meshBasicMaterial transparent opacity={0} />
-            </mesh>
-          </Trail>
+          
+          {!isMobile && (
+            <>
+              <Trail width={0.01} length={8} color={new THREE.Color('#ffffff')} attenuation={(t) => t * t}>
+                <mesh position={[-1.75, 0, 0.7]}>
+                  <sphereGeometry args={[0.05]} />
+                  <meshBasicMaterial transparent opacity={0} />
+                </mesh>
+              </Trail>
+              
+              <Trail width={0.01} length={8} color={new THREE.Color('#ffffff')} attenuation={(t) => t * t}>
+                <mesh position={[1.75, 0, 0.7]}>
+                  <sphereGeometry args={[0.05]} />
+                  <meshBasicMaterial transparent opacity={0} />
+                </mesh>
+              </Trail>
+            </>
+          )}
         </group>
       </group>
 
@@ -976,23 +834,31 @@ export function Ship({
             {p.type === 'mg' ? (
               <group>
                 <mesh rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.015, 0.015, 1.5, 6]} />
+                  <cylinderGeometry args={[0.02, 0.02, 2.4, 8]} />
                   <meshBasicMaterial color="#ffffff" />
                 </mesh>
                 <mesh rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.04, 0.04, 1.6, 6]} />
-                  <meshBasicMaterial color="#00ffff" transparent opacity={0.4} />
+                  <cylinderGeometry args={[0.06, 0.06, 2.8, 8]} />
+                  <meshBasicMaterial color="#00e5ff" transparent opacity={0.35} />
                 </mesh>
-                {/* Subtle light emission for standard shots */}
-                <pointLight distance={2} intensity={1} color="#00ffff" />
+                <mesh>
+                  <sphereGeometry args={[0.08, 12, 12]} />
+                  <meshBasicMaterial color="#9ffcff" />
+                </mesh>
+                <pointLight distance={3} intensity={1.5} color="#00ffff" />
               </group>
             ) : (
               <group>
                 <mesh rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.05, 0.05, 1.2, 8]} />
-                  <meshStandardMaterial color="#ff0000" emissive="#ff0000" emissiveIntensity={5} />
+                  <cylinderGeometry args={[0.06, 0.06, 2.2, 10]} />
+                  <meshStandardMaterial color="#ff5a5a" emissive="#ff2222" emissiveIntensity={7} />
                 </mesh>
-                <Trail width={0.15} length={6} color={new THREE.Color('#ff0000')} attenuation={(t) => t * t}>
+                <mesh>
+                  <sphereGeometry args={[0.11, 16, 16]} />
+                  <meshBasicMaterial color="#ffd0d0" />
+                </mesh>
+                <pointLight distance={4} intensity={2} color="#ff3333" />
+                <Trail width={0.2} length={8} color={new THREE.Color('#ff0000')} attenuation={(t) => t * t}>
                   <mesh position={[0, 0, 0.5]}>
                     <sphereGeometry args={[0.01]} />
                     <meshBasicMaterial transparent opacity={0} />

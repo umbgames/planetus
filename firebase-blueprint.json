@@ -10,13 +10,6 @@
         "commonResources": { "type": "number", "description": "Amount of common resources." },
         "rareResources": { "type": "number", "description": "Amount of rare resources." },
         "hasSatellite": { "type": "boolean", "description": "Whether the user has launched a satellite." },
-        "machineGunAmmo": { "type": "number" },
-        "missileAmmo": { "type": "number" },
-        "taxAgreements": { "type": "object" },
-        "clanId": { "type": "string" },
-        "lastActiveAt": { "type": "string", "format": "date-time" },
-        "currentPlanetId": { "type": "string" },
-        "shipConfig": { "type": "object" },
         "createdAt": { "type": "string", "format": "date-time", "description": "When the account was created." }
       },
       "required": ["uid", "displayName", "commonResources", "rareResources", "hasSatellite", "createdAt"]
@@ -28,7 +21,6 @@
       "properties": {
         "id": { "type": "string", "description": "The base's unique ID." },
         "ownerId": { "type": "string", "description": "The ID of the user who owns this base. Can be 'npc' for initial bases." },
-        "clanId": { "type": "string" },
         "position": {
           "type": "object",
           "properties": {
@@ -41,28 +33,10 @@
         "zone": { "type": "string", "enum": ["high", "mid", "low"], "description": "The resource zone the base is in." },
         "level": { "type": "number", "description": "The level of the base." },
         "health": { "type": "number", "description": "The health of the base." },
-        "shieldActive": { "type": "boolean" },
-        "shieldHealth": { "type": "number" },
-        "maxShieldHealth": { "type": "number" },
-        "hasMissileBattery": { "type": "boolean" },
-        "hasTaxOffice": { "type": "boolean" },
         "lastMinedAt": { "type": "string", "format": "date-time", "description": "When the base last generated resources." },
         "createdAt": { "type": "string", "format": "date-time", "description": "When the base was built." }
       },
       "required": ["id", "ownerId", "position", "zone", "level", "health", "lastMinedAt", "createdAt"]
-    },
-    "PlanetState": {
-      "title": "PlanetState",
-      "description": "Global state for a planet (hegemony, taxes).",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "hegemonId": { "type": "string" },
-        "taxRate": { "type": "number" },
-        "taxStatus": { "type": "string", "enum": ["active", "inactive"] },
-        "lastTaxProcessAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "taxRate", "taxStatus", "lastTaxProcessAt"]
     },
     "MarketOffer": {
       "title": "MarketOffer",
@@ -101,42 +75,6 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["id", "type", "position", "active", "createdAt"]
-    },
-    "Clan": {
-      "title": "Clan",
-      "description": "A group of players.",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "leaderId": { "type": "string" },
-        "members": { "type": "array", "items": { "type": "string" } },
-        "commonResources": { "type": "number" },
-        "rareResources": { "type": "number" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "name", "leaderId", "members", "commonResources", "rareResources", "createdAt"]
-    },
-    "SpaceStation": {
-      "title": "SpaceStation",
-      "description": "An orbiting space station.",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "ownerId": { "type": "string" },
-        "clanId": { "type": "string" },
-        "planetId": { "type": "string" },
-        "position": { "type": "object" },
-        "orbitRadius": { "type": "number" },
-        "orbitSpeed": { "type": "number" },
-        "initialAngle": { "type": "number" },
-        "health": { "type": "number" },
-        "maxHealth": { "type": "number" },
-        "isControlled": { "type": "boolean" },
-        "controlledBy": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["id", "ownerId", "planetId", "position", "orbitRadius", "orbitSpeed", "initialAngle", "health", "maxHealth", "isControlled", "createdAt"]
     }
   },
   "firestore": {
@@ -155,18 +93,6 @@
     "resources/{resourceId}": {
       "schema": { "$ref": "#/entities/ResourceNode" },
       "description": "Stores gatherable resources."
-    },
-    "planet_states/{planetId}": {
-      "schema": { "$ref": "#/entities/PlanetState" },
-      "description": "Stores global planet state."
-    },
-    "clans/{clanId}": {
-      "schema": { "$ref": "#/entities/Clan" },
-      "description": "Stores all clans."
-    },
-    "space_stations/{stationId}": {
-      "schema": { "$ref": "#/entities/SpaceStation" },
-      "description": "Stores all space stations."
     }
   }
 }
