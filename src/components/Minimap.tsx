@@ -6,8 +6,10 @@ interface MinimapProps {
   solarSystem: SolarSystemData | null;
   currentPlanetId: string | null;
   shipPosition: THREE.Vector3;
-  shipYaw?: number;      // radians
-  visible?: boolean;     // false in solar system view
+  shipYaw?: number;        // radians
+  cameraPitch?: number;    // radians
+  visible?: boolean;       // false in solar system view
+  range?: number;          // world-space culling radius
 }
 
 type PointItem = {
@@ -16,7 +18,6 @@ type PointItem = {
   x: number;
   y: number;
   z: number;
-  depth: number;
   size: number;
   opacity: number;
   isCurrent: boolean;
@@ -27,124 +28,121 @@ export const Minimap: React.FC<MinimapProps> = ({
   currentPlanetId,
   shipPosition,
   shipYaw = 0,
+  cameraPitch = 0,
   visible = true,
+  range = 1400,
 }) => {
   const size = 170;
   const half = size / 2;
-  const maxRenderRadius = size * 0.42;
+  const renderRadius = size * 0.44;
 
   const mapData = useMemo(() => {
     if (!solarSystem || !visible) return null;
 
     const orbitMap = buildOrbitMap(solarSystem.bodies);
     const planets = solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet');
-
     if (!planets.length) return null;
 
     const elapsed = performance.now() / 1000;
 
-    // include ship offset so map remains centered around player-local area
-    const worldPoints = planets.map((planet) => {
+    const cosYaw = Math.cos(-shipYaw);
+    const sinYaw = Math.sin(-shipYaw);
+
+    // Clamp pitch influence so minimap never folds too much
+    const clampedPitch = THREE.MathUtils.clamp(cameraPitch, -0.95, 0.95);
+    const pitchFlatten = THREE.MathUtils.lerp(0.82, 0.18, Math.abs(clampedPitch));
+    const pitchLift = Math.sin(clampedPitch) * 0.38;
+
+    const culled: PointItem[] = [];
+
+    for (const planet of planets) {
       const pos = getPlanetWorldPosition(planet, elapsed, orbitMap);
 
-      let color = '#d1d5db';
+      // world -> ship local
+      const lx = pos.x - shipPosition.x;
+      const ly = pos.y - shipPosition.y;
+      const lz = pos.z - shipPosition.z;
+
+      const dist = Math.sqrt(lx * lx + ly * ly + lz * lz);
+
+      // hard cull outside local nav range, but keep selected/current target longer
+      const keepBecauseCurrent = planet.id === currentPlanetId;
+      if (dist > range && !keepBecauseCurrent) continue;
+
+      // rotate by yaw so map follows ship heading
+      const rx = lx * cosYaw - lz * sinYaw;
+      const rz = lx * sinYaw + lz * cosYaw;
+      const ry = ly;
+
+      // pitch-sensitive projection
+      const px = rx;
+      const py = rz * pitchFlatten - ry * (0.18 + Math.abs(pitchLift));
+
+      // radial culling in map-space
+      const normalized = Math.min(dist / range, 1);
+      const radialScale = renderRadius / Math.max(range, 1);
+
+      const sx = px * radialScale;
+      const sy = py * radialScale;
+
+      const screenR = Math.sqrt(sx * sx + sy * sy);
+      if (screenR > renderRadius && !keepBecauseCurrent) continue;
+
+      let color = '#cfd4da';
       switch (planet.visualClass) {
         case 'lush':
-          color = '#34d399';
+          color = '#9fbf9f';
           break;
         case 'oceanic':
-          color = '#60a5fa';
+          color = '#8ea8c9';
           break;
         case 'desert':
-          color = '#fbbf24';
+          color = '#c7aa72';
           break;
         case 'arid_rocky':
-          color = '#f97316';
+          color = '#a88162';
           break;
         case 'barren_gray':
-          color = '#9ca3af';
+          color = '#9a9a9a';
           break;
         case 'icy':
-          color = '#7dd3fc';
+          color = '#b7c6cf';
           break;
         case 'volcanic':
-          color = '#ef4444';
+          color = '#b06060';
           break;
       }
 
-      // localize around ship
-      const local = new THREE.Vector3(
-        pos.x - shipPosition.x,
-        pos.y - shipPosition.y,
-        pos.z - shipPosition.z
-      );
+      const depthFactor = THREE.MathUtils.clamp((rz / range + 1) * 0.5, 0.2, 1);
+      const size = keepBecauseCurrent
+        ? THREE.MathUtils.lerp(2.4, 3.8, depthFactor)
+        : THREE.MathUtils.lerp(1.2, 2.2, depthFactor);
 
-      return {
+      const opacity = keepBecauseCurrent
+        ? THREE.MathUtils.lerp(0.85, 1.0, 1 - normalized)
+        : THREE.MathUtils.lerp(0.35, 0.85, 1 - normalized);
+
+      culled.push({
         id: planet.id,
         color,
-        local,
-        isCurrent: planet.id === currentPlanetId,
-      };
-    });
-
-    // rotate map by ship yaw so display follows ship/camera heading
-    const cos = Math.cos(-shipYaw);
-    const sin = Math.sin(-shipYaw);
-
-    const rotated = worldPoints.map((p) => {
-      const rx = p.local.x * cos - p.local.z * sin;
-      const rz = p.local.x * sin + p.local.z * cos;
-      const ry = p.local.y;
-
-      return {
-        ...p,
-        rotated: new THREE.Vector3(rx, ry, rz),
-      };
-    });
-
-    const maxDistance = Math.max(
-      ...rotated.map((p) => Math.sqrt(p.rotated.x ** 2 + p.rotated.y ** 2 + p.rotated.z ** 2)),
-      1
-    );
-
-    // aggressive compression so objects become tiny nav points
-    const scale = maxRenderRadius / maxDistance;
-
-    const points: PointItem[] = rotated.map((p) => {
-      const px = p.rotated.x * scale;
-      const py = p.rotated.z * scale * 0.72 - p.rotated.y * scale * 0.25;
-      const pz = p.rotated.z;
-
-      // normalized depth from -1 to 1
-      const depthNorm = THREE.MathUtils.clamp(pz / maxDistance, -1, 1);
-
-      // farther back = smaller/dimmer
-      const depthFactor = (depthNorm + 1) * 0.5;
-      const size = p.isCurrent
-        ? THREE.MathUtils.lerp(2.4, 4.2, depthFactor)
-        : THREE.MathUtils.lerp(1.2, 2.6, depthFactor);
-
-      const opacity = p.isCurrent
-        ? THREE.MathUtils.lerp(0.65, 1.0, depthFactor)
-        : THREE.MathUtils.lerp(0.35, 0.9, depthFactor);
-
-      return {
-        id: p.id,
-        color: p.color,
-        x: px,
-        y: py,
-        z: pz,
-        depth: depthNorm,
+        x: sx,
+        y: sy,
+        z: rz,
         size,
         opacity,
-        isCurrent: p.isCurrent,
-      };
-    });
+        isCurrent: keepBecauseCurrent,
+      });
+    }
 
-    // draw back-to-front for better faux-3D layering
-    points.sort((a, b) => a.z - b.z);
+    culled.sort((a, b) => a.z - b.z);
 
-    return { points };
+    const sweepAngle = (performance.now() * 0.0012) % (Math.PI * 2);
+
+    return {
+      points: culled,
+      sweepAngle,
+      pitchFlatten,
+    };
   }, [
     solarSystem,
     currentPlanetId,
@@ -152,13 +150,16 @@ export const Minimap: React.FC<MinimapProps> = ({
     shipPosition.y,
     shipPosition.z,
     shipYaw,
+    cameraPitch,
     visible,
+    range,
   ]);
 
   if (!visible || !mapData) return null;
 
-  const shipX = half;
-  const shipY = half;
+  const sweepLen = renderRadius;
+  const sweepX = half + Math.cos(mapData.sweepAngle - Math.PI / 2) * sweepLen;
+  const sweepY = half + Math.sin(mapData.sweepAngle - Math.PI / 2) * sweepLen * 0.92;
 
   return (
     <div
@@ -173,127 +174,117 @@ export const Minimap: React.FC<MinimapProps> = ({
         width={size}
         height={size}
         viewBox={`0 0 ${size} ${size}`}
-        style={{
-          overflow: 'visible',
-          filter: 'drop-shadow(0 0 10px rgba(120,200,255,0.08))',
-        }}
+        style={{ overflow: 'visible' }}
       >
-        <defs>
-          <radialGradient id="shipGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
-            <stop offset="45%" stopColor="#7dd3fc" stopOpacity="0.95" />
-            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
-          </radialGradient>
-
-          <radialGradient id="scanGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#67e8f9" stopOpacity="0.2" />
-            <stop offset="100%" stopColor="#67e8f9" stopOpacity="0" />
-          </radialGradient>
-        </defs>
-
-        {/* subtle center scan haze */}
-        <circle cx={shipX} cy={shipY} r={28} fill="url(#scanGlow)" />
-
-        {/* faint depth guide only, no border */}
+        {/* subtle flat guide, no glow */}
         <ellipse
           cx={half}
-          cy={half + 2}
-          rx={size * 0.28}
-          ry={size * 0.11}
+          cy={half}
+          rx={renderRadius}
+          ry={renderRadius * 0.52}
           fill="none"
-          stroke="rgba(125,211,252,0.08)"
+          stroke="rgba(255,255,255,0.08)"
           strokeWidth="0.8"
         />
 
-        {/* planet/object points */}
+        {/* center crosshair */}
+        <line
+          x1={half - 8}
+          y1={half}
+          x2={half + 8}
+          y2={half}
+          stroke="rgba(255,255,255,0.18)"
+          strokeWidth="0.8"
+        />
+        <line
+          x1={half}
+          y1={half - 8}
+          x2={half}
+          y2={half + 8}
+          stroke="rgba(255,255,255,0.18)"
+          strokeWidth="0.8"
+        />
+
+        {/* radar sweep */}
+        <line
+          x1={half}
+          y1={half}
+          x2={sweepX}
+          y2={sweepY}
+          stroke="rgba(255,255,255,0.22)"
+          strokeWidth="1"
+          strokeLinecap="round"
+        />
+
+        {/* sweep head */}
+        <circle
+          cx={sweepX}
+          cy={sweepY}
+          r={1.2}
+          fill="rgba(255,255,255,0.32)"
+        />
+
+        {/* points */}
         {mapData.points.map((p) => {
           const x = half + p.x;
           const y = half + p.y;
-          const glowR = p.size * 2.4;
-          const coreR = p.size;
 
           return (
             <g key={p.id}>
               <circle
                 cx={x}
                 cy={y}
-                r={glowR}
-                fill={p.color}
-                opacity={p.opacity * 0.12}
-              />
-              <circle
-                cx={x}
-                cy={y}
-                r={coreR}
+                r={p.size}
                 fill={p.color}
                 opacity={p.opacity}
               />
               {p.isCurrent && (
-                <>
-                  <circle
-                    cx={x}
-                    cy={y}
-                    r={coreR + 4}
-                    fill="none"
-                    stroke={p.color}
-                    strokeWidth="0.9"
-                    opacity="0.8"
-                  />
-                  <circle
-                    cx={x}
-                    cy={y}
-                    r={coreR + 8}
-                    fill="none"
-                    stroke={p.color}
-                    strokeWidth="0.7"
-                    opacity="0.28"
-                  />
-                </>
+                <circle
+                  cx={x}
+                  cy={y}
+                  r={p.size + 4}
+                  fill="none"
+                  stroke={p.color}
+                  strokeWidth="0.75"
+                  opacity="0.75"
+                />
               )}
             </g>
           );
         })}
 
-        {/* player/ship marker */}
+        {/* player marker - red */}
         <g>
-          <circle cx={shipX} cy={shipY} r={10} fill="url(#shipGlow)" opacity="0.9" />
-          <circle cx={shipX} cy={shipY} r={2.4} fill="#ffffff" />
+          <circle
+            cx={half}
+            cy={half}
+            r={2.7}
+            fill="#ff3b30"
+          />
           <path
             d={`
-              M ${shipX} ${shipY - 8}
-              L ${shipX - 4.5} ${shipY + 5}
-              L ${shipX} ${shipY + 2}
-              L ${shipX + 4.5} ${shipY + 5}
+              M ${half} ${half - 9}
+              L ${half - 4.2} ${half + 4.8}
+              L ${half} ${half + 1.5}
+              L ${half + 4.2} ${half + 4.8}
               Z
             `}
-            fill="#7dd3fc"
+            fill="#ff3b30"
             opacity="0.95"
           />
         </g>
 
-        {/* heading indicator */}
+        {/* heading tick */}
         <line
-          x1={shipX}
-          y1={shipY - 18}
-          x2={shipX}
-          y2={shipY - 34}
-          stroke="rgba(255,255,255,0.5)"
-          strokeWidth="1"
+          x1={half}
+          y1={half - 16}
+          x2={half}
+          y2={half - 28}
+          stroke="rgba(255,255,255,0.38)"
+          strokeWidth="0.9"
           strokeLinecap="round"
         />
-        <circle
-          cx={shipX}
-          cy={shipY - 36}
-          r={1.7}
-          fill="#ffffff"
-          opacity="0.85"
-        />
       </svg>
-
-      {/* tiny holographic label */}
-      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 text-[9px] font-mono uppercase tracking-[0.35em] text-cyan-200/30">
-        nav
-      </div>
     </div>
   );
 };
