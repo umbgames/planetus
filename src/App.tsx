@@ -828,6 +828,7 @@ export default function App() {
         >
           {showSettingsPanel ? <X size={18} /> : <Settings size={18} />}
         </button>
+    </div>
 
         <AnimatePresence>
           {showSettingsPanel && (
