@@ -172,8 +172,8 @@ export const Planet = memo(function Planet({
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
   const { camera } = useThree();
-  const [texture, setTexture] = useState<THREE.Texture | null>(null);
-  const [displacementMap, setDisplacementMap] = useState<THREE.Texture | null>(null);
+  const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
+  const [displacementMap, setDisplacementMap] = useState<THREE.CanvasTexture | null>(null);
   const [segments, setSegments] = useState(isMobile ? 64 : 128);
   const [geographyManager] = useState(() => new GeographyManager());
 

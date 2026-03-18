@@ -8,14 +8,3 @@
 .animate-loading {
   animation: loading 2s ease-in-out infinite;
 }
-
-@keyframes scanline {
-  0% { transform: translateY(-35%); opacity: 0; }
-  15% { opacity: 1; }
-  85% { opacity: 1; }
-  100% { transform: translateY(135%); opacity: 0; }
-}
-
-.animate-scanline {
-  animation: scanline 3.2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
-}

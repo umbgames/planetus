@@ -7,7 +7,6 @@ import { BaseData, UserData, gameManager } from '../services/gameManager';
 import { useShipStore } from '../services/shipStore';
 import { SolarSystemData, PlanetData } from '../services/solarSystem';
 import { buildOrbitMap, getBodyWorldPosition, getScaledStarRadius, getScaledPlanetRadius, VISUAL_SCALE } from '../services/orbitUtils';
-import { cameraPosRef, cameraQuatRef, cameraYawRef, elapsedTimeRef } from '../services/runtimeRefs';
 
 const INFINITE_TEST_AMMO = true;
 
@@ -243,17 +242,8 @@ export function Ship({ planetRadius, onExit, bases = [], userData = null, satell
   const { setShipPosition, setVelocity, setAltitude, setBoostEnergy } = useShipStore();
   const frameCount = useRef(0);
   const orbitMap = useMemo(() => solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>(), [solarSystem]);
-  const yawEuler = useMemo(() => new THREE.Euler(0, 0, 0, 'YXZ'), []);
 
   useFrame((state, delta) => {
-    // Telemetry for HUD/minimap (cheap refs).
-    elapsedTimeRef.current = state.clock.getElapsedTime();
-    cameraPosRef.current.copy(camera.position);
-    cameraQuatRef.current.copy(camera.quaternion);
-    // Use YXZ to match Ship rotation convention.
-    yawEuler.setFromQuaternion(camera.quaternion);
-    cameraYawRef.current = yawEuler.y;
-
     frameCount.current++;
     if (frameCount.current % 10 === 0) {
       setShipPosition(position.current);

@@ -19,14 +19,7 @@ import { useShipStore } from './services/shipStore';
 import { generateSolarSystem, SolarSystemData, PlanetData } from './services/solarSystem';
 import { createPRNG, hashCombine } from './utils/random';
 import { SolarSystemView } from './components/SolarSystemView';
-import { buildOrbitMap, getPlanetWorldPosition, getScaledPlanetRadius, getScaledStarRadius } from './services/orbitUtils';
-import { Minimap3D } from './components/Minimap3D';
-import { OrbitNameToast } from './components/OrbitNameToast';
-import { LoadingScreen } from './components/LoadingScreen';
-import { getOrCreatePlanetNames, getPlanetName } from './services/planetNames';
-import { startLocalPlayerPositionSync } from './services/playerPositions';
-import { cameraQuatRef, elapsedTimeRef } from './services/runtimeRefs';
-import { setPersistentTextureCacheEnabled } from './services/planetTextureCache';
+import { getScaledPlanetRadius, getScaledStarRadius } from './services/orbitUtils';
 
 export const planetRotationRef = { current: 0 };
 
@@ -239,22 +232,17 @@ export default function App() {
   const [isMobile, setIsMobile] = useState(false);
   const [screenShake, setScreenShake] = useState(false);
   const [hitEffect, setHitEffect] = useState(false);
-  const lockedTarget = useShipStore((s) => s.lockedTarget);
-  const shipScenePos = useShipStore((s) => s.shipPosition);
+  const { lockedTarget } = useShipStore();
   const [currentPlanetId, setCurrentPlanetId] = useState<string | null>(null);
   const [currentSystemSeed, setCurrentSystemSeed] = useState('alpha_centauri_v1');
   const [systemTransition, setSystemTransition] = useState<GalaxyStarData | null>(null);
   const [shipRespawnNonce, setShipRespawnNonce] = useState(0);
   const [solarSystem, setSolarSystem] = useState<SolarSystemData | null>(null);
-  const [orbitToastName, setOrbitToastName] = useState<string | null>(null);
-  const [orbitToastNonce, setOrbitToastNonce] = useState(0);
+  const [welcomeMessage, setWelcomeMessage] = useState<{ name: string, desc: string } | null>(null);
   const [qualityPreset, setQualityPreset] = useState<'low' | 'medium' | 'high'>(isMobile ? 'low' : 'high');
   const [showOrbitRings, setShowOrbitRings] = useState(true);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState<{ active: boolean; progress: number; label: string }>({ active: true, progress: 0, label: 'Booting navigation core...' });
-
-  const shipScenePosRef = useRef(new THREE.Vector3());
-  const selfAbsPosRef = useRef(new THREE.Vector3());
 
   const handleSystemSelect = useCallback((star: GalaxyStarData) => {
     if (star.seed === currentSystemSeed || systemTransition) return;
@@ -291,7 +279,6 @@ export default function App() {
     setSolarSystem(system);
 
     const planets = system.bodies.filter((b): b is PlanetData => b.type === 'planet');
-    const planetNames = getOrCreatePlanetNames(currentSystemSeed, planets.map((p) => p.id));
     const firstPlanet = planets[0];
     if (firstPlanet) {
       geographyManager.setSeed(firstPlanet.seed, firstPlanet.noiseScale, firstPlanet.landThreshold);
@@ -308,16 +295,17 @@ export default function App() {
         setLoadingStatus({
           active: true,
           progress: i / Math.max(planets.length, 1),
-          label: `Initializing ${planetNames[planet.id] ?? planet.id}...`,
+          label: `Generating ${planet.id.replace('planet_', 'PLANET-')} in ${currentSystemSeed}...`,
         });
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() => {
-            GeographyManager.warmCacheAsync(planet.seed, planet.noiseScale, planet.landThreshold, 'enhanced').then(() => resolve());
+            GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold, 'enhanced');
+            resolve();
           });
         });
       }
       if (!cancelled) {
-        setLoadingStatus({ active: true, progress: 1, label: `Star system locked.` });
+        setLoadingStatus({ active: true, progress: 1, label: `Star system ${currentSystemSeed} locked.` });
         setTimeout(() => {
           if (!cancelled) setLoadingStatus({ active: false, progress: 1, label: 'Ready' });
         }, 350);
@@ -331,100 +319,31 @@ export default function App() {
   }, [currentSystemSeed]);
 
 
-  // Orbit detection (solar-frame), triggers when the player enters a planet's orbit radius.
   useEffect(() => {
-    if (!isShipMode || !solarSystem) return;
-
-    const orbitMap = buildOrbitMap(solarSystem.bodies);
-    const planets = solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet');
-    const planetIds = planets.map((p) => p.id);
-
-    const tmpBodyPos = new THREE.Vector3();
-    const tmpPlanetPos = new THREE.Vector3();
-
-    // hysteresis to avoid jitter
-    const entryRadiusFor = (p: PlanetData) => getScaledPlanetRadius(p.radius) * 7.5 + 24;
-    const exitRadiusFor = (p: PlanetData) => getScaledPlanetRadius(p.radius) * 9.2 + 30;
-
-    let raf = 0;
-    const step = () => {
-      const t = elapsedTimeRef.current;
-
-      // Current focus body world position (solar-frame).
-      if (currentPlanetId) {
-        const cur = planets.find((p) => p.id === currentPlanetId);
-        if (cur) getPlanetWorldPosition(cur, t, orbitMap, tmpBodyPos);
-        else tmpBodyPos.set(0, 0, 0);
-      } else {
-        tmpBodyPos.set(0, 0, 0);
+    if (solarSystem && currentPlanetId) {
+      const planet = solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData;
+      if (planet) {
+        geographyManager.setSeed(planet.seed, planet.noiseScale, planet.landThreshold);
+        geographyManager.initializeTopicRegions();
+        
+        // Show welcome message
+        const planetName = planet.id.replace('planet_', 'PLANET-');
+        const descriptions = [
+          "Entering Orbital Sector",
+          "Atmospheric Entry Confirmed",
+          "Scanning Surface Anomalies",
+          "Establishing Communication Link",
+          "Gravity Well Detected",
+          "Synchronizing Orbital Velocity"
+        ];
+        const descPrng = createPRNG(hashCombine(currentSystemSeed, planet.id, 'welcome'));
+        const randomDesc = descriptions[Math.floor(descPrng() * descriptions.length)];
+        
+        setWelcomeMessage({ name: planetName, desc: randomDesc });
+        setTimeout(() => setWelcomeMessage(null), 4000);
       }
-
-      // self absolute position in solar-frame.
-      selfAbsPosRef.current.copy(shipScenePosRef.current).add(tmpBodyPos);
-
-      // find nearest planet
-      let nearest: PlanetData | null = null;
-      let nearestDist = Number.POSITIVE_INFINITY;
-      for (const p of planets) {
-        getPlanetWorldPosition(p, t, orbitMap, tmpPlanetPos);
-        const d = tmpPlanetPos.distanceTo(selfAbsPosRef.current);
-        if (d < nearestDist) {
-          nearestDist = d;
-          nearest = p;
-        }
-      }
-
-      const focused = currentPlanetId ? planets.find((p) => p.id === currentPlanetId) : null;
-
-      if (!focused) {
-        if (nearest && nearestDist < entryRadiusFor(nearest)) {
-          setCurrentPlanetId(nearest.id);
-          setOrbitToastName(getPlanetName(currentSystemSeed, nearest.id, planetIds));
-          setOrbitToastNonce((n) => n + 1);
-        }
-      } else {
-        // If we drift out of orbit, release focus or switch directly to next planet.
-        getPlanetWorldPosition(focused, t, orbitMap, tmpPlanetPos);
-        const distToFocused = tmpPlanetPos.distanceTo(selfAbsPosRef.current);
-        if (distToFocused > exitRadiusFor(focused)) {
-          if (nearest && nearest.id !== focused.id && nearestDist < entryRadiusFor(nearest)) {
-            setCurrentPlanetId(nearest.id);
-            setOrbitToastName(getPlanetName(currentSystemSeed, nearest.id, planetIds));
-            setOrbitToastNonce((n) => n + 1);
-          } else {
-            setCurrentPlanetId(null);
-          }
-        }
-      }
-
-      raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-
-    return () => cancelAnimationFrame(raf);
-  }, [isShipMode, solarSystem, currentPlanetId, currentSystemSeed]);
-
-  // Configure geography when a planet becomes the current orbital focus.
-  useEffect(() => {
-    if (!solarSystem || !currentPlanetId) return;
-    const planet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId);
-    if (!planet) return;
-    geographyManager.setSeed(planet.seed, planet.noiseScale, planet.landThreshold);
-    geographyManager.initializeTopicRegions();
-  }, [solarSystem, currentPlanetId]);
-
-  // Multiplayer position sync (throttled + interpolated on clients).
-  useEffect(() => {
-    if (!isShipMode || !solarSystem || !userData) return;
-    const rotEuler = new THREE.Euler(0, 0, 0, 'YXZ');
-    const stop = startLocalPlayerPositionSync({
-      systemSeed: currentSystemSeed,
-      getPosition: () => selfAbsPosRef.current,
-      getRotationEuler: () => rotEuler.setFromQuaternion(cameraQuatRef.current),
-      hz: isMobile ? 5 : 10,
-    });
-    return () => stop();
-  }, [isShipMode, solarSystem, userData?.uid, currentSystemSeed, isMobile]);
+    }
+  }, [currentPlanetId, solarSystem]);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -439,15 +358,6 @@ export default function App() {
   useEffect(() => {
     setQualityPreset(isMobile ? 'low' : 'high');
   }, [isMobile]);
-
-  useEffect(() => {
-    // Optional persistent planet texture cache (disabled on mobile for quota safety).
-    setPersistentTextureCacheEnabled(!isMobile);
-  }, [isMobile]);
-
-  useEffect(() => {
-    shipScenePosRef.current.copy(shipScenePos);
-  }, [shipScenePos]);
 
 
   const prevTagsRef = useRef<Record<string, any>>({});
@@ -781,11 +691,7 @@ export default function App() {
   const dpr = qualityPreset === 'low' ? [1, 1.2] as [number, number] : qualityPreset === 'medium' ? [1, 1.5] as [number, number] : [1, 2] as [number, number];
   const enableEnvironment = qualityPreset !== 'low';
   const bodyCount = solarSystem?.bodies.filter(b => b.type === 'planet').length ?? 0;
-  const planetIdsInSystem = useMemo(() => solarSystem ? solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet').map((p) => p.id) : [], [solarSystem]);
-  const activePlanetName = useMemo(() => {
-    if (!currentPlanetId) return 'SOL';
-    return getPlanetName(currentSystemSeed, currentPlanetId, planetIdsInSystem);
-  }, [currentPlanetId, currentSystemSeed, planetIdsInSystem]);
+  const activePlanetName = currentPlanetId ? currentPlanetId.replace('planet_', 'PLANET-') : 'SOL';
 
   return (
     <motion.div 
@@ -851,16 +757,6 @@ export default function App() {
 
       {/* Ship UI */}
       {isShipMode && <ShipUI onExit={handleExitShip} userData={userData} solarSystem={solarSystem} currentPlanetId={currentPlanetId} setCurrentPlanetId={setCurrentPlanetId} />}
-
-      {/* 3D Minimap (ship mode only) */}
-      {isShipMode && (
-        <Minimap3D
-          solarSystem={solarSystem}
-          systemSeed={currentSystemSeed}
-          selfAbsPos={solarSystem ? selfAbsPosRef.current : null}
-          isMobile={isMobile}
-        />
-      )}
 
       {/* UI Overlay */}
       <div className="absolute top-0 left-0 w-full p-6 pointer-events-none flex justify-between items-start z-40">
@@ -1002,7 +898,28 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-      <LoadingScreen active={loadingStatus.active} progress={loadingStatus.progress} label={loadingStatus.label} />
+      <AnimatePresence>
+        {loadingStatus.active && (
+          <motion.div
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[80] bg-black flex items-center justify-center pointer-events-auto"
+          >
+            <div className="w-full max-w-md px-8">
+              <div className="flex items-center justify-center gap-3 mb-6">
+                <LoaderCircle size={28} className="text-cyan-400 animate-spin" />
+                <div className="text-white text-2xl font-black tracking-wider">PLANET:US</div>
+              </div>
+              <div className="text-center text-zinc-400 text-sm mb-4">{loadingStatus.label}</div>
+              <div className="h-3 bg-zinc-800 rounded-full overflow-hidden border border-zinc-700">
+                <motion.div className="h-full bg-cyan-500" initial={{ width: 0 }} animate={{ width: `${Math.round(loadingStatus.progress * 100)}%` }} />
+              </div>
+              <div className="text-center text-cyan-300 text-xs mt-3 font-mono">{Math.round(loadingStatus.progress * 100)}% CACHED</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {showMarket && <MarketUI onClose={() => setShowMarket(false)} userData={userData} />}
 
@@ -1141,7 +1058,36 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <OrbitNameToast name={orbitToastName} nonce={orbitToastNonce} />
+      {/* Welcome Message Overlay */}
+      <AnimatePresence>
+        {welcomeMessage && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.2 }}
+            className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none"
+          >
+            <div className="bg-black/40 backdrop-blur-md px-12 py-8 rounded-3xl border border-white/10 text-center">
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+              >
+                <div className="text-blue-400 text-xs font-bold tracking-[0.3em] uppercase mb-2">
+                  Welcome to
+                </div>
+                <h2 className="text-6xl font-black tracking-tighter text-white uppercase italic">
+                  {welcomeMessage.name}
+                </h2>
+                <div className="h-1 w-24 bg-blue-500 mx-auto mt-6 rounded-full" />
+                <p className="text-zinc-400 mt-6 text-sm font-medium tracking-widest uppercase">
+                  {welcomeMessage.desc}
+                </p>
+              </motion.div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Spawn Ship Button */}
       <AnimatePresence>

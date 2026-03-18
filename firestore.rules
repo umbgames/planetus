@@ -143,18 +143,6 @@ service cloud.firestore {
              isValidDateString(data.createdAt);
     }
 
-    function isValidPlayerPosition(data) {
-      return data.keys().hasAll(['uid', 'name', 'systemSeed', 'pos', 'rot']) &&
-             data.keys().hasOnly(['uid', 'name', 'systemSeed', 'pos', 'rot', 'updatedAt']) &&
-             data.uid is string && data.uid == request.auth.uid &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 50 &&
-             data.systemSeed is string && data.systemSeed.size() > 0 && data.systemSeed.size() < 120 &&
-             data.pos is map && data.pos.keys().hasAll(['x', 'y', 'z']) &&
-             data.pos.x is number && data.pos.y is number && data.pos.z is number &&
-             data.rot is map && data.rot.keys().hasAll(['x', 'y', 'z']) &&
-             data.rot.x is number && data.rot.y is number && data.rot.z is number;
-    }
-
     // ===============================================================
     // Rules
     // ===============================================================
@@ -215,12 +203,6 @@ service cloud.firestore {
         (request.resource.data.active == true && resource.data.active == false)
       );
       allow delete: if isAuthenticated();
-    }
-
-    match /player_positions/{userId} {
-      // Shared, low-trust positional telemetry for minimap.
-      allow read: if true;
-      allow create, update, delete: if isOwner(userId) && isValidPlayerPosition(request.resource.data);
     }
   }
 }
