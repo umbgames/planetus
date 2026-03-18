@@ -821,14 +821,13 @@ export default function App() {
         </div>
       </div>
 
-      <div className="absolute top-24 left-6 z-40 pointer-events-auto">
+      // <div className="absolute top-24 left-6 z-40 pointer-events-auto">
         <button
           onClick={() => setShowSettingsPanel((v) => !v)}
           className="bg-zinc-900/80 hover:bg-zinc-800 text-white border border-zinc-700 rounded-2xl px-4 py-3 shadow-2xl flex items-center gap-3"
         >
           {showSettingsPanel ? <X size={18} /> : <Settings size={18} />}
         </button>
-    </div>
 
         <AnimatePresence>
           {showSettingsPanel && (
