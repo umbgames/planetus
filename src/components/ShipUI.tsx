@@ -100,7 +100,8 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
     justifyContent: 'center',
     alignItems: 'center',
     color: 'white',
-    border: '1px solid rgba(255,255,255,0.2)',
+    border: '1px solid rgba(255,255,255,0.18)',
+    background: 'rgba(0,0,0,0.35)',
     backdropFilter: 'blur(4px)',
     pointerEvents: 'auto' as const,
     position: 'absolute' as const,
@@ -139,7 +140,6 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
       const updateProgress = () => {
         const now = Date.now();
         const elapsed = now - lastFireTime;
-
         if (elapsed < cooldownDuration) {
           setProgress((elapsed / cooldownDuration) * 100);
           animationFrameId = requestAnimationFrame(updateProgress);
@@ -165,7 +165,7 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
           left: 0,
           right: 0,
           height: `${100 - progress}%`,
-          backgroundColor: 'rgba(0,0,0,0.6)',
+          backgroundColor: 'rgba(0,0,0,0.55)',
           pointerEvents: 'none',
         }}
       />
@@ -176,23 +176,22 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
     <div className="absolute inset-0 z-50 pointer-events-none select-none">
       {!isMobile && (
         <div className="absolute inset-0 p-4">
-          {/* Exit */}
           <button
-            className="absolute top-4 right-4 bg-black/50 backdrop-blur-md p-3 rounded-full border border-white/10 pointer-events-auto hover:bg-black/70 transition-colors"
+            className="absolute top-4 right-4 p-3 rounded-full text-white/90 pointer-events-auto hover:text-white transition-colors"
             onClick={onExit}
           >
-            <X className="text-white" size={18} />
+            <X size={18} />
           </button>
 
-          {/* Bottom Left: Flight + Target + Jump */}
-          <div className="absolute bottom-8 left-8 flex flex-col gap-3 w-64 pointer-events-none">
-            <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl">
+          {/* Bottom Left */}
+          <div className="absolute bottom-8 left-8 flex flex-col gap-5 w-64 pointer-events-none">
+            <div>
               <div className="text-zinc-400 text-xs font-bold tracking-wider mb-3">
                 FLIGHT
               </div>
 
               <div className="flex flex-col gap-3">
-                <div className="flex flex-col">
+                <div>
                   <div className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mb-1">
                     Velocity
                   </div>
@@ -204,7 +203,7 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
                   </div>
                 </div>
 
-                <div className="flex flex-col">
+                <div>
                   <div className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mb-1">
                     Altitude
                   </div>
@@ -219,7 +218,7 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             </div>
 
             {lockedTarget && (
-              <div className="bg-black/60 backdrop-blur-md border border-white/10 p-4 rounded-xl">
+              <div>
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-xs font-bold text-zinc-500 tracking-widest uppercase">
                     Target Locked
@@ -262,15 +261,13 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             )}
 
             {isJumping && (
-              <div className="bg-cyan-500/15 backdrop-blur-md border border-cyan-400/30 p-3 rounded-xl">
-                <div className="text-cyan-400 text-xs font-bold tracking-[0.25em] uppercase animate-pulse">
-                  Jumping
-                </div>
+              <div className="text-cyan-400 text-xs font-bold tracking-[0.25em] uppercase animate-pulse">
+                Jumping
               </div>
             )}
           </div>
 
-          {/* Bottom Center: Ship Integrity */}
+          {/* Bottom Center */}
           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-8 pointer-events-none">
             <div className="flex flex-col items-center gap-1">
               <div className="text-[8px] text-cyan-500 font-bold tracking-widest uppercase">
@@ -309,8 +306,8 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             </div>
           </div>
 
-          {/* Bottom Right: Resources + Weapons */}
-          <div className="absolute bottom-8 right-8 bg-black/50 backdrop-blur-md p-4 rounded-xl border border-white/10 flex flex-col gap-3 text-right w-52 pointer-events-auto">
+          {/* Bottom Right */}
+          <div className="absolute bottom-8 right-8 flex flex-col gap-3 text-right w-52 pointer-events-auto">
             <div className="text-zinc-400 text-xs font-bold tracking-wider">
               RESOURCES
             </div>
@@ -385,17 +382,15 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
 
       {isMobile && (
         <>
-          {/* Exit Button */}
+          {/* Exit */}
           <button
             style={{
               pointerEvents: 'auto',
               position: 'absolute',
-              top: 20,
-              right: 20,
-              background: 'rgba(0,0,0,0.5)',
-              border: '1px solid rgba(255,255,255,0.2)',
+              top: 14,
+              right: 14,
               color: 'white',
-              padding: '10px',
+              padding: '8px',
               borderRadius: '50%',
             }}
             onClick={(e) => {
@@ -403,42 +398,85 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
               onExit();
             }}
           >
-            <X size={24} />
+            <X size={22} />
           </button>
 
-          {/* Bottom HUD info */}
+          {/* Mobile top hint */}
           <div
             style={{
               position: 'absolute',
-              left: 12,
-              right: 12,
-              bottom: 180,
-              display: 'flex',
-              justifyContent: 'space-between',
-              gap: 12,
+              top: 16,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              color: 'rgba(255,255,255,0.5)',
+              fontSize: '11px',
+              textAlign: 'center',
               pointerEvents: 'none',
             }}
           >
-            <div className="bg-black/50 backdrop-blur-md p-3 rounded-xl border border-white/10 min-w-[132px]">
-              <div className="text-[10px] text-zinc-500 font-bold tracking-wider mb-2">
+            Right side: Look around
+          </div>
+
+          {/* Mobile left info */}
+          <div className="absolute left-4 bottom-[152px] flex flex-col gap-3 pointer-events-none max-w-[120px]">
+            <div>
+              <div className="text-[10px] text-zinc-500 font-bold tracking-wider mb-1">
                 FLIGHT
               </div>
-              <div className="text-white text-xs">VEL: {velocity.toFixed(0)}</div>
-              <div className="text-white text-xs">ALT: {altitude.toFixed(0)}</div>
-              {lockedTarget && (
-                <div className="text-cyan-400 text-xs mt-2">
-                  {(lockedTarget.id || lockedTarget.name || '').toUpperCase()}
-                </div>
-              )}
-              {targetDistance !== null && (
-                <div className="text-zinc-400 text-[10px] mt-1">
-                  DIST: {targetDistance.toFixed(1)}m
-                </div>
-              )}
+              <div className="text-white text-sm font-mono leading-tight">
+                {velocity.toFixed(0)}
+              </div>
+              <div className="text-zinc-500 text-[10px] uppercase">m/s</div>
+
+              <div className="mt-2 text-white text-sm font-mono leading-tight">
+                {altitude.toFixed(0)}
+              </div>
+              <div className="text-zinc-500 text-[10px] uppercase">m</div>
             </div>
 
-            <div className="bg-black/50 backdrop-blur-md p-3 rounded-xl border border-white/10 text-right min-w-[152px]">
-              <div className="text-[10px] text-zinc-500 font-bold tracking-wider mb-2">
+            {lockedTarget && (
+              <div>
+                <div className="text-cyan-400 text-[10px] font-bold tracking-widest uppercase">
+                  Locked
+                </div>
+                <div className="text-white text-xs font-mono mt-1 break-words">
+                  {(lockedTarget.id || lockedTarget.name || '').toUpperCase()}
+                </div>
+                {targetDistance !== null && (
+                  <div className="text-zinc-400 text-[10px] mt-1">
+                    {targetDistance.toFixed(1)}m
+                  </div>
+                )}
+                {lockedTarget.health !== undefined && (
+                  <div className="mt-2">
+                    <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          lockedTarget.health > 50
+                            ? 'bg-emerald-500'
+                            : lockedTarget.health > 20
+                            ? 'bg-amber-500'
+                            : 'bg-red-500'
+                        }`}
+                        style={{ width: `${lockedTarget.health}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isJumping && (
+              <div className="text-cyan-400 text-[10px] font-bold tracking-[0.25em] uppercase animate-pulse">
+                Jumping
+              </div>
+            )}
+          </div>
+
+          {/* Mobile right info */}
+          <div className="absolute right-4 bottom-[152px] flex flex-col gap-3 text-right pointer-events-none max-w-[132px]">
+            <div>
+              <div className="text-zinc-500 text-[10px] font-bold tracking-wider mb-1">
                 STATUS
               </div>
               <div className="text-white text-xs">
@@ -447,7 +485,14 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
               <div className="text-fuchsia-400 text-xs">
                 Aetherium: {userData ? userData.rareResources : 0}
               </div>
-              <div className="mt-2">
+            </div>
+
+            <div>
+              <div className="text-zinc-500 text-[10px] font-bold tracking-wider mb-1">
+                WEAPONS
+              </div>
+
+              <div className="mb-2">
                 <div className="flex items-center gap-2 justify-end">
                   <span className="text-yellow-500 font-mono text-[10px]">∞</span>
                   <span className="text-white text-[10px]">MG</span>
@@ -458,7 +503,8 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
                   color="bg-yellow-500"
                 />
               </div>
-              <div className="mt-2">
+
+              <div>
                 <div className="flex items-center gap-2 justify-end">
                   <span className="text-red-500 font-mono text-[10px]">∞</span>
                   <span className="text-white text-[10px]">MSL</span>
@@ -472,8 +518,8 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             </div>
           </div>
 
-          {/* Bottom center ship bars */}
-          <div className="absolute bottom-[120px] left-1/2 -translate-x-1/2 flex gap-4 pointer-events-none">
+          {/* Mobile center bars */}
+          <div className="absolute bottom-[112px] left-1/2 -translate-x-1/2 flex gap-4 pointer-events-none">
             <div className="flex flex-col items-center gap-1">
               <div className="text-[8px] text-cyan-500 font-bold tracking-widest uppercase">
                 Shield
@@ -488,10 +534,7 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
                 Boost
               </div>
               <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
-                <div
-                  className="h-full bg-amber-500"
-                  style={{ width: `${boostEnergy}%` }}
-                />
+                <div className="h-full bg-amber-500" style={{ width: `${boostEnergy}%` }} />
               </div>
             </div>
 
@@ -505,22 +548,13 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             </div>
           </div>
 
-          {/* Jump status */}
-          {isJumping && (
-            <div className="absolute bottom-[150px] left-1/2 -translate-x-1/2 bg-cyan-500/15 backdrop-blur-md border border-cyan-400/30 px-4 py-2 rounded-xl pointer-events-none">
-              <div className="text-cyan-400 text-[10px] font-bold tracking-[0.25em] uppercase animate-pulse">
-                Jumping
-              </div>
-            </div>
-          )}
-
-          {/* Boost Button */}
+          {/* Right controls */}
           <button
             style={{
               ...btnStyle,
-              bottom: 40,
-              right: 40,
-              background: isBoosting ? 'rgba(255,68,68,0.8)' : 'rgba(0,0,0,0.5)',
+              bottom: 36,
+              right: 20,
+              background: isBoosting ? 'rgba(255,68,68,0.8)' : 'rgba(0,0,0,0.35)',
             }}
             onPointerDown={(e) => {
               e.stopPropagation();
@@ -538,13 +572,12 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             <Rocket size={28} />
           </button>
 
-          {/* Machine Gun Button */}
           <button
             style={{
               ...btnStyle,
-              bottom: 110,
-              right: 40,
-              background: mobileKeys.mg ? 'rgba(255,170,0,0.8)' : 'rgba(0,0,0,0.5)',
+              bottom: 106,
+              right: 20,
+              background: mobileKeys.mg ? 'rgba(255,170,0,0.8)' : 'rgba(0,0,0,0.35)',
             }}
             onPointerDown={(e) => {
               e.stopPropagation();
@@ -564,7 +597,7 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             <span
               style={{
                 position: 'absolute',
-                bottom: -20,
+                bottom: -18,
                 fontSize: '10px',
                 color: '#ffaa00',
                 fontWeight: 'bold',
@@ -574,13 +607,12 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             </span>
           </button>
 
-          {/* Missile Button */}
           <button
             style={{
               ...btnStyle,
-              bottom: 40,
-              right: 110,
-              background: mobileKeys.missile ? 'rgba(255,0,0,0.8)' : 'rgba(0,0,0,0.5)',
+              bottom: 36,
+              right: 90,
+              background: mobileKeys.missile ? 'rgba(255,0,0,0.8)' : 'rgba(0,0,0,0.35)',
             }}
             onPointerDown={(e) => {
               e.stopPropagation();
@@ -603,7 +635,7 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             <span
               style={{
                 position: 'absolute',
-                bottom: -20,
+                bottom: -18,
                 fontSize: '10px',
                 color: '#ff0000',
                 fontWeight: 'bold',
@@ -613,18 +645,16 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             </span>
           </button>
 
-          {/* Target Lock Button */}
           <button
             style={{
               ...btnStyle,
-              position: 'absolute',
-              bottom: 110,
-              right: 110,
+              bottom: 106,
+              right: 90,
               background: lockedTarget
                 ? 'rgba(255,0,0,0.5)'
                 : mobileKeys.lock
                 ? 'rgba(255,255,255,0.3)'
-                : 'rgba(0,0,0,0.5)',
+                : 'rgba(0,0,0,0.35)',
             }}
             onPointerDown={(e) => {
               e.stopPropagation();
@@ -642,15 +672,15 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             <Target size={24} color={lockedTarget ? '#ff0000' : '#fff'} />
           </button>
 
-          {/* D-Pad */}
+          {/* Left controls */}
           <div
             style={{
               position: 'absolute',
-              bottom: 40,
-              left: 40,
+              bottom: 36,
+              left: 20,
               display: 'grid',
-              gridTemplateColumns: 'repeat(3, 60px)',
-              gap: '10px',
+              gridTemplateColumns: 'repeat(3, 56px)',
+              gap: '8px',
             }}
           >
             <div />
@@ -669,12 +699,15 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
               }}
               style={{
                 ...btnStyle,
-                background: mobileKeys.w ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)',
+                width: '56px',
+                height: '56px',
+                background: mobileKeys.w ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)',
               }}
             >
               <ArrowUp />
             </button>
             <div />
+
             <button
               onPointerDown={(e) => {
                 e.stopPropagation();
@@ -690,11 +723,14 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
               }}
               style={{
                 ...btnStyle,
-                background: mobileKeys.a ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)',
+                width: '56px',
+                height: '56px',
+                background: mobileKeys.a ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)',
               }}
             >
               <ArrowLeft />
             </button>
+
             <button
               onPointerDown={(e) => {
                 e.stopPropagation();
@@ -710,11 +746,14 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
               }}
               style={{
                 ...btnStyle,
-                background: mobileKeys.s ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)',
+                width: '56px',
+                height: '56px',
+                background: mobileKeys.s ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)',
               }}
             >
               <ArrowDown />
             </button>
+
             <button
               onPointerDown={(e) => {
                 e.stopPropagation();
@@ -730,7 +769,9 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
               }}
               style={{
                 ...btnStyle,
-                background: mobileKeys.d ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)',
+                width: '56px',
+                height: '56px',
+                background: mobileKeys.d ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)',
               }}
             >
               <ArrowRight />
@@ -739,33 +780,17 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
 
           {/* Crosshair */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <Crosshair className="text-white/50" size={32} strokeWidth={1} />
+            <Crosshair className="text-white/50" size={28} strokeWidth={1} />
             {lockedTarget && (
-              <div className="absolute flex flex-col items-center gap-2 mt-20">
+              <div className="absolute flex flex-col items-center gap-2 mt-16">
                 <div className="text-cyan-400 text-[10px] font-bold tracking-widest uppercase animate-pulse">
                   Target Locked
                 </div>
-                <div className="text-white text-xs font-mono">
+                <div className="text-white text-[11px] font-mono max-w-[160px] text-center break-words">
                   {(lockedTarget.id || lockedTarget.name || '').toUpperCase()}
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Instructions */}
-          <div
-            style={{
-              position: 'absolute',
-              top: 20,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              color: 'rgba(255,255,255,0.5)',
-              fontSize: '12px',
-              textAlign: 'center',
-              pointerEvents: 'none',
-            }}
-          >
-            Right side: Look around
           </div>
         </>
       )}
