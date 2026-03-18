@@ -3,7 +3,6 @@ import { Rocket, X, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Crosshair, Target
 import { useShipStore } from '../services/shipStore';
 import { UserData } from '../services/gameManager';
 import { SolarSystemData } from '../services/solarSystem';
-import * as THREE from 'three';
 
 interface ShipUIProps {
   onExit: () => void;
@@ -13,7 +12,15 @@ interface ShipUIProps {
   setCurrentPlanetId?: (id: string | null) => void;
 }
 
-const WeaponCooldown = ({ lastFireTime, cooldownDuration, color }: { lastFireTime: number, cooldownDuration: number, color: string }) => {
+const WeaponCooldown = ({
+  lastFireTime,
+  cooldownDuration,
+  color,
+}: {
+  lastFireTime: number;
+  cooldownDuration: number;
+  color: string;
+}) => {
   const [progress, setProgress] = useState(100);
 
   useEffect(() => {
@@ -22,6 +29,7 @@ const WeaponCooldown = ({ lastFireTime, cooldownDuration, color }: { lastFireTim
     const updateProgress = () => {
       const now = Date.now();
       const elapsed = now - lastFireTime;
+
       if (elapsed < cooldownDuration) {
         setProgress((elapsed / cooldownDuration) * 100);
         animationFrameId = requestAnimationFrame(updateProgress);
@@ -39,10 +47,7 @@ const WeaponCooldown = ({ lastFireTime, cooldownDuration, color }: { lastFireTim
 
   return (
     <div className="w-full h-1 bg-white/10 mt-1 rounded-full overflow-hidden">
-      <div
-        className={`h-full ${color}`}
-        style={{ width: `${progress}%` }}
-      />
+      <div className={`h-full ${color}`} style={{ width: `${progress}%` }} />
     </div>
   );
 };
@@ -69,12 +74,16 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
 
   useEffect(() => {
     const checkMobile = () => {
-      const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isMobileUserAgent =
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+          navigator.userAgent
+        );
+
       setIsMobile(
         window.innerWidth <= 768 ||
-        isMobileUserAgent ||
-        window.matchMedia('(pointer: coarse)').matches ||
-        'ontouchstart' in window
+          isMobileUserAgent ||
+          window.matchMedia('(pointer: coarse)').matches ||
+          'ontouchstart' in window
       );
     };
 
@@ -98,7 +107,30 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
     overflow: 'hidden' as const,
   };
 
-  const MobileCooldownOverlay = ({ lastFireTime, cooldownDuration }: { lastFireTime: number, cooldownDuration: number }) => {
+  const hasValidShipPosition =
+    shipPosition &&
+    typeof shipPosition.x === 'number' &&
+    typeof shipPosition.y === 'number' &&
+    typeof shipPosition.z === 'number';
+
+  const hasValidTargetPosition =
+    lockedTarget?.position &&
+    typeof lockedTarget.position.x === 'number' &&
+    typeof lockedTarget.position.y === 'number' &&
+    typeof lockedTarget.position.z === 'number';
+
+  const targetDistance =
+    hasValidShipPosition && hasValidTargetPosition
+      ? shipPosition.distanceTo(lockedTarget.position)
+      : null;
+
+  const MobileCooldownOverlay = ({
+    lastFireTime,
+    cooldownDuration,
+  }: {
+    lastFireTime: number;
+    cooldownDuration: number;
+  }) => {
     const [progress, setProgress] = useState(100);
 
     useEffect(() => {
@@ -107,6 +139,7 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
       const updateProgress = () => {
         const now = Date.now();
         const elapsed = now - lastFireTime;
+
         if (elapsed < cooldownDuration) {
           setProgress((elapsed / cooldownDuration) * 100);
           animationFrameId = requestAnimationFrame(updateProgress);
@@ -133,7 +166,7 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
           right: 0,
           height: `${100 - progress}%`,
           backgroundColor: 'rgba(0,0,0,0.6)',
-          pointerEvents: 'none'
+          pointerEvents: 'none',
         }}
       />
     );
@@ -154,21 +187,31 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
           {/* Bottom Left: Flight + Target + Jump */}
           <div className="absolute bottom-8 left-8 flex flex-col gap-3 w-64 pointer-events-none">
             <div className="bg-black/50 backdrop-blur-md border border-white/10 p-4 rounded-xl">
-              <div className="text-zinc-400 text-xs font-bold tracking-wider mb-3">FLIGHT</div>
+              <div className="text-zinc-400 text-xs font-bold tracking-wider mb-3">
+                FLIGHT
+              </div>
 
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col">
-                  <div className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mb-1">Velocity</div>
+                  <div className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mb-1">
+                    Velocity
+                  </div>
                   <div className="flex items-baseline gap-1">
-                    <div className="text-3xl font-black text-white font-mono">{velocity.toFixed(0)}</div>
+                    <div className="text-3xl font-black text-white font-mono">
+                      {velocity.toFixed(0)}
+                    </div>
                     <div className="text-xs text-zinc-500">m/s</div>
                   </div>
                 </div>
 
                 <div className="flex flex-col">
-                  <div className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mb-1">Altitude</div>
+                  <div className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mb-1">
+                    Altitude
+                  </div>
                   <div className="flex items-baseline gap-1">
-                    <div className="text-3xl font-black text-white font-mono">{altitude.toFixed(0)}</div>
+                    <div className="text-3xl font-black text-white font-mono">
+                      {altitude.toFixed(0)}
+                    </div>
                     <div className="text-xs text-zinc-500">m</div>
                   </div>
                 </div>
@@ -178,7 +221,9 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             {lockedTarget && (
               <div className="bg-black/60 backdrop-blur-md border border-white/10 p-4 rounded-xl">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs font-bold text-zinc-500 tracking-widest uppercase">Target Locked</div>
+                  <div className="text-xs font-bold text-zinc-500 tracking-widest uppercase">
+                    Target Locked
+                  </div>
                   <Target size={14} className="text-cyan-400" />
                 </div>
 
@@ -189,7 +234,7 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
                 <div className="flex items-center justify-between text-[10px] text-zinc-400">
                   <span>DISTANCE</span>
                   <span className="text-white font-mono">
-                    {shipPosition.distanceTo(lockedTarget.position || new THREE.Vector3()).toFixed(1)}m
+                    {targetDistance !== null ? `${targetDistance.toFixed(1)}m` : '—'}
                   </span>
                 </div>
 
@@ -202,7 +247,11 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
                     <div className="h-1 bg-white/10 rounded-full overflow-hidden">
                       <div
                         className={`h-full transition-all duration-300 ${
-                          lockedTarget.health > 50 ? 'bg-emerald-500' : lockedTarget.health > 20 ? 'bg-amber-500' : 'bg-red-500'
+                          lockedTarget.health > 50
+                            ? 'bg-emerald-500'
+                            : lockedTarget.health > 20
+                            ? 'bg-amber-500'
+                            : 'bg-red-500'
                         }`}
                         style={{ width: `${lockedTarget.health}%` }}
                       />
@@ -224,7 +273,9 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
           {/* Bottom Center: Ship Integrity */}
           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-8 pointer-events-none">
             <div className="flex flex-col items-center gap-1">
-              <div className="text-[8px] text-cyan-500 font-bold tracking-widest uppercase">Shield</div>
+              <div className="text-[8px] text-cyan-500 font-bold tracking-widest uppercase">
+                Shield
+              </div>
               <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
                 <div
                   className="h-full bg-cyan-400 transition-all duration-300"
@@ -234,7 +285,9 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             </div>
 
             <div className="flex flex-col items-center gap-1">
-              <div className="text-[8px] text-amber-500 font-bold tracking-widest uppercase">Boost</div>
+              <div className="text-[8px] text-amber-500 font-bold tracking-widest uppercase">
+                Boost
+              </div>
               <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
                 <div
                   className="h-full bg-amber-500 transition-all duration-300"
@@ -244,7 +297,9 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             </div>
 
             <div className="flex flex-col items-center gap-1">
-              <div className="text-[8px] text-red-500 font-bold tracking-widest uppercase">Hull</div>
+              <div className="text-[8px] text-red-500 font-bold tracking-widest uppercase">
+                Hull
+              </div>
               <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
                 <div
                   className="h-full bg-red-500 transition-all duration-300"
@@ -256,30 +311,42 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
 
           {/* Bottom Right: Resources + Weapons */}
           <div className="absolute bottom-8 right-8 bg-black/50 backdrop-blur-md p-4 rounded-xl border border-white/10 flex flex-col gap-3 text-right w-52 pointer-events-auto">
-            <div className="text-zinc-400 text-xs font-bold tracking-wider">RESOURCES</div>
+            <div className="text-zinc-400 text-xs font-bold tracking-wider">
+              RESOURCES
+            </div>
 
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2 justify-end">
-                <span className="text-zinc-300 font-mono text-sm">{userData ? userData.commonResources : 0}</span>
+                <span className="text-zinc-300 font-mono text-sm">
+                  {userData ? userData.commonResources : 0}
+                </span>
                 <span className="text-white text-xs">Common</span>
               </div>
             </div>
 
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2 justify-end">
-                <span className="text-fuchsia-400 font-mono text-sm">{userData ? userData.rareResources : 0}</span>
+                <span className="text-fuchsia-400 font-mono text-sm">
+                  {userData ? userData.rareResources : 0}
+                </span>
                 <span className="text-white text-xs">Aetherium</span>
               </div>
             </div>
 
-            <div className="text-zinc-400 text-xs font-bold tracking-wider mt-2">WEAPONS</div>
+            <div className="text-zinc-400 text-xs font-bold tracking-wider mt-2">
+              WEAPONS
+            </div>
 
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2 justify-end">
                 <span className="text-yellow-500 font-mono text-sm">∞</span>
                 <span className="text-white text-xs">MG (L-Click)</span>
               </div>
-              <WeaponCooldown lastFireTime={lastMgFire} cooldownDuration={100} color="bg-yellow-500" />
+              <WeaponCooldown
+                lastFireTime={lastMgFire}
+                cooldownDuration={100}
+                color="bg-yellow-500"
+              />
             </div>
 
             <div className="flex flex-col gap-1">
@@ -287,10 +354,16 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
                 <span className="text-red-500 font-mono text-sm">∞</span>
                 <span className="text-white text-xs">MSL (R-Click)</span>
               </div>
-              <WeaponCooldown lastFireTime={lastMissileFire} cooldownDuration={250} color="bg-red-500" />
+              <WeaponCooldown
+                lastFireTime={lastMissileFire}
+                cooldownDuration={250}
+                color="bg-red-500"
+              />
             </div>
 
-            <div className="text-zinc-500 text-[10px] mt-1">Press T to Lock Target</div>
+            <div className="text-zinc-500 text-[10px] mt-1">
+              Press T to Lock Target
+            </div>
           </div>
 
           {/* Crosshair */}
@@ -298,8 +371,12 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             <Crosshair className="text-white/50" size={32} strokeWidth={1} />
             {lockedTarget && (
               <div className="absolute flex flex-col items-center gap-2 mt-20">
-                <div className="text-cyan-400 text-[10px] font-bold tracking-widest uppercase animate-pulse">Target Locked</div>
-                <div className="text-white text-xs font-mono">{(lockedTarget.id || lockedTarget.name || '').toUpperCase()}</div>
+                <div className="text-cyan-400 text-[10px] font-bold tracking-widest uppercase animate-pulse">
+                  Target Locked
+                </div>
+                <div className="text-white text-xs font-mono">
+                  {(lockedTarget.id || lockedTarget.name || '').toUpperCase()}
+                </div>
               </div>
             )}
           </div>
@@ -343,7 +420,9 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             }}
           >
             <div className="bg-black/50 backdrop-blur-md p-3 rounded-xl border border-white/10 min-w-[132px]">
-              <div className="text-[10px] text-zinc-500 font-bold tracking-wider mb-2">FLIGHT</div>
+              <div className="text-[10px] text-zinc-500 font-bold tracking-wider mb-2">
+                FLIGHT
+              </div>
               <div className="text-white text-xs">VEL: {velocity.toFixed(0)}</div>
               <div className="text-white text-xs">ALT: {altitude.toFixed(0)}</div>
               {lockedTarget && (
@@ -351,25 +430,44 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
                   {(lockedTarget.id || lockedTarget.name || '').toUpperCase()}
                 </div>
               )}
+              {targetDistance !== null && (
+                <div className="text-zinc-400 text-[10px] mt-1">
+                  DIST: {targetDistance.toFixed(1)}m
+                </div>
+              )}
             </div>
 
             <div className="bg-black/50 backdrop-blur-md p-3 rounded-xl border border-white/10 text-right min-w-[152px]">
-              <div className="text-[10px] text-zinc-500 font-bold tracking-wider mb-2">STATUS</div>
-              <div className="text-white text-xs">Common: {userData ? userData.commonResources : 0}</div>
-              <div className="text-fuchsia-400 text-xs">Aetherium: {userData ? userData.rareResources : 0}</div>
+              <div className="text-[10px] text-zinc-500 font-bold tracking-wider mb-2">
+                STATUS
+              </div>
+              <div className="text-white text-xs">
+                Common: {userData ? userData.commonResources : 0}
+              </div>
+              <div className="text-fuchsia-400 text-xs">
+                Aetherium: {userData ? userData.rareResources : 0}
+              </div>
               <div className="mt-2">
                 <div className="flex items-center gap-2 justify-end">
                   <span className="text-yellow-500 font-mono text-[10px]">∞</span>
                   <span className="text-white text-[10px]">MG</span>
                 </div>
-                <WeaponCooldown lastFireTime={lastMgFire} cooldownDuration={100} color="bg-yellow-500" />
+                <WeaponCooldown
+                  lastFireTime={lastMgFire}
+                  cooldownDuration={100}
+                  color="bg-yellow-500"
+                />
               </div>
               <div className="mt-2">
                 <div className="flex items-center gap-2 justify-end">
                   <span className="text-red-500 font-mono text-[10px]">∞</span>
                   <span className="text-white text-[10px]">MSL</span>
                 </div>
-                <WeaponCooldown lastFireTime={lastMissileFire} cooldownDuration={250} color="bg-red-500" />
+                <WeaponCooldown
+                  lastFireTime={lastMissileFire}
+                  cooldownDuration={250}
+                  color="bg-red-500"
+                />
               </div>
             </div>
           </div>
@@ -377,21 +475,30 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
           {/* Bottom center ship bars */}
           <div className="absolute bottom-[120px] left-1/2 -translate-x-1/2 flex gap-4 pointer-events-none">
             <div className="flex flex-col items-center gap-1">
-              <div className="text-[8px] text-cyan-500 font-bold tracking-widest uppercase">Shield</div>
+              <div className="text-[8px] text-cyan-500 font-bold tracking-widest uppercase">
+                Shield
+              </div>
               <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
                 <div className="h-full bg-cyan-400" style={{ width: `${shield}%` }} />
               </div>
             </div>
 
             <div className="flex flex-col items-center gap-1">
-              <div className="text-[8px] text-amber-500 font-bold tracking-widest uppercase">Boost</div>
+              <div className="text-[8px] text-amber-500 font-bold tracking-widest uppercase">
+                Boost
+              </div>
               <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
-                <div className="h-full bg-amber-500" style={{ width: `${boostEnergy}%` }} />
+                <div
+                  className="h-full bg-amber-500"
+                  style={{ width: `${boostEnergy}%` }}
+                />
               </div>
             </div>
 
             <div className="flex flex-col items-center gap-1">
-              <div className="text-[8px] text-red-500 font-bold tracking-widest uppercase">Hull</div>
+              <div className="text-[8px] text-red-500 font-bold tracking-widest uppercase">
+                Hull
+              </div>
               <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
                 <div className="h-full bg-red-500" style={{ width: `${health}%` }} />
               </div>
@@ -401,42 +508,109 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
           {/* Jump status */}
           {isJumping && (
             <div className="absolute bottom-[150px] left-1/2 -translate-x-1/2 bg-cyan-500/15 backdrop-blur-md border border-cyan-400/30 px-4 py-2 rounded-xl pointer-events-none">
-              <div className="text-cyan-400 text-[10px] font-bold tracking-[0.25em] uppercase animate-pulse">Jumping</div>
+              <div className="text-cyan-400 text-[10px] font-bold tracking-[0.25em] uppercase animate-pulse">
+                Jumping
+              </div>
             </div>
           )}
 
           {/* Boost Button */}
           <button
-            style={{ ...btnStyle, bottom: 40, right: 40, background: isBoosting ? 'rgba(255,68,68,0.8)' : 'rgba(0,0,0,0.5)' }}
-            onPointerDown={(e) => { e.stopPropagation(); setIsBoosting(true); }}
-            onPointerUp={(e) => { e.stopPropagation(); setIsBoosting(false); }}
-            onPointerLeave={(e) => { e.stopPropagation(); setIsBoosting(false); }}
+            style={{
+              ...btnStyle,
+              bottom: 40,
+              right: 40,
+              background: isBoosting ? 'rgba(255,68,68,0.8)' : 'rgba(0,0,0,0.5)',
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setIsBoosting(true);
+            }}
+            onPointerUp={(e) => {
+              e.stopPropagation();
+              setIsBoosting(false);
+            }}
+            onPointerLeave={(e) => {
+              e.stopPropagation();
+              setIsBoosting(false);
+            }}
           >
             <Rocket size={28} />
           </button>
 
           {/* Machine Gun Button */}
           <button
-            style={{ ...btnStyle, bottom: 110, right: 40, background: mobileKeys.mg ? 'rgba(255,170,0,0.8)' : 'rgba(0,0,0,0.5)' }}
-            onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, mg: true })); }}
-            onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, mg: false })); }}
-            onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, mg: false })); }}
+            style={{
+              ...btnStyle,
+              bottom: 110,
+              right: 40,
+              background: mobileKeys.mg ? 'rgba(255,170,0,0.8)' : 'rgba(0,0,0,0.5)',
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, mg: true }));
+            }}
+            onPointerUp={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, mg: false }));
+            }}
+            onPointerLeave={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, mg: false }));
+            }}
           >
             <Zap size={24} color={!userData || userData.machineGunAmmo ? '#fff' : '#555'} />
             <MobileCooldownOverlay lastFireTime={lastMgFire} cooldownDuration={100} />
-            <span style={{ position: 'absolute', bottom: -20, fontSize: '10px', color: '#ffaa00', fontWeight: 'bold' }}>∞</span>
+            <span
+              style={{
+                position: 'absolute',
+                bottom: -20,
+                fontSize: '10px',
+                color: '#ffaa00',
+                fontWeight: 'bold',
+              }}
+            >
+              ∞
+            </span>
           </button>
 
           {/* Missile Button */}
           <button
-            style={{ ...btnStyle, bottom: 40, right: 110, background: mobileKeys.missile ? 'rgba(255,0,0,0.8)' : 'rgba(0,0,0,0.5)' }}
-            onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, missile: true })); }}
-            onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, missile: false })); }}
-            onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, missile: false })); }}
+            style={{
+              ...btnStyle,
+              bottom: 40,
+              right: 110,
+              background: mobileKeys.missile ? 'rgba(255,0,0,0.8)' : 'rgba(0,0,0,0.5)',
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, missile: true }));
+            }}
+            onPointerUp={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, missile: false }));
+            }}
+            onPointerLeave={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, missile: false }));
+            }}
           >
             <Flame size={24} color={!userData || userData.missileAmmo ? '#fff' : '#555'} />
-            <MobileCooldownOverlay lastFireTime={lastMissileFire} cooldownDuration={250} />
-            <span style={{ position: 'absolute', bottom: -20, fontSize: '10px', color: '#ff0000', fontWeight: 'bold' }}>∞</span>
+            <MobileCooldownOverlay
+              lastFireTime={lastMissileFire}
+              cooldownDuration={250}
+            />
+            <span
+              style={{
+                position: 'absolute',
+                bottom: -20,
+                fontSize: '10px',
+                color: '#ff0000',
+                fontWeight: 'bold',
+              }}
+            >
+              ∞
+            </span>
           </button>
 
           {/* Target Lock Button */}
@@ -446,48 +620,118 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
               position: 'absolute',
               bottom: 110,
               right: 110,
-              background: lockedTarget ? 'rgba(255,0,0,0.5)' : (mobileKeys.lock ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)')
+              background: lockedTarget
+                ? 'rgba(255,0,0,0.5)'
+                : mobileKeys.lock
+                ? 'rgba(255,255,255,0.3)'
+                : 'rgba(0,0,0,0.5)',
             }}
-            onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, lock: true })); }}
-            onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, lock: false })); }}
-            onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, lock: false })); }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, lock: true }));
+            }}
+            onPointerUp={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, lock: false }));
+            }}
+            onPointerLeave={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, lock: false }));
+            }}
           >
             <Target size={24} color={lockedTarget ? '#ff0000' : '#fff'} />
           </button>
 
           {/* D-Pad */}
-          <div style={{ position: 'absolute', bottom: 40, left: 40, display: 'grid', gridTemplateColumns: 'repeat(3, 60px)', gap: '10px' }}>
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 40,
+              left: 40,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 60px)',
+              gap: '10px',
+            }}
+          >
             <div />
             <button
-              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, w: true })); }}
-              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, w: false })); }}
-              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, w: false })); }}
-              style={{ ...btnStyle, background: mobileKeys.w ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                setMobileKeys((k: any) => ({ ...k, w: true }));
+              }}
+              onPointerUp={(e) => {
+                e.stopPropagation();
+                setMobileKeys((k: any) => ({ ...k, w: false }));
+              }}
+              onPointerLeave={(e) => {
+                e.stopPropagation();
+                setMobileKeys((k: any) => ({ ...k, w: false }));
+              }}
+              style={{
+                ...btnStyle,
+                background: mobileKeys.w ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)',
+              }}
             >
               <ArrowUp />
             </button>
             <div />
             <button
-              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, a: true })); }}
-              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, a: false })); }}
-              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, a: false })); }}
-              style={{ ...btnStyle, background: mobileKeys.a ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                setMobileKeys((k: any) => ({ ...k, a: true }));
+              }}
+              onPointerUp={(e) => {
+                e.stopPropagation();
+                setMobileKeys((k: any) => ({ ...k, a: false }));
+              }}
+              onPointerLeave={(e) => {
+                e.stopPropagation();
+                setMobileKeys((k: any) => ({ ...k, a: false }));
+              }}
+              style={{
+                ...btnStyle,
+                background: mobileKeys.a ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)',
+              }}
             >
               <ArrowLeft />
             </button>
             <button
-              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, s: true })); }}
-              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, s: false })); }}
-              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, s: false })); }}
-              style={{ ...btnStyle, background: mobileKeys.s ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                setMobileKeys((k: any) => ({ ...k, s: true }));
+              }}
+              onPointerUp={(e) => {
+                e.stopPropagation();
+                setMobileKeys((k: any) => ({ ...k, s: false }));
+              }}
+              onPointerLeave={(e) => {
+                e.stopPropagation();
+                setMobileKeys((k: any) => ({ ...k, s: false }));
+              }}
+              style={{
+                ...btnStyle,
+                background: mobileKeys.s ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)',
+              }}
             >
               <ArrowDown />
             </button>
             <button
-              onPointerDown={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, d: true })); }}
-              onPointerUp={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, d: false })); }}
-              onPointerLeave={(e) => { e.stopPropagation(); setMobileKeys((k: any) => ({ ...k, d: false })); }}
-              style={{ ...btnStyle, background: mobileKeys.d ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)' }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                setMobileKeys((k: any) => ({ ...k, d: true }));
+              }}
+              onPointerUp={(e) => {
+                e.stopPropagation();
+                setMobileKeys((k: any) => ({ ...k, d: false }));
+              }}
+              onPointerLeave={(e) => {
+                e.stopPropagation();
+                setMobileKeys((k: any) => ({ ...k, d: false }));
+              }}
+              style={{
+                ...btnStyle,
+                background: mobileKeys.d ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)',
+              }}
             >
               <ArrowRight />
             </button>
@@ -498,8 +742,12 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             <Crosshair className="text-white/50" size={32} strokeWidth={1} />
             {lockedTarget && (
               <div className="absolute flex flex-col items-center gap-2 mt-20">
-                <div className="text-cyan-400 text-[10px] font-bold tracking-widest uppercase animate-pulse">Target Locked</div>
-                <div className="text-white text-xs font-mono">{(lockedTarget.id || lockedTarget.name || '').toUpperCase()}</div>
+                <div className="text-cyan-400 text-[10px] font-bold tracking-widest uppercase animate-pulse">
+                  Target Locked
+                </div>
+                <div className="text-white text-xs font-mono">
+                  {(lockedTarget.id || lockedTarget.name || '').toUpperCase()}
+                </div>
               </div>
             )}
           </div>
@@ -514,7 +762,7 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
               color: 'rgba(255,255,255,0.5)',
               fontSize: '12px',
               textAlign: 'center',
-              pointerEvents: 'none'
+              pointerEvents: 'none',
             }}
           >
             Right side: Look around
