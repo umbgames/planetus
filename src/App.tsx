@@ -5,13 +5,17 @@ import * as THREE from 'three';
 import { Sun } from './components/Sun';
 import { BaseManager } from './components/BaseManager';
 import { Satellite } from './components/Satellite';
+import { OtherPlayers } from './components/OtherPlayers';
+import { SpaceStations } from './components/SpaceStations';
+import { ClanUI } from './components/ClanUI';
+import { ShipUpgradeUI } from './components/ShipUpgradeUI';
 import { CameraController } from './components/CameraController';
 import { Ship } from './components/Ship';
 import { ShipUI } from './components/ShipUI';
 import { MarketUI } from './components/MarketUI';
-import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp, ArrowRightLeft, MonitorPlay, Gauge, Orbit, Zap, Settings, X, LoaderCircle } from 'lucide-react';
+import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp, ArrowRightLeft, MonitorPlay, Gauge, Orbit, Zap, Settings, X, LoaderCircle, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { gameManager, UserData, BaseData } from './services/gameManager';
+import { gameManager, UserData, BaseData, Clan, SpaceStation } from './services/gameManager';
 import { auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { geographyManager, GeographyManager } from './services/geography';
@@ -239,6 +243,12 @@ export default function App() {
   const [isShipMode, setIsShipMode] = useState(false);
   const [canSpawnShip, setCanSpawnShip] = useState(false);
   const [showMarket, setShowMarket] = useState(false);
+  const [activePlayers, setActivePlayers] = useState<UserData[]>([]);
+  const [clans, setClans] = useState<Clan[]>([]);
+  const [spaceStations, setSpaceStations] = useState<SpaceStation[]>([]);
+  const [showClanUI, setShowClanUI] = useState(false);
+  const [showShipyardUI, setShowShipyardUI] = useState(false);
+  const [targetId, setTargetId] = useState<string | null>(null);
 
   const [userData, setUserData] = useState<UserData | null>(null);
   const [bases, setBases] = useState<BaseData[]>([]);
@@ -823,6 +833,20 @@ export default function App() {
           currentPlanetId={currentPlanetId}
         />
 
+        <OtherPlayers
+          players={activePlayers}
+          localUserId={userData?.uid}
+          currentPlanetId={currentPlanetId}
+          solarSystem={solarSystem}
+          onTargetPlayer={setTargetId}
+          targetId={targetId}
+        />
+
+        <SpaceStations
+          stations={spaceStations}
+          currentPlanetId={currentPlanetId}
+        />
+
         {!isShipMode && !systemTransition && (
           <CameraController
             trackedSatellite={trackedSatellite}
@@ -911,6 +935,22 @@ export default function App() {
               >
                 <ArrowRightLeft size={12} />
                 Market
+              </button>
+
+              <button
+                onClick={() => setShowClanUI(true)}
+                className="mt-2 w-full bg-blue-600 hover:bg-blue-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+              >
+                <Users size={12} />
+                Clans
+              </button>
+
+              <button
+                onClick={() => setShowShipyardUI(true)}
+                className="mt-2 w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+              >
+                <Rocket size={12} />
+                Shipyard
               </button>
 
               <button
@@ -1032,6 +1072,14 @@ export default function App() {
       </AnimatePresence>
 
       {showMarket && <MarketUI onClose={() => setShowMarket(false)} userData={userData} />}
+      <AnimatePresence>
+        {showClanUI && (
+          <ClanUI userData={userData} clans={clans} onClose={() => setShowClanUI(false)} />
+        )}
+        {showShipyardUI && (
+          <ShipUpgradeUI userData={userData} onClose={() => setShowShipyardUI(false)} />
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {isShipMode && shipPosition && (

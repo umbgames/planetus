@@ -14,9 +14,6 @@ service cloud.firestore {
     //   - commonResources: number (required) - Amount of common resources.
     //   - rareResources: number (required) - Amount of rare resources.
     //   - hasSatellite: boolean (required) - Whether the user has launched a satellite.
-    //   - satelliteHealth: number (required) - Satellite HP, 0-100.
-    //   - satelliteDestroyedAt: string|null (optional) - When the satellite was destroyed.
-    //   - playerSave: map (optional) - Last known player state.
     //   - createdAt: string (required) - When the account was created.
     //
     // Collection: bases
@@ -78,7 +75,7 @@ service cloud.firestore {
     }
 
     function hasOnlyAllowedFields(fields) {
-      return request.resource.data.keys().hasAll(fields) && request.resource.data.keys().hasOnly(fields);
+      return request.resource.data.keys().hasOnly(fields);
     }
 
     function isValidDateString(dateStr) {
@@ -86,41 +83,85 @@ service cloud.firestore {
     }
 
     function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'displayName', 'commonResources', 'rareResources', 'hasSatellite', 'satelliteHealth', 'machineGunAmmo', 'missileAmmo', 'createdAt']) &&
-             data.keys().hasOnly(['uid', 'displayName', 'commonResources', 'rareResources', 'hasSatellite', 'satelliteHealth', 'satelliteDestroyedAt', 'machineGunAmmo', 'missileAmmo', 'createdAt', 'playerSave']) &&
+      return hasRequiredFields(['uid', 'displayName', 'commonResources', 'rareResources', 'hasSatellite', 'createdAt']) &&
+             hasOnlyAllowedFields(['uid', 'displayName', 'clanId', 'commonResources', 'rareResources', 'hasSatellite', 'machineGunAmmo', 'missileAmmo', 'taxAgreements', 'lastActiveAt', 'currentPlanetId', 'shipConfig', 'createdAt', 'playerSave']) &&
              data.uid is string && data.uid == request.auth.uid &&
              data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 50 &&
+             (!('clanId' in data) || data.clanId == null || data.clanId is string) &&
              data.commonResources is number && data.commonResources >= 0 &&
              data.rareResources is number && data.rareResources >= 0 &&
              data.hasSatellite is bool &&
-             data.satelliteHealth is number && data.satelliteHealth >= 0 && data.satelliteHealth <= 100 &&
-             (!('satelliteDestroyedAt' in data) || data.satelliteDestroyedAt == null || isValidDateString(data.satelliteDestroyedAt)) &&
-             data.machineGunAmmo is number && data.machineGunAmmo >= 0 &&
-             data.missileAmmo is number && data.missileAmmo >= 0 &&
-             isValidDateString(data.createdAt) &&
-             (!('playerSave' in data) || (data.playerSave is map &&
-               data.playerSave.keys().hasAll(['lastPlanetID', 'position', 'rotation']) &&
-               data.playerSave.lastPlanetID is string &&
-               data.playerSave.position is map && data.playerSave.rotation is map &&
-               data.playerSave.position.keys().hasAll(['x', 'y', 'z']) &&
-               data.playerSave.rotation.keys().hasAll(['x', 'y', 'z']) &&
-               data.playerSave.position.x is number && data.playerSave.position.y is number && data.playerSave.position.z is number &&
-               data.playerSave.rotation.x is number && data.playerSave.rotation.y is number && data.playerSave.rotation.z is number));
+             (!('machineGunAmmo' in data) || (data.machineGunAmmo is number && data.machineGunAmmo >= 0)) &&
+             (!('missileAmmo' in data) || (data.missileAmmo is number && data.missileAmmo >= 0)) &&
+             (!('taxAgreements' in data) || data.taxAgreements is map) &&
+             (!('lastActiveAt' in data) || isValidDateString(data.lastActiveAt)) &&
+             (!('currentPlanetId' in data) || data.currentPlanetId == null || data.currentPlanetId is string) &&
+             (!('shipConfig' in data) || data.shipConfig is map) &&
+             (!('playerSave' in data) || data.playerSave is map) &&
+             isValidDateString(data.createdAt);
     }
 
     function isValidBase(data) {
       return data.id is string &&
              data.ownerId is string &&
+             (!('clanId' in data) || data.clanId == null || data.clanId is string) &&
              data.zone in ['high', 'mid', 'low'] &&
              data.level is number &&
              data.health is number &&
+             data.shieldActive is bool &&
+             data.shieldHealth is number &&
+             data.maxShieldHealth is number &&
              (!('hasMiner' in data) || data.hasMiner is bool) &&
-             (!('lastMinedAt' in data) || isValidDateString(data.lastMinedAt));
+             (!('hasMissileBattery' in data) || data.hasMissileBattery is bool) &&
+             (!('hasTaxOffice' in data) || data.hasTaxOffice is bool) &&
+             (!('lastMinedAt' in data) || isValidDateString(data.lastMinedAt)) &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidClan(data) {
+      return hasRequiredFields(['id', 'name', 'leaderId', 'members', 'commonResources', 'rareResources', 'createdAt']) &&
+             hasOnlyAllowedFields(['id', 'name', 'leaderId', 'members', 'commonResources', 'rareResources', 'createdAt']) &&
+             data.id is string &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 50 &&
+             data.leaderId is string &&
+             data.members is list &&
+             data.commonResources is number &&
+             data.rareResources is number &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidSpaceStation(data) {
+      return hasRequiredFields(['id', 'ownerId', 'planetId', 'position', 'orbitRadius', 'orbitSpeed', 'initialAngle', 'health', 'maxHealth', 'isControlled', 'createdAt']) &&
+             hasOnlyAllowedFields(['id', 'ownerId', 'ownerName', 'clanId', 'planetId', 'position', 'orbitRadius', 'orbitSpeed', 'initialAngle', 'health', 'maxHealth', 'isControlled', 'controlledBy', 'createdAt']) &&
+             data.id is string &&
+             data.ownerId is string &&
+             (!('ownerName' in data) || data.ownerName is string) &&
+             (!('clanId' in data) || data.clanId == null || data.clanId is string) &&
+             data.planetId is string &&
+             data.position is map &&
+             data.orbitRadius is number &&
+             data.orbitSpeed is number &&
+             data.initialAngle is number &&
+             data.health is number &&
+             data.maxHealth is number &&
+             data.isControlled is bool &&
+             (!('controlledBy' in data) || data.controlledBy == null || data.controlledBy is string) &&
+             isValidDateString(data.createdAt);
+    }
+
+    function isValidPlanetState(data) {
+      return hasRequiredFields(['id', 'taxRate', 'taxStatus', 'lastTaxProcessAt']) &&
+             hasOnlyAllowedFields(['id', 'hegemonId', 'taxRate', 'taxStatus', 'lastTaxProcessAt']) &&
+             data.id is string &&
+             (!('hegemonId' in data) || data.hegemonId == null || data.hegemonId is string) &&
+             data.taxRate is number &&
+             data.taxStatus in ['active', 'inactive'] &&
+             isValidDateString(data.lastTaxProcessAt);
     }
 
     function isValidMarketOffer(data) {
-      return (hasOnlyAllowedFields(['id', 'sellerId', 'sellerName', 'offerType', 'amountOffered', 'amountRequested', 'status', 'createdAt']) ||
-              hasOnlyAllowedFields(['id', 'sellerId', 'sellerName', 'offerType', 'amountOffered', 'amountRequested', 'status', 'buyerId', 'createdAt'])) &&
+      return hasRequiredFields(['id', 'sellerId', 'sellerName', 'offerType', 'amountOffered', 'amountRequested', 'status', 'createdAt']) &&
+             hasOnlyAllowedFields(['id', 'sellerId', 'sellerName', 'offerType', 'amountOffered', 'amountRequested', 'status', 'buyerId', 'createdAt']) &&
              data.id is string &&
              data.sellerId is string &&
              data.sellerName is string && data.sellerName.size() > 0 && data.sellerName.size() < 50 &&
@@ -133,7 +174,8 @@ service cloud.firestore {
     }
 
     function isValidResource(data) {
-      return hasOnlyAllowedFields(['id', 'type', 'position', 'active', 'createdAt']) &&
+      return hasRequiredFields(['id', 'type', 'position', 'active', 'createdAt']) &&
+             hasOnlyAllowedFields(['id', 'type', 'position', 'active', 'createdAt']) &&
              data.id is string &&
              data.type in ['common', 'rare'] &&
              data.position is map &&
@@ -148,20 +190,37 @@ service cloud.firestore {
     // ===============================================================
 
     match /users/{userId} {
-      // Anyone can read users (for satellite leaderboard).
-      allow read: if true;
+      allow list: if true;
+      allow get: if true;
       // Users can create their own profile.
-      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.commonResources == 0 && request.resource.data.rareResources == 0 && request.resource.data.hasSatellite == false && request.resource.data.satelliteHealth == 100 && request.resource.data.machineGunAmmo == 500 && request.resource.data.missileAmmo == 20;
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.commonResources == 0 && request.resource.data.rareResources == 0 && request.resource.data.hasSatellite == false;
       // Users can update their own profile (mining, spending resources, launching satellite).
       // Or other users can destroy their satellite.
       allow update: if isAuthenticated() && (
         (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.uid == resource.data.uid) ||
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasSatellite', 'satelliteHealth', 'satelliteDestroyedAt']) &&
-         resource.data.hasSatellite == true &&
-         request.resource.data.satelliteHealth is number &&
-         request.resource.data.satelliteHealth <= resource.data.satelliteHealth &&
-         request.resource.data.satelliteHealth >= 0 &&
-         request.resource.data.hasSatellite == (request.resource.data.satelliteHealth > 0))
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasSatellite']) && request.resource.data.hasSatellite == false) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commonResources']) && 
+         request.resource.data.commonResources < resource.data.commonResources && 
+         get(/databases/$(database)/documents/planet_states/alpha_centauri).data.hegemonId == request.auth.uid &&
+         resource.data.taxAgreements.get('alpha_centauri', false) == true) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['shipConfig']) &&
+         request.resource.data.shipConfig.type == resource.data.shipConfig.type &&
+         request.resource.data.shipConfig.maxHealth == resource.data.shipConfig.maxHealth &&
+         request.resource.data.shipConfig.speed == resource.data.shipConfig.speed &&
+         request.resource.data.shipConfig.agility == resource.data.shipConfig.agility &&
+         request.resource.data.shipConfig.damage == resource.data.shipConfig.damage &&
+         request.resource.data.shipConfig.health < resource.data.shipConfig.health) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['playerSave']) &&
+         ('playerSave' in resource.data) &&
+         request.resource.data.playerSave.diff(resource.data.playerSave).affectedKeys().hasOnly(['health', 'shield']) &&
+         request.resource.data.playerSave.health is number &&
+         request.resource.data.playerSave.shield is number &&
+         (!('health' in resource.data.playerSave) || request.resource.data.playerSave.health <= resource.data.playerSave.health) &&
+         (!('shield' in resource.data.playerSave) || request.resource.data.playerSave.shield <= resource.data.playerSave.shield) &&
+         request.resource.data.playerSave.position == resource.data.playerSave.position &&
+         request.resource.data.playerSave.rotation == resource.data.playerSave.rotation &&
+         request.resource.data.playerSave.lastPlanetID == resource.data.playerSave.lastPlanetID) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commonResources', 'rareResources']))
       );
     }
 
@@ -175,7 +234,7 @@ service cloud.firestore {
       allow update: if isAuthenticated() && isValidBase(request.resource.data) && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.id == resource.data.id && request.resource.data.position == resource.data.position && request.resource.data.zone == resource.data.zone && (
         (isDocOwner() && request.resource.data.ownerId == resource.data.ownerId) || // Owner upgrading/mining
         (!isDocOwner() && request.resource.data.health < resource.data.health && request.resource.data.ownerId == resource.data.ownerId) || // Attacker damaging
-        (!isDocOwner() && request.resource.data.health == 100 && request.resource.data.ownerId == request.auth.uid && resource.data.health <= 20) // Attacker taking over
+        (!isDocOwner() && request.resource.data.health == 100 && request.resource.data.ownerId == request.auth.uid && resource.data.health == 0) // Attacker taking over
       );
     }
 
@@ -203,6 +262,37 @@ service cloud.firestore {
         (request.resource.data.active == true && resource.data.active == false)
       );
       allow delete: if isAuthenticated();
+    }
+
+    match /planet_states/{planetId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidPlanetState(request.resource.data);
+      allow update: if isAuthenticated() && isValidPlanetState(request.resource.data);
+    }
+
+    match /test/{docId} {
+      allow read: if true;
+    }
+
+    match /clans/{clanId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidClan(request.resource.data) && request.resource.data.leaderId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidClan(request.resource.data) && (
+        resource.data.leaderId == request.auth.uid || // Leader can update
+        ((request.auth.uid in request.resource.data.members || request.auth.uid in resource.data.members) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'commonResources', 'rareResources'])) // Members can join/leave or contribute
+      );
+      allow delete: if isAuthenticated() && resource.data.leaderId == request.auth.uid;
+    }
+
+    match /space_stations/{stationId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidSpaceStation(request.resource.data) && request.resource.data.ownerId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidSpaceStation(request.resource.data) && (
+        resource.data.ownerId == request.auth.uid || // Owner
+        (resource.data.clanId != null && get(/databases/$(database)/documents/clans/$(resource.data.clanId)).data.members.hasAny([request.auth.uid])) || // Clan member
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isControlled', 'controlledBy', 'health'])) // Anyone can attack or try to control if empty
+      );
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
     }
   }
 }
