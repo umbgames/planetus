@@ -1118,23 +1118,13 @@ export default function App() {
             exit={{ opacity: 0 }}
             className="absolute bottom-6 left-6 bg-black/50 backdrop-blur p-4 rounded-xl border border-white/10 z-40 pointer-events-auto"
           >
-            <h3 className="font-bold text-red-400 mb-2">Ship Controls</h3>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-zinc-300">
-              <div><span className="font-mono text-white">W/S</span> Forward/Back</div>
-              <div><span className="font-mono text-white">A/D</span> Left/Right</div>
-              <div><span className="font-mono text-white">Space/Ctrl</span> Up/Down</div>
-              <div><span className="font-mono text-white">Mouse</span> Pitch/Yaw</div>
-              <div><span className="font-mono text-white">Q/E</span> Roll</div>
-              <div><span className="font-mono text-white">Shift</span> Boost</div>
-              <div className="col-span-2 mt-2 text-red-400"><span className="font-mono text-white">O</span> Exit Ship</div>
-            </div>
-            <button 
+            {/* <button 
               onClick={toggleFullscreen}
               className="mt-4 w-full bg-zinc-800 hover:bg-zinc-700 text-white text-xs py-2 rounded border border-zinc-600 transition-colors flex items-center justify-center gap-2"
             >
               <Maximize size={14} />
               Toggle Fullscreen
-            </button>
+            </button> */}
           </motion.div>
         )}
       </AnimatePresence>
