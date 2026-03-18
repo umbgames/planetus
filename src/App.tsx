@@ -767,23 +767,6 @@ export default function App() {
           <p className="text-xs font-semibold text-zinc-400 tracking-widest mt-1 mb-2">
             EXPLORE, BUILD,TAKE..
           </p>
-          <div className="mt-3 inline-flex flex-wrap gap-2 pointer-events-auto">
-            <div className="bg-zinc-900/70 backdrop-blur border border-zinc-700 rounded-full px-3 py-1 text-xs text-zinc-200 flex items-center gap-2">
-              <Orbit size={12} className="text-cyan-400" />
-              <span>{activePlanetName}</span>
-            </div>
-            <div className="bg-zinc-900/70 backdrop-blur border border-zinc-700 rounded-full px-3 py-1 text-xs text-zinc-200 flex items-center gap-2">
-              <Gauge size={12} className="text-emerald-400" />
-              <span>{qualityPreset.toUpperCase()} QUALITY</span>
-            </div>
-            <div className="bg-zinc-900/70 backdrop-blur border border-zinc-700 rounded-full px-3 py-1 text-xs text-zinc-200 flex items-center gap-2">
-              <Zap size={12} className="text-amber-400" />
-              <span>{bodyCount} WORLDS</span>
-            </div>
-            <div className="bg-zinc-900/70 backdrop-blur border border-zinc-700 rounded-full px-3 py-1 text-xs text-zinc-200 flex items-center gap-2">
-              <MonitorPlay size={12} className="text-violet-400" />
-              <span>{currentSystemSeed.replaceAll('|', ' ').toUpperCase()}</span>
-            </div>
           </div>
         </div>
         
@@ -818,7 +801,7 @@ export default function App() {
                 className="mt-2 w-full bg-cyan-600 hover:bg-cyan-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
               >
                 <ArrowRightLeft size={12} />
-                Galactic Market
+                Market
               </button>
               <button 
                 onClick={() => {
@@ -844,10 +827,6 @@ export default function App() {
           className="bg-zinc-900/80 hover:bg-zinc-800 text-white border border-zinc-700 rounded-2xl px-4 py-3 shadow-2xl flex items-center gap-3"
         >
           {showSettingsPanel ? <X size={18} /> : <Settings size={18} />}
-          <div className="text-left">
-            <div className="text-xs uppercase tracking-[0.25em] text-cyan-400 font-bold">Settings</div>
-            <div className="text-sm text-white font-semibold">Graphics + Navigation</div>
-          </div>
         </button>
 
         <AnimatePresence>
