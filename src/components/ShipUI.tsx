@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Rocket,
   X,
@@ -10,12 +10,10 @@ import {
   Target,
   Zap,
   Flame,
-  Navigation,
-  LogOut,
 } from 'lucide-react';
 import { useShipStore } from '../services/shipStore';
 import { UserData } from '../services/gameManager';
-import { SolarSystemData, PlanetData } from '../services/solarSystem';
+import { SolarSystemData } from '../services/solarSystem';
 import * as THREE from 'three';
 
 interface ShipUIProps {
@@ -26,112 +24,49 @@ interface ShipUIProps {
   setCurrentPlanetId?: (id: string | null) => void;
 }
 
-function CooldownBar({
+const WeaponCooldown = ({
   lastFireTime,
   cooldownDuration,
-  className,
+  color,
 }: {
   lastFireTime: number;
   cooldownDuration: number;
-  className?: string;
-}) {
+  color: string;
+}) => {
   const [progress, setProgress] = useState(100);
 
   useEffect(() => {
-    let frame = 0;
+    let animationFrameId: number;
 
-    const tick = () => {
-      const elapsed = Date.now() - lastFireTime;
+    const updateProgress = () => {
+      const now = Date.now();
+      const elapsed = now - lastFireTime;
+
       if (elapsed < cooldownDuration) {
         setProgress((elapsed / cooldownDuration) * 100);
-        frame = requestAnimationFrame(tick);
+        animationFrameId = requestAnimationFrame(updateProgress);
       } else {
         setProgress(100);
       }
     };
 
-    tick();
+    updateProgress();
+
     return () => {
-      if (frame) cancelAnimationFrame(frame);
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
     };
   }, [lastFireTime, cooldownDuration]);
 
   return (
-    <div className="mt-1 h-px w-full bg-white/10 overflow-hidden">
-      <div
-        className={className ?? 'bg-white/70 h-full'}
-        style={{ width: `${progress}%` }}
-      />
+    <div className="w-full h-1 bg-white/10 mt-1 rounded-full overflow-hidden">
+      <div className={`h-full ${color}`} style={{ width: `${progress}%` }} />
     </div>
   );
-}
-
-function MobileCooldownOverlay({
-  lastFireTime,
-  cooldownDuration,
-}: {
-  lastFireTime: number;
-  cooldownDuration: number;
-}) {
-  const [progress, setProgress] = useState(100);
-
-  useEffect(() => {
-    let frame = 0;
-
-    const tick = () => {
-      const elapsed = Date.now() - lastFireTime;
-      if (elapsed < cooldownDuration) {
-        setProgress((elapsed / cooldownDuration) * 100);
-        frame = requestAnimationFrame(tick);
-      } else {
-        setProgress(100);
-      }
-    };
-
-    tick();
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-    };
-  }, [lastFireTime, cooldownDuration]);
-
-  if (progress >= 100) return null;
-
-  return (
-    <div
-      className="absolute inset-x-0 bottom-0 bg-white/10 pointer-events-none"
-      style={{ height: `${100 - progress}%` }}
-    />
-  );
-}
-
-function StatBar({
-  label,
-  value,
-  colorClass,
-}: {
-  label: string;
-  value: number;
-  colorClass: string;
-}) {
-  return (
-    <div className="flex flex-col gap-1 min-w-[92px]">
-      <div className="text-[9px] uppercase tracking-[0.25em] text-white/45">{label}</div>
-      <div className="h-1 bg-white/10 overflow-hidden">
-        <div
-          className={`h-full transition-all duration-300 ${colorClass}`}
-          style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
-        />
-      </div>
-    </div>
-  );
-}
+};
 
 export function ShipUI({
   onExit,
   userData,
-  solarSystem,
-  currentPlanetId,
-  setCurrentPlanetId,
 }: ShipUIProps) {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -141,7 +76,6 @@ export function ShipUI({
     isBoosting,
     setIsBoosting,
     lockedTarget,
-    setLockedTarget,
     lastMgFire,
     lastMissileFire,
     shipPosition,
@@ -151,7 +85,6 @@ export function ShipUI({
     shield,
     boostEnergy,
     isJumping,
-    setIsJumping,
   } = useShipStore();
 
   useEffect(() => {
@@ -174,244 +107,274 @@ export function ShipUI({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  const planets = useMemo(
-    () => ((solarSystem?.bodies.filter((b) => b.type === 'planet') as PlanetData[]) || []),
-    [solarSystem]
-  );
-
-  const targetDistance = lockedTarget
-    ? shipPosition.distanceTo(lockedTarget.position || new THREE.Vector3())
-    : null;
-
-  const mobileButtonBase: React.CSSProperties = {
-    width: 56,
-    height: 56,
-    borderRadius: 9999,
+  const btnStyle = {
+    width: '60px',
+    height: '60px',
+    borderRadius: '50%',
     display: 'flex',
-    alignItems: 'center',
     justifyContent: 'center',
-    border: '1px solid rgba(255,255,255,0.16)',
+    alignItems: 'center',
     color: 'white',
-    background: 'transparent',
-    pointerEvents: 'auto',
-    position: 'relative',
-    touchAction: 'none',
+    border: '1px solid rgba(255,255,255,0.2)',
+    backdropFilter: 'blur(4px)',
+    pointerEvents: 'auto' as const,
+    position: 'absolute' as const,
+    overflow: 'hidden' as const,
+  };
+
+  const MobileCooldownOverlay = ({
+    lastFireTime,
+    cooldownDuration,
+  }: {
+    lastFireTime: number;
+    cooldownDuration: number;
+  }) => {
+    const [progress, setProgress] = useState(100);
+
+    useEffect(() => {
+      let animationFrameId: number;
+
+      const updateProgress = () => {
+        const now = Date.now();
+        const elapsed = now - lastFireTime;
+
+        if (elapsed < cooldownDuration) {
+          setProgress((elapsed / cooldownDuration) * 100);
+          animationFrameId = requestAnimationFrame(updateProgress);
+        } else {
+          setProgress(100);
+        }
+      };
+
+      updateProgress();
+
+      return () => {
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      };
+    }, [lastFireTime, cooldownDuration]);
+
+    if (progress === 100) return null;
+
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: `${100 - progress}%`,
+          backgroundColor: 'rgba(0,0,0,0.6)',
+          pointerEvents: 'none',
+        }}
+      />
+    );
   };
 
   return (
-    <div className="absolute inset-0 z-50 pointer-events-none select-none text-white">
+    <div className="absolute inset-0 z-50 pointer-events-none select-none">
       {!isMobile && (
-        <div className="absolute inset-0 p-5">
-          {/* Top left: nav */}
-          <div className="absolute top-5 left-5 max-w-[280px] pointer-events-auto">
-            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-white/55 mb-3">
-              <Navigation size={14} />
-              <span>Navigation</span>
-            </div>
+        <div className="absolute inset-0 p-4">
+          {/* Exit */}
+          <button
+            className="absolute top-4 right-4 bg-black/50 backdrop-blur-md p-3 rounded-full border border-white/10 pointer-events-auto hover:bg-black/70 transition-colors"
+            onClick={onExit}
+          >
+            <X className="text-white" size={18} />
+          </button>
 
-            <div className="flex flex-col gap-2 text-sm">
-              <button
-                className={`text-left border-l pl-3 transition-opacity ${
-                  currentPlanetId === null
-                    ? 'border-white text-white'
-                    : 'border-white/20 text-white/55 hover:text-white'
-                }`}
-                onClick={() => setCurrentPlanetId?.(null)}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span>Deep Space</span>
-                  <LogOut size={12} />
-                </div>
-              </button>
+          {/* Bottom Left: Flight + Target */}
+          <div className="absolute bottom-8 left-8 flex flex-col gap-4 pointer-events-none">
+            <div className="bg-black/45 backdrop-blur-md p-4 rounded-xl border border-white/10 w-64">
+              <div className="text-zinc-400 text-xs font-bold tracking-wider mb-3">
+                FLIGHT
+              </div>
 
-              {planets.map((planet) => {
-                const isCurrent = planet.id === currentPlanetId;
-                const isLocked = lockedTarget?.id === planet.id;
-
-                return (
-                  <div key={planet.id} className="flex flex-col gap-1">
-                    <div className="flex items-start justify-between gap-3 border-l border-white/15 pl-3">
-                      <button
-                        className={`text-left transition-opacity ${
-                          isCurrent ? 'text-white' : 'text-white/60 hover:text-white'
-                        }`}
-                        onClick={() => setCurrentPlanetId?.(planet.id)}
-                      >
-                        <div className="uppercase">{planet.id}</div>
-                        <div className="text-[10px] text-white/35">
-                          {planet.radius.toFixed(1)} radius · {planet.moons.length} moon
-                          {planet.moons.length === 1 ? '' : 's'}
-                        </div>
-                      </button>
-
-                      <button
-                        className={`shrink-0 ${isLocked ? 'text-white' : 'text-white/45 hover:text-white'}`}
-                        onClick={() => setLockedTarget({ id: planet.id, type: 'planet' })}
-                      >
-                        <Target size={13} />
-                      </button>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="flex flex-col">
+                  <div className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mb-1">
+                    Velocity
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <div className="text-2xl font-black text-white font-mono">
+                      {velocity.toFixed(0)}
                     </div>
-
-                    {planet.moons.length > 0 && (
-                      <div className="ml-4 flex flex-col gap-1">
-                        {planet.moons.map((moon) => {
-                          const moonLocked = lockedTarget?.id === moon.id;
-                          return (
-                            <button
-                              key={moon.id}
-                              className={`text-left border-l pl-3 ${
-                                moonLocked
-                                  ? 'border-white text-white'
-                                  : 'border-white/10 text-white/45 hover:text-white'
-                              }`}
-                              onClick={() => {
-                                setCurrentPlanetId?.(planet.id);
-                                setLockedTarget({
-                                  id: moon.id,
-                                  type: 'moon',
-                                  parentPlanetId: planet.id,
-                                });
-                              }}
-                            >
-                              {moon.id.toUpperCase()}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <div className="text-xs text-zinc-500">m/s</div>
                   </div>
-                );
-              })}
+                </div>
+
+                <div className="flex flex-col">
+                  <div className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mb-1">
+                    Altitude
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <div className="text-2xl font-black text-white font-mono">
+                      {altitude.toFixed(0)}
+                    </div>
+                    <div className="text-xs text-zinc-500">m</div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {lockedTarget?.type === 'planet' && (
-              <button
-                className={`mt-4 text-xs uppercase tracking-[0.2em] border-b pb-1 pointer-events-auto ${
-                  isJumping ? 'border-white text-white' : 'border-white/30 text-white/65 hover:text-white'
-                }`}
-                onClick={() => setIsJumping(!isJumping)}
-              >
-                {isJumping ? 'Abort Jump' : 'Initiate Jump'}
-              </button>
+            {lockedTarget && (
+              <div className="bg-black/45 backdrop-blur-md border border-white/10 p-4 rounded-xl w-64">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs font-bold text-zinc-500 tracking-widest uppercase">
+                    Target Locked
+                  </div>
+                  <Target size={14} className="text-cyan-400" />
+                </div>
+
+                <div className="text-lg font-bold text-white mb-1">
+                  {(lockedTarget.id || lockedTarget.name || '').toUpperCase()}
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] text-zinc-400">
+                  <span>DISTANCE</span>
+                  <span className="text-white font-mono">
+                    {shipPosition
+                      .distanceTo(lockedTarget.position || new THREE.Vector3())
+                      .toFixed(1)}
+                    m
+                  </span>
+                </div>
+
+                {lockedTarget.health !== undefined && (
+                  <div className="mt-3">
+                    <div className="flex justify-between text-[8px] text-zinc-500 mb-1">
+                      <span>INTEGRITY</span>
+                      <span>{lockedTarget.health}%</span>
+                    </div>
+                    <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          lockedTarget.health > 50
+                            ? 'bg-emerald-500'
+                            : lockedTarget.health > 20
+                            ? 'bg-amber-500'
+                            : 'bg-red-500'
+                        }`}
+                        style={{ width: `${lockedTarget.health}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
-          </div>
-
-          {/* Top right: resources / weapons */}
-          <div className="absolute top-5 right-5 w-[220px] text-right">
-            <div className="text-[11px] uppercase tracking-[0.24em] text-white/45 mb-3">
-              Status
-            </div>
-
-            <div className="space-y-3 text-sm">
-              <div>
-                <div className="text-white/35 text-[10px] uppercase tracking-[0.18em]">Resources</div>
-                <div className="mt-1 text-white/80">Common {userData?.commonResources ?? 0}</div>
-                <div className="text-white/80">Aetherium {userData?.rareResources ?? 0}</div>
-              </div>
-
-              <div>
-                <div className="text-white/35 text-[10px] uppercase tracking-[0.18em]">Weapons</div>
-
-                <div className="mt-1">
-                  <div className="flex items-center justify-end gap-2 text-white/80">
-                    <span>MG</span>
-                    <span className="font-mono">∞</span>
-                  </div>
-                  <CooldownBar
-                    lastFireTime={lastMgFire}
-                    cooldownDuration={100}
-                    className="bg-white/75 h-full"
-                  />
-                </div>
-
-                <div className="mt-2">
-                  <div className="flex items-center justify-end gap-2 text-white/80">
-                    <span>MSL</span>
-                    <span className="font-mono">∞</span>
-                  </div>
-                  <CooldownBar
-                    lastFireTime={lastMissileFire}
-                    cooldownDuration={250}
-                    className="bg-white/45 h-full"
-                  />
-                </div>
-              </div>
-
-              <div className="text-[10px] text-white/35 uppercase tracking-[0.18em]">
-                T to lock target
-              </div>
-            </div>
-          </div>
-
-          {/* Target info */}
-          {lockedTarget && (
-            <div className="absolute top-28 right-5 w-[220px] text-right">
-              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">
-                Locked Target
-              </div>
-              <div className="mt-1 text-base uppercase">{lockedTarget.id || lockedTarget.name}</div>
-
-              <div className="mt-2 text-xs text-white/55">
-                Distance{' '}
-                <span className="font-mono text-white">
-                  {targetDistance?.toFixed(1)}m
-                </span>
-              </div>
-
-              {lockedTarget.health !== undefined && (
-                <div className="mt-2">
-                  <div className="text-[10px] text-white/35 uppercase tracking-[0.18em] mb-1">
-                    Integrity {lockedTarget.health}%
-                  </div>
-                  <div className="h-1 bg-white/10 overflow-hidden">
-                    <div
-                      className="h-full bg-white/75"
-                      style={{ width: `${lockedTarget.health}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Bottom left: flight data */}
-          <div className="absolute bottom-24 left-5 flex flex-col gap-4">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Velocity</div>
-              <div className="text-3xl font-mono">{velocity.toFixed(0)}</div>
-              <div className="text-[10px] text-white/35">m/s</div>
-            </div>
-
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.22em] text-white/35">Altitude</div>
-              <div className="text-3xl font-mono">{altitude.toFixed(0)}</div>
-              <div className="text-[10px] text-white/35">m</div>
-            </div>
 
             {isJumping && (
-              <div className="text-[11px] uppercase tracking-[0.24em] text-white/70">
-                Jumping…
+              <div className="bg-cyan-500/15 backdrop-blur-md border border-cyan-400/30 p-3 rounded-xl w-fit">
+                <div className="text-cyan-400 text-xs font-bold tracking-[0.3em] uppercase animate-pulse">
+                  Jumping
+                </div>
               </div>
             )}
           </div>
 
-          {/* Bottom center: ship bars */}
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-6">
-            <StatBar label="Shield" value={shield} colorClass="bg-white/90" />
-            <StatBar label="Boost" value={boostEnergy} colorClass="bg-white/70" />
-            <StatBar label="Hull" value={health} colorClass="bg-white/50" />
+          {/* Bottom Center: Ship Integrity */}
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-8 pointer-events-none">
+            <div className="flex flex-col items-center gap-1">
+              <div className="text-[8px] text-cyan-500 font-bold tracking-widest uppercase">
+                Shield
+              </div>
+              <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
+                <div
+                  className="h-full bg-cyan-400 transition-all duration-300"
+                  style={{ width: `${shield}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-1">
+              <div className="text-[8px] text-amber-500 font-bold tracking-widest uppercase">
+                Boost
+              </div>
+              <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
+                <div
+                  className="h-full bg-amber-500 transition-all duration-300"
+                  style={{ width: `${boostEnergy}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-1">
+              <div className="text-[8px] text-red-500 font-bold tracking-widest uppercase">
+                Hull
+              </div>
+              <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
+                <div
+                  className="h-full bg-red-500 transition-all duration-300"
+                  style={{ width: `${health}%` }}
+                />
+              </div>
+            </div>
           </div>
 
-          {/* Center crosshair */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Crosshair className="text-white/40" size={28} strokeWidth={1} />
+          {/* Bottom Right: Resources + Weapons */}
+          <div className="absolute bottom-8 right-8 bg-black/50 backdrop-blur-md p-4 rounded-xl border border-white/10 flex flex-col gap-3 text-right w-56 pointer-events-auto">
+            <div className="text-zinc-400 text-xs font-bold tracking-wider">
+              RESOURCES
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2 justify-end">
+                <span className="text-zinc-300 font-mono text-sm">
+                  {userData ? userData.commonResources : 0}
+                </span>
+                <span className="text-white text-xs">Common</span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2 justify-end">
+                <span className="text-fuchsia-400 font-mono text-sm">
+                  {userData ? userData.rareResources : 0}
+                </span>
+                <span className="text-white text-xs">Aetherium</span>
+              </div>
+            </div>
+
+            <div className="text-zinc-400 text-xs font-bold tracking-wider mt-2">
+              WEAPONS
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2 justify-end">
+                <span className="text-yellow-500 font-mono text-sm">∞</span>
+                <span className="text-white text-xs">MG (L-Click)</span>
+              </div>
+              <WeaponCooldown
+                lastFireTime={lastMgFire}
+                cooldownDuration={100}
+                color="bg-yellow-500"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2 justify-end">
+                <span className="text-red-500 font-mono text-sm">∞</span>
+                <span className="text-white text-xs">MSL (R-Click)</span>
+              </div>
+              <WeaponCooldown
+                lastFireTime={lastMissileFire}
+                cooldownDuration={250}
+                color="bg-red-500"
+              />
+            </div>
+
+            <div className="text-zinc-500 text-[10px] mt-1">Press T to Lock Target</div>
+          </div>
+
+          {/* Crosshair */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <Crosshair className="text-white/50" size={32} strokeWidth={1} />
             {lockedTarget && (
-              <div className="absolute mt-16 text-center">
-                <div className="text-[10px] uppercase tracking-[0.24em] text-white/55">
-                  Locked
+              <div className="absolute flex flex-col items-center gap-2 mt-20">
+                <div className="text-cyan-400 text-[10px] font-bold tracking-widest uppercase animate-pulse">
+                  Target Locked
                 </div>
-                <div className="text-xs font-mono text-white/85 uppercase">
-                  {lockedTarget.id || lockedTarget.name}
+                <div className="text-white text-xs font-mono">
+                  {(lockedTarget.id || lockedTarget.name || '').toUpperCase()}
                 </div>
               </div>
             )}
@@ -421,165 +384,242 @@ export function ShipUI({
 
       {isMobile && (
         <>
-          {/* Top controls */}
-          <div className="absolute top-4 left-4 right-4 flex items-start justify-between pointer-events-auto">
-            <div className="max-w-[70%] overflow-x-auto whitespace-nowrap no-scrollbar text-xs">
-              <button
-                className={`mr-3 border-b pb-1 ${
-                  currentPlanetId === null ? 'border-white text-white' : 'border-white/20 text-white/50'
-                }`}
-                onClick={() => setCurrentPlanetId?.(null)}
-              >
-                Deep Space
-              </button>
+          {/* Exit Button */}
+          <button
+            style={{
+              pointerEvents: 'auto',
+              position: 'absolute',
+              top: 20,
+              right: 20,
+              background: 'rgba(0,0,0,0.5)',
+              border: '1px solid rgba(255,255,255,0.2)',
+              color: 'white',
+              padding: '10px',
+              borderRadius: '50%',
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onExit();
+            }}
+          >
+            <X size={24} />
+          </button>
 
-              {planets.map((planet) => (
-                <button
-                  key={planet.id}
-                  className={`mr-3 border-b pb-1 uppercase ${
-                    currentPlanetId === planet.id
-                      ? 'border-white text-white'
-                      : 'border-white/20 text-white/50'
-                  }`}
-                  onClick={() => setCurrentPlanetId?.(planet.id)}
-                >
-                  {planet.id}
-                </button>
-              ))}
-            </div>
-
-            <button
-              className="pointer-events-auto text-white/75 hover:text-white"
-              onClick={(e) => {
-                e.stopPropagation();
-                onExit();
-              }}
-            >
-              <X size={22} />
-            </button>
-          </div>
-
-          {/* Mobile target / state */}
-          <div className="absolute top-14 left-4 text-xs text-white/60">
-            {lockedTarget ? (
-              <div className="uppercase">
-                Target: <span className="text-white">{lockedTarget.id || lockedTarget.name}</span>
-              </div>
-            ) : (
-              <div>No target</div>
-            )}
-            {isJumping && <div className="mt-1 uppercase text-white">Jumping…</div>}
-          </div>
-
-          {/* Bottom center stats */}
-          <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-4">
-            <StatBar label="Shield" value={shield} colorClass="bg-white/90" />
-            <StatBar label="Boost" value={boostEnergy} colorClass="bg-white/70" />
-            <StatBar label="Hull" value={health} colorClass="bg-white/50" />
-          </div>
-
-          {/* Right controls */}
-          <div className="absolute bottom-8 right-6 flex flex-col gap-3 pointer-events-auto">
-            <button
-              style={{
-                ...mobileButtonBase,
-                borderColor: isBoosting ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.16)',
-              }}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                setIsBoosting(true);
-              }}
-              onPointerUp={(e) => {
-                e.stopPropagation();
-                setIsBoosting(false);
-              }}
-              onPointerLeave={(e) => {
-                e.stopPropagation();
-                setIsBoosting(false);
-              }}
-            >
-              <Rocket size={24} />
-            </button>
-
-            <div className="flex gap-3">
-              <button
-                style={{
-                  ...mobileButtonBase,
-                  borderColor: mobileKeys.lock || lockedTarget ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.16)',
-                }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  setMobileKeys((k: any) => ({ ...k, lock: true }));
-                }}
-                onPointerUp={(e) => {
-                  e.stopPropagation();
-                  setMobileKeys((k: any) => ({ ...k, lock: false }));
-                }}
-                onPointerLeave={(e) => {
-                  e.stopPropagation();
-                  setMobileKeys((k: any) => ({ ...k, lock: false }));
-                }}
-              >
-                <Target size={22} />
-              </button>
-
-              <button
-                style={{
-                  ...mobileButtonBase,
-                  borderColor: mobileKeys.missile ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.16)',
-                }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  setMobileKeys((k: any) => ({ ...k, missile: true }));
-                }}
-                onPointerUp={(e) => {
-                  e.stopPropagation();
-                  setMobileKeys((k: any) => ({ ...k, missile: false }));
-                }}
-                onPointerLeave={(e) => {
-                  e.stopPropagation();
-                  setMobileKeys((k: any) => ({ ...k, missile: false }));
-                }}
-              >
-                <Flame size={22} />
-                <MobileCooldownOverlay lastFireTime={lastMissileFire} cooldownDuration={250} />
-              </button>
-            </div>
-
-            <button
-              style={{
-                ...mobileButtonBase,
-                borderColor: mobileKeys.mg ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.16)',
-              }}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, mg: true }));
-              }}
-              onPointerUp={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, mg: false }));
-              }}
-              onPointerLeave={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, mg: false }));
-              }}
-            >
-              <Zap size={22} />
-              <MobileCooldownOverlay lastFireTime={lastMgFire} cooldownDuration={100} />
-            </button>
-          </div>
-
-          {/* Left d-pad */}
+          {/* Bottom HUD */}
           <div
-            className="absolute bottom-8 left-6 grid gap-2 pointer-events-auto"
-            style={{ gridTemplateColumns: 'repeat(3, 56px)' }}
+            style={{
+              position: 'absolute',
+              left: 12,
+              right: 12,
+              bottom: 120,
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 12,
+              pointerEvents: 'none',
+            }}
+          >
+            <div
+              className="bg-black/50 backdrop-blur-md p-3 rounded-xl border border-white/10"
+              style={{ minWidth: 130 }}
+            >
+              <div className="text-[10px] text-zinc-500 font-bold tracking-wider mb-2">
+                FLIGHT
+              </div>
+              <div className="text-white text-xs">VEL: {velocity.toFixed(0)}</div>
+              <div className="text-white text-xs">ALT: {altitude.toFixed(0)}</div>
+              {lockedTarget && (
+                <div className="text-cyan-400 text-xs mt-2">
+                  {String(lockedTarget.id || lockedTarget.name).toUpperCase()}
+                </div>
+              )}
+            </div>
+
+            <div
+              className="bg-black/50 backdrop-blur-md p-3 rounded-xl border border-white/10 text-right"
+              style={{ minWidth: 150 }}
+            >
+              <div className="text-[10px] text-zinc-500 font-bold tracking-wider mb-2">
+                STATUS
+              </div>
+              <div className="text-white text-xs">
+                Common: {userData ? userData.commonResources : 0}
+              </div>
+              <div className="text-fuchsia-400 text-xs">
+                Aetherium: {userData ? userData.rareResources : 0}
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom center ship bars */}
+          <div className="absolute bottom-[92px] left-1/2 -translate-x-1/2 flex gap-4 pointer-events-none">
+            <div className="flex flex-col items-center gap-1">
+              <div className="text-[8px] text-cyan-500 font-bold tracking-widest uppercase">
+                Shield
+              </div>
+              <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
+                <div className="h-full bg-cyan-400" style={{ width: `${shield}%` }} />
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-1">
+              <div className="text-[8px] text-amber-500 font-bold tracking-widest uppercase">
+                Boost
+              </div>
+              <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
+                <div className="h-full bg-amber-500" style={{ width: `${boostEnergy}%` }} />
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-1">
+              <div className="text-[8px] text-red-500 font-bold tracking-widest uppercase">
+                Hull
+              </div>
+              <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
+                <div className="h-full bg-red-500" style={{ width: `${health}%` }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Boost Button */}
+          <button
+            style={{
+              ...btnStyle,
+              bottom: 40,
+              right: 40,
+              background: isBoosting ? 'rgba(255,68,68,0.8)' : 'rgba(0,0,0,0.5)',
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setIsBoosting(true);
+            }}
+            onPointerUp={(e) => {
+              e.stopPropagation();
+              setIsBoosting(false);
+            }}
+            onPointerLeave={(e) => {
+              e.stopPropagation();
+              setIsBoosting(false);
+            }}
+          >
+            <Rocket size={28} />
+          </button>
+
+          {/* Machine Gun Button */}
+          <button
+            style={{
+              ...btnStyle,
+              bottom: 110,
+              right: 40,
+              background: mobileKeys.mg ? 'rgba(255,170,0,0.8)' : 'rgba(0,0,0,0.5)',
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, mg: true }));
+            }}
+            onPointerUp={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, mg: false }));
+            }}
+            onPointerLeave={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, mg: false }));
+            }}
+          >
+            <Zap size={24} color="#fff" />
+            <MobileCooldownOverlay lastFireTime={lastMgFire} cooldownDuration={100} />
+            <span
+              style={{
+                position: 'absolute',
+                bottom: -20,
+                fontSize: '10px',
+                color: '#ffaa00',
+                fontWeight: 'bold',
+              }}
+            >
+              ∞
+            </span>
+          </button>
+
+          {/* Missile Button */}
+          <button
+            style={{
+              ...btnStyle,
+              bottom: 40,
+              right: 110,
+              background: mobileKeys.missile ? 'rgba(255,0,0,0.8)' : 'rgba(0,0,0,0.5)',
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, missile: true }));
+            }}
+            onPointerUp={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, missile: false }));
+            }}
+            onPointerLeave={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, missile: false }));
+            }}
+          >
+            <Flame size={24} color="#fff" />
+            <MobileCooldownOverlay
+              lastFireTime={lastMissileFire}
+              cooldownDuration={250}
+            />
+            <span
+              style={{
+                position: 'absolute',
+                bottom: -20,
+                fontSize: '10px',
+                color: '#ff0000',
+                fontWeight: 'bold',
+              }}
+            >
+              ∞
+            </span>
+          </button>
+
+          {/* Target Lock Button */}
+          <button
+            style={{
+              ...btnStyle,
+              bottom: 110,
+              right: 110,
+              background: lockedTarget
+                ? 'rgba(255,0,0,0.5)'
+                : mobileKeys.lock
+                ? 'rgba(255,255,255,0.3)'
+                : 'rgba(0,0,0,0.5)',
+            }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, lock: true }));
+            }}
+            onPointerUp={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, lock: false }));
+            }}
+            onPointerLeave={(e) => {
+              e.stopPropagation();
+              setMobileKeys((k: any) => ({ ...k, lock: false }));
+            }}
+          >
+            <Target size={24} color={lockedTarget ? '#ff0000' : '#fff'} />
+          </button>
+
+          {/* D-Pad */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 40,
+              left: 40,
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 60px)',
+              gap: '10px',
+            }}
           >
             <div />
             <button
-              style={{
-                ...mobileButtonBase,
-                borderColor: mobileKeys.w ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.16)',
-              }}
               onPointerDown={(e) => {
                 e.stopPropagation();
                 setMobileKeys((k: any) => ({ ...k, w: true }));
@@ -592,16 +632,16 @@ export function ShipUI({
                 e.stopPropagation();
                 setMobileKeys((k: any) => ({ ...k, w: false }));
               }}
+              style={{
+                ...btnStyle,
+                background: mobileKeys.w ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)',
+              }}
             >
               <ArrowUp />
             </button>
             <div />
 
             <button
-              style={{
-                ...mobileButtonBase,
-                borderColor: mobileKeys.a ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.16)',
-              }}
               onPointerDown={(e) => {
                 e.stopPropagation();
                 setMobileKeys((k: any) => ({ ...k, a: true }));
@@ -614,15 +654,15 @@ export function ShipUI({
                 e.stopPropagation();
                 setMobileKeys((k: any) => ({ ...k, a: false }));
               }}
+              style={{
+                ...btnStyle,
+                background: mobileKeys.a ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)',
+              }}
             >
               <ArrowLeft />
             </button>
 
             <button
-              style={{
-                ...mobileButtonBase,
-                borderColor: mobileKeys.s ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.16)',
-              }}
               onPointerDown={(e) => {
                 e.stopPropagation();
                 setMobileKeys((k: any) => ({ ...k, s: true }));
@@ -635,15 +675,15 @@ export function ShipUI({
                 e.stopPropagation();
                 setMobileKeys((k: any) => ({ ...k, s: false }));
               }}
+              style={{
+                ...btnStyle,
+                background: mobileKeys.s ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)',
+              }}
             >
               <ArrowDown />
             </button>
 
             <button
-              style={{
-                ...mobileButtonBase,
-                borderColor: mobileKeys.d ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.16)',
-              }}
               onPointerDown={(e) => {
                 e.stopPropagation();
                 setMobileKeys((k: any) => ({ ...k, d: true }));
@@ -656,14 +696,13 @@ export function ShipUI({
                 e.stopPropagation();
                 setMobileKeys((k: any) => ({ ...k, d: false }));
               }}
+              style={{
+                ...btnStyle,
+                background: mobileKeys.d ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.5)',
+              }}
             >
               <ArrowRight />
             </button>
-          </div>
-
-          {/* Center crosshair */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Crosshair className="text-white/35" size={26} strokeWidth={1} />
           </div>
         </>
       )}
