@@ -3,6 +3,7 @@ import { Rocket, X, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Crosshair, Target
 import { useShipStore } from '../services/shipStore';
 import { UserData } from '../services/gameManager';
 import { SolarSystemData, PlanetData } from '../services/solarSystem';
+import { getPlanetName } from '../services/planetNames';
 import * as THREE from 'three';
 
 interface ShipUIProps {
@@ -52,6 +53,10 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
   const [isMobile, setIsMobile] = useState(false);
   const { mobileKeys, setMobileKeys, isBoosting, setIsBoosting, lockedTarget, setLockedTarget, lastMgFire, lastMissileFire, shipPosition, velocity, altitude, health, shield, boostEnergy, isJumping, setIsJumping } = useShipStore();
   const [showNav, setShowNav] = useState(false);
+  const planets = (solarSystem?.bodies.filter(b => b.type === 'planet') as PlanetData[]) || [];
+  const planetIds = React.useMemo(() => planets.map((p) => p.id), [planets]);
+  const systemSeed = solarSystem?.seed ?? 'system';
+  const currentLabel = currentPlanetId ? getPlanetName(systemSeed, currentPlanetId, planetIds) : 'Deep Space';
 
   useEffect(() => {
 // ... existing checkMobile ...
@@ -63,8 +68,6 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
-
-  const planets = solarSystem?.bodies.filter(b => b.type === 'planet') as PlanetData[] || [];
 
   const formatDistance = (dist: number) => {
     if (dist > 1000) return `${(dist / 1000).toFixed(1)}k km`;
@@ -140,7 +143,7 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
                 <Navigation className="text-cyan-400" size={24} />
                 <div>
                   <div className="text-white font-bold tracking-wider">NAVIGATION</div>
-                  <div className="text-zinc-400 text-xs">{currentPlanetId || 'Deep Space'}</div>
+                  <div className="text-zinc-400 text-xs">{currentLabel}</div>
                 </div>
               </div>
 
@@ -165,11 +168,12 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
 
                   {planets.map(planet => {
                     const isCurrent = planet.id === currentPlanetId;
+                    const label = getPlanetName(systemSeed, planet.id, planetIds);
                     return (
                       <div key={planet.id} className="flex flex-col gap-2">
                         <div className={`p-3 rounded-lg border flex items-center justify-between transition-all ${isCurrent ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}>
                           <div className="flex flex-col">
-                            <span className={`text-sm font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{(planet.id || '').toUpperCase()}</span>
+                            <span className={`text-sm font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{label}</span>
                             <span className="text-[10px] text-zinc-500">Radius: {planet.radius.toFixed(1)} · {planet.moons.length} moon{planet.moons.length === 1 ? '' : 's'}</span>
                           </div>
                           {!isCurrent && (
@@ -384,10 +388,11 @@ export function ShipUI({ onExit, userData, solarSystem, currentPlanetId, setCurr
             <div className="absolute top-20 left-5 bg-black/80 backdrop-blur-xl p-4 rounded-xl border border-white/10 flex flex-col gap-2 w-48 pointer-events-auto max-h-[50vh] overflow-y-auto custom-scrollbar">
               {planets.map(planet => {
                 const isCurrent = planet.id === currentPlanetId;
+                const label = getPlanetName(systemSeed, planet.id, planetIds);
                 return (
                   <div key={planet.id} className="flex flex-col gap-1">
                     <div className={`p-2 rounded-lg border flex items-center justify-between ${isCurrent ? 'bg-cyan-500/20 border-cyan-500/50' : 'bg-white/5 border-white/10'}`} onClick={() => !isCurrent && setLockedTarget({ id: planet.id, type: 'planet' })}>
-                      <span className={`text-xs font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{(planet.id || '').toUpperCase()}</span>
+                      <span className={`text-xs font-bold ${isCurrent ? 'text-cyan-400' : 'text-white'}`}>{label}</span>
                       {lockedTarget?.id === planet.id && <Target size={12} className="text-cyan-400" />}
                     </div>
                     {planet.moons.map((moon) => (

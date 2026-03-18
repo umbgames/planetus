@@ -1,72 +1,75 @@
-import { hashCombine, hashString } from '../utils/random';
+import { createPRNG, hashCombine } from '../utils/random';
 
-const STORAGE_KEY = 'planetus|planet-names|v2';
+type PlanetNameMap = Record<string, string>; // planetId -> name
 
-const NAME_PREFIXES = [
-  'Zyr', 'Kron', 'Vel', 'Or', 'Nyx', 'Sol', 'Astra', 'Vex', 'Lun', 'Cael', 'Drav', 'Tyr', 'Nova', 'Ery', 'Cyr', 'Pyra', 'Vala', 'Myr', 'Xeph', 'Ryn'
-];
-const NAME_SUFFIXES = [
-  'a', 'is', 'ar', 'on', 'or', 'en', 'ia', 'ys', 'us', 'ex', 'yn', 'ara', 'eth', 'ion', 'oris', 'ara', 'is', 'or', 'um', 'el'
-];
+const STORAGE_PREFIX = 'planetNames:v1:';
 
-type PlanetNameMap = Record<string, string>;
+const SYLL_A = ['Zy', 'Ve', 'Kro', 'Or', 'Sa', 'Ny', 'Ly', 'Xa', 'Ae', 'Ul', 'Ka', 'Ri', 'Va', 'No', 'Cy', 'Th', 'Mi', 'El', 'Za', 'Lo'];
+const SYLL_B = ['ra', 'lar', 'nis', 'rion', 'vex', 'thos', 'mera', 'dax', 'ion', 'aris', 'ora', 'ven', 'tor', 'kai', 'lune', 'syl', 'dris', 'vora', 'nox', 'phyr'];
+const SYLL_C = ['', '', '', 'a', 'is', 'on', 'en', 'us', 'yx', 'ar'];
 
-let cachedNames: PlanetNameMap | null = null;
+function sanitizeName(name: string) {
+  // single-word, letters only, TitleCase.
+  const cleaned = name.replace(/[^A-Za-z]/g, '');
+  if (!cleaned) return 'Nova';
+  return cleaned[0].toUpperCase() + cleaned.slice(1).toLowerCase();
+}
 
-function loadNames(): PlanetNameMap {
-  if (cachedNames) return cachedNames;
-  if (typeof window === 'undefined') return {};
+function generateCandidate(rng: () => number) {
+  const a = SYLL_A[Math.floor(rng() * SYLL_A.length)];
+  const b = SYLL_B[Math.floor(rng() * SYLL_B.length)];
+  const c = SYLL_C[Math.floor(rng() * SYLL_C.length)];
+  return sanitizeName(`${a}${b}${c}`);
+}
+
+function generateUniqueNames(systemSeed: string, planetIds: string[], existingNames: string[] = []): PlanetNameMap {
+  const rng = createPRNG(hashCombine(systemSeed, 'planet-names'));
+  const used = new Set(existingNames.map((n) => n.toLowerCase()));
+  const map: PlanetNameMap = {};
+
+  for (const pid of planetIds) {
+    // Planet-specific stream keeps names stable even if ordering changes.
+    const prng = createPRNG(hashCombine(systemSeed, pid, 'name'));
+    let name = generateCandidate(prng);
+    let guard = 0;
+    while (used.has(name.toLowerCase()) && guard++ < 32) {
+      name = generateCandidate(() => prng() * 0.6 + rng() * 0.4);
+    }
+    if (used.has(name.toLowerCase())) {
+      name = sanitizeName(name + SYLL_B[Math.floor(prng() * SYLL_B.length)]);
+    }
+    used.add(name.toLowerCase());
+    map[pid] = name;
+  }
+  return map;
+}
+
+export function getOrCreatePlanetNames(systemSeed: string, planetIds: string[]): PlanetNameMap {
+  const storageKey = `${STORAGE_PREFIX}${systemSeed}`;
   try {
-    cachedNames = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '{}');
-    return cachedNames || {};
+    const existingRaw = localStorage.getItem(storageKey);
+    if (existingRaw) {
+      const existing = JSON.parse(existingRaw) as PlanetNameMap;
+      const missing = planetIds.filter((id) => !existing[id]);
+      if (missing.length === 0) return existing;
+      const filled = { ...existing, ...generateUniqueNames(systemSeed, missing, Object.values(existing)) };
+      localStorage.setItem(storageKey, JSON.stringify(filled));
+      return filled;
+    }
   } catch {
-    cachedNames = {};
-    return cachedNames;
+    // ignore
   }
-}
 
-function saveNames(map: PlanetNameMap) {
-  cachedNames = map;
-  if (typeof window === 'undefined') return;
+  const generated = generateUniqueNames(systemSeed, planetIds);
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+    localStorage.setItem(storageKey, JSON.stringify(generated));
   } catch {
-    // Ignore quota issues; names remain deterministic.
+    // ignore
   }
+  return generated;
 }
 
-function titleCase(name: string) {
-  return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
-}
-
-function buildCandidate(seed: string, attempt = 0) {
-  const prefix = NAME_PREFIXES[(hashString(hashCombine(seed, 'prefix', attempt)) % NAME_PREFIXES.length + NAME_PREFIXES.length) % NAME_PREFIXES.length];
-  const suffix = NAME_SUFFIXES[(hashString(hashCombine(seed, 'suffix', attempt)) % NAME_SUFFIXES.length + NAME_SUFFIXES.length) % NAME_SUFFIXES.length];
-  return titleCase(`${prefix}${suffix}`.replace(/[^A-Za-z]/g, ''));
-}
-
-export function getPlanetName(systemSeed: string, planetId: string) {
-  const key = `${systemSeed}|${planetId}`;
-  const map = loadNames();
-  if (map[key]) return map[key];
-
-  const used = new Set(Object.values(map));
-  let attempt = 0;
-  let candidate = buildCandidate(key, attempt);
-  while (used.has(candidate)) {
-    attempt += 1;
-    candidate = buildCandidate(key, attempt);
-  }
-
-  map[key] = candidate;
-  saveNames(map);
-  return candidate;
-}
-
-export function getPlanetNames(systemSeed: string, planetIds: string[]) {
-  const result: Record<string, string> = {};
-  planetIds.forEach((planetId) => {
-    result[planetId] = getPlanetName(systemSeed, planetId);
-  });
-  return result;
+export function getPlanetName(systemSeed: string, planetId: string, planetIdsInSystem: string[]) {
+  const map = getOrCreatePlanetNames(systemSeed, planetIdsInSystem);
+  return map[planetId] ?? 'Nova';
 }

@@ -1,6 +1,7 @@
 import { createNoise3D } from 'simplex-noise';
 import * as THREE from 'three';
 import { createPRNG, hashCombine, hashToUnitFloat, seededRange } from '../utils/random';
+import { hasValidPlanetTextures, loadPlanetTextures, putPlanetTextures } from './planetTextureCache';
 
 export interface Region {
   id: string;
@@ -12,8 +13,8 @@ export interface Region {
 
 interface CachedGeographyData {
   regions: Region[];
-  texture: THREE.CanvasTexture;
-  displacementMap: THREE.CanvasTexture;
+  texture: THREE.Texture;
+  displacementMap: THREE.Texture;
 }
 
 type TextureDetail = 'standard' | 'enhanced';
@@ -22,59 +23,13 @@ type BiomeName = 'tundra' | 'snow_forest' | 'grassland' | 'forest' | 'desert' | 
 
 const geometryCache = new Map<string, CachedGeographyData>();
 
-const TEXTURE_CACHE_VERSION = 'v3';
-const TEXTURE_CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
-const TEXTURE_CACHE_PREFIX = `planetus|texture-cache|${TEXTURE_CACHE_VERSION}|`;
-const TEXTURE_CACHE_INDEX_KEY = `${TEXTURE_CACHE_PREFIX}index`;
-const TEXTURE_CACHE_LIMIT = 12;
-
-interface PersistentTextureCacheEntry {
-  key: string;
-  updatedAt: number;
-  textureDataUrl: string;
-  displacementDataUrl: string;
-}
-
-function safeLocalStorageGet(key: string) {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function safeLocalStorageSet(key: string, value: string) {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    // Ignore quota errors.
-  }
-}
-
-function readTextureCacheIndex(): string[] {
-  const raw = safeLocalStorageGet(TEXTURE_CACHE_INDEX_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeTextureCacheIndex(keys: string[]) {
-  safeLocalStorageSet(TEXTURE_CACHE_INDEX_KEY, JSON.stringify(keys.slice(0, TEXTURE_CACHE_LIMIT)));
-}
-
 export class GeographyManager {
   regions: Region[] = [];
   noiseScale = 1.5;
   landThreshold = 0.2;
-  texture: THREE.CanvasTexture | null = null;
-  displacementMap: THREE.CanvasTexture | null = null;
-  onTextureUpdate: ((texture: THREE.CanvasTexture, displacementMap: THREE.CanvasTexture) => void) | null = null;
+  texture: THREE.Texture | null = null;
+  displacementMap: THREE.Texture | null = null;
+  onTextureUpdate: ((texture: THREE.Texture, displacementMap: THREE.Texture) => void) | null = null;
 
   private prng: () => number;
   private noise3D: (x: number, y: number, z: number) => number;
@@ -107,10 +62,43 @@ export class GeographyManager {
     }
   }
 
-  static async warmCache(seed: string, noiseScale: number, landThreshold: number, textureDetail: TextureDetail = 'enhanced') {
+  static warmCache(seed: string, noiseScale: number, landThreshold: number, textureDetail: TextureDetail = 'enhanced') {
     const manager = new GeographyManager();
     manager.setSeed(seed, noiseScale, landThreshold, textureDetail);
-    await manager.initializeTopicRegions();
+    manager.initializeTopicRegions();
+    return manager;
+  }
+
+  static async warmCacheAsync(seed: string, noiseScale: number, landThreshold: number, textureDetail: TextureDetail = 'enhanced') {
+    const manager = new GeographyManager();
+    manager.setSeed(seed, noiseScale, landThreshold, textureDetail);
+    // Generate regions first (fast), then hydrate textures from persistent cache when possible.
+    manager.initializeTopicRegions(true);
+    const cacheKey = manager.getCacheKey();
+
+    const cached = geometryCache.get(cacheKey);
+    if (cached) return manager;
+
+    if (hasValidPlanetTextures(cacheKey)) {
+      const res = await loadPlanetTextures(cacheKey);
+      if (res) {
+        manager.texture = res.texture;
+        manager.displacementMap = res.displacementMap;
+        geometryCache.set(cacheKey, {
+          regions: manager.regions.map((region) => ({
+            ...region,
+            center: region.center.clone(),
+            color: region.color.clone(),
+          })),
+          texture: res.texture,
+          displacementMap: res.displacementMap,
+        });
+        if (manager.onTextureUpdate) manager.onTextureUpdate(res.texture, res.displacementMap);
+        return manager;
+      }
+    }
+
+    manager.generateTexture();
     return manager;
   }
 
@@ -147,8 +135,9 @@ export class GeographyManager {
     return this.getTerrain(x, y, z) > this.landThreshold;
   }
 
-  async initializeTopicRegions() {
-    const cached = geometryCache.get(this.getCacheKey());
+  initializeTopicRegions(skipTexture = false) {
+    const cacheKey = this.getCacheKey();
+    const cached = geometryCache.get(cacheKey);
     if (cached) {
       this.regions = cached.regions.map((region) => ({
         ...region,
@@ -208,13 +197,32 @@ export class GeographyManager {
 
     this.regions = newRegions;
 
-    const restored = await this.restorePersistentTextureCache();
-    if (!restored) {
-      this.generateTexture();
-    } else if (this.onTextureUpdate && this.texture && this.displacementMap) {
-      this.onTextureUpdate(this.texture, this.displacementMap);
-      requestAnimationFrame(() => this.generateTexture());
+    if (skipTexture) return;
+
+    // Prefer persistent textures (async) to reduce cold-start stalls.
+    if (hasValidPlanetTextures(cacheKey)) {
+      loadPlanetTextures(cacheKey).then((res) => {
+        if (!res) {
+          this.generateTexture();
+          return;
+        }
+        this.texture = res.texture;
+        this.displacementMap = res.displacementMap;
+        geometryCache.set(cacheKey, {
+          regions: this.regions.map((region) => ({
+            ...region,
+            center: region.center.clone(),
+            color: region.color.clone(),
+          })),
+          texture: res.texture,
+          displacementMap: res.displacementMap,
+        });
+        if (this.onTextureUpdate) this.onTextureUpdate(res.texture, res.displacementMap);
+      });
+      return;
     }
+
+    this.generateTexture();
   }
 
   getRegionForPoint(x: number, y: number, z: number): Region | null {
@@ -318,90 +326,6 @@ export class GeographyManager {
   dispCtx: CanvasRenderingContext2D | null = null;
   dispImgData: ImageData | null = null;
 
-
-  private async restorePersistentTextureCache() {
-    const key = this.getCacheKey();
-    const raw = safeLocalStorageGet(`${TEXTURE_CACHE_PREFIX}${key}`);
-    if (!raw) return false;
-    try {
-      const entry = JSON.parse(raw) as PersistentTextureCacheEntry;
-      if (!entry?.textureDataUrl || !entry?.displacementDataUrl || Date.now() - entry.updatedAt > TEXTURE_CACHE_MAX_AGE_MS) {
-        return false;
-      }
-
-      const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
-        const image = new Image();
-        image.onload = () => resolve(image);
-        image.onerror = reject;
-        image.src = src;
-      });
-
-      const [textureImage, displacementImage] = await Promise.all([loadImage(entry.textureDataUrl), loadImage(entry.displacementDataUrl)]);
-
-      this.canvas = document.createElement('canvas');
-      this.canvas.width = textureImage.width;
-      this.canvas.height = textureImage.height;
-      this.ctx = this.canvas.getContext('2d')!;
-      this.ctx.drawImage(textureImage, 0, 0);
-      this.imgData = this.ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-
-      this.dispCanvas = document.createElement('canvas');
-      this.dispCanvas.width = displacementImage.width;
-      this.dispCanvas.height = displacementImage.height;
-      this.dispCtx = this.dispCanvas.getContext('2d')!;
-      this.dispCtx.drawImage(displacementImage, 0, 0);
-      this.dispImgData = this.dispCtx.getImageData(0, 0, this.dispCanvas.width, this.dispCanvas.height);
-
-      this.texture = new THREE.CanvasTexture(this.canvas);
-      this.texture.colorSpace = THREE.SRGBColorSpace;
-      this.displacementMap = new THREE.CanvasTexture(this.dispCanvas);
-      this.texture.needsUpdate = true;
-      this.displacementMap.needsUpdate = true;
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  private persistTextureCache() {
-    if (typeof window === 'undefined' || !this.canvas || !this.dispCanvas) return;
-    try {
-      const previewCanvas = document.createElement('canvas');
-      previewCanvas.width = 384;
-      previewCanvas.height = 192;
-      const previewCtx = previewCanvas.getContext('2d');
-      if (!previewCtx) return;
-      previewCtx.drawImage(this.canvas, 0, 0, previewCanvas.width, previewCanvas.height);
-
-      const previewDispCanvas = document.createElement('canvas');
-      previewDispCanvas.width = 384;
-      previewDispCanvas.height = 192;
-      const previewDispCtx = previewDispCanvas.getContext('2d');
-      if (!previewDispCtx) return;
-      previewDispCtx.drawImage(this.dispCanvas, 0, 0, previewDispCanvas.width, previewDispCanvas.height);
-
-      const key = this.getCacheKey();
-      const entry: PersistentTextureCacheEntry = {
-        key,
-        updatedAt: Date.now(),
-        textureDataUrl: previewCanvas.toDataURL('image/webp', 0.82),
-        displacementDataUrl: previewDispCanvas.toDataURL('image/webp', 0.76),
-      };
-      safeLocalStorageSet(`${TEXTURE_CACHE_PREFIX}${key}`, JSON.stringify(entry));
-      const index = readTextureCacheIndex().filter((existingKey) => existingKey !== key);
-      index.unshift(key);
-      const stale = index.slice(TEXTURE_CACHE_LIMIT);
-      stale.forEach((staleKey) => {
-        try {
-          window.localStorage.removeItem(`${TEXTURE_CACHE_PREFIX}${staleKey}`);
-        } catch {}
-      });
-      writeTextureCacheIndex(index);
-    } catch {
-      // Ignore persistence failures.
-    }
-  }
-
   generateTexture() {
     const width = this.textureDetail === 'enhanced' ? 1536 : 1024;
     const height = this.textureDetail === 'enhanced' ? 768 : 512;
@@ -502,7 +426,8 @@ export class GeographyManager {
     this.texture.needsUpdate = true;
     this.displacementMap!.needsUpdate = true;
 
-    geometryCache.set(this.getCacheKey(), {
+    const cacheKey = this.getCacheKey();
+    geometryCache.set(cacheKey, {
       regions: this.regions.map((region) => ({
         ...region,
         center: region.center.clone(),
@@ -512,7 +437,10 @@ export class GeographyManager {
       displacementMap: this.displacementMap!,
     });
 
-    this.persistTextureCache();
+    // Optional persistence.
+    if (this.canvas && this.dispCanvas) {
+      putPlanetTextures(cacheKey, this.canvas, this.dispCanvas);
+    }
 
     if (this.onTextureUpdate) {
       this.onTextureUpdate(this.texture, this.displacementMap!);

@@ -10,8 +10,6 @@ export interface Projectile {
   createdAt: number;
 }
 
-export const minimapCameraQuaternionRef = { current: new THREE.Quaternion() };
-
 interface ShipState {
   mobileKeys: { w: boolean; a: boolean; s: boolean; d: boolean; mg: boolean; missile: boolean; lock: boolean };
   setMobileKeys: (updater: any) => void;

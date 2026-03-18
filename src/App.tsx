@@ -15,14 +15,18 @@ import { gameManager, UserData, BaseData } from './services/gameManager';
 import { auth } from './firebase';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { geographyManager, GeographyManager } from './services/geography';
-import { minimapCameraQuaternionRef, useShipStore } from './services/shipStore';
+import { useShipStore } from './services/shipStore';
 import { generateSolarSystem, SolarSystemData, PlanetData } from './services/solarSystem';
 import { createPRNG, hashCombine } from './utils/random';
 import { SolarSystemView } from './components/SolarSystemView';
-import { buildOrbitMap, getBodyWorldPosition, getScaledPlanetRadius, getScaledStarRadius } from './services/orbitUtils';
-import { getPlanetName, getPlanetNames } from './services/planetNames';
-import { OrbitBanner } from './components/OrbitBanner';
-import { SystemMinimap } from './components/SystemMinimap';
+import { buildOrbitMap, getPlanetWorldPosition, getScaledPlanetRadius, getScaledStarRadius } from './services/orbitUtils';
+import { Minimap3D } from './components/Minimap3D';
+import { OrbitNameToast } from './components/OrbitNameToast';
+import { LoadingScreen } from './components/LoadingScreen';
+import { getOrCreatePlanetNames, getPlanetName } from './services/planetNames';
+import { startLocalPlayerPositionSync } from './services/playerPositions';
+import { cameraQuatRef, elapsedTimeRef } from './services/runtimeRefs';
+import { setPersistentTextureCacheEnabled } from './services/planetTextureCache';
 
 export const planetRotationRef = { current: 0 };
 
@@ -232,21 +236,25 @@ export default function App() {
   const [shipPosition, setShipPosition] = useState<THREE.Vector3 | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [satelliteUsers, setSatelliteUsers] = useState<{ uid?: string; name: string; bases: number; info: string; health: number }[]>([]);
-  const [activePlayers, setActivePlayers] = useState<UserData[]>([]);
   const [isMobile, setIsMobile] = useState(false);
   const [screenShake, setScreenShake] = useState(false);
   const [hitEffect, setHitEffect] = useState(false);
-  const { lockedTarget } = useShipStore();
+  const lockedTarget = useShipStore((s) => s.lockedTarget);
+  const shipScenePos = useShipStore((s) => s.shipPosition);
   const [currentPlanetId, setCurrentPlanetId] = useState<string | null>(null);
   const [currentSystemSeed, setCurrentSystemSeed] = useState('alpha_centauri_v1');
   const [systemTransition, setSystemTransition] = useState<GalaxyStarData | null>(null);
   const [shipRespawnNonce, setShipRespawnNonce] = useState(0);
   const [solarSystem, setSolarSystem] = useState<SolarSystemData | null>(null);
-  const [welcomeMessage, setWelcomeMessage] = useState<{ name: string, desc: string } | null>(null);
+  const [orbitToastName, setOrbitToastName] = useState<string | null>(null);
+  const [orbitToastNonce, setOrbitToastNonce] = useState(0);
   const [qualityPreset, setQualityPreset] = useState<'low' | 'medium' | 'high'>(isMobile ? 'low' : 'high');
   const [showOrbitRings, setShowOrbitRings] = useState(true);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState<{ active: boolean; progress: number; label: string }>({ active: true, progress: 0, label: 'Booting navigation core...' });
+
+  const shipScenePosRef = useRef(new THREE.Vector3());
+  const selfAbsPosRef = useRef(new THREE.Vector3());
 
   const handleSystemSelect = useCallback((star: GalaxyStarData) => {
     if (star.seed === currentSystemSeed || systemTransition) return;
@@ -278,80 +286,12 @@ export default function App() {
     return planet ? getScaledPlanetRadius(planet.radius) : PLANET_RADIUS;
   }, [solarSystem, currentPlanetId]);
 
-
-  const shipTelemetry = useShipStore((state) => ({
-    position: state.shipPosition,
-    velocity: state.velocity,
-  }));
-
-  const orbitMap = useMemo(() => solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>(), [solarSystem]);
-
-  const planetNameMap = useMemo(() => {
-    if (!solarSystem) return {} as Record<string, string>;
-    return getPlanetNames(currentSystemSeed, solarSystem.bodies.filter((body): body is PlanetData => body.type === 'planet').map((planet) => planet.id));
-  }, [solarSystem, currentSystemSeed]);
-
-  const selfAbsolutePosition = useMemo(() => {
-    if (!solarSystem) return shipTelemetry.position.clone();
-    const elapsed = performance.now() / 1000;
-    const anchor = getBodyWorldPosition(currentPlanetId, solarSystem, elapsed, orbitMap, new THREE.Vector3());
-    return shipTelemetry.position.clone().add(anchor);
-  }, [solarSystem, currentPlanetId, orbitMap, shipTelemetry.position]);
-
-  const minimapPlayers = useMemo(() => {
-    if (!solarSystem) return [];
-    const elapsed = performance.now() / 1000;
-    const staleCutoff = Date.now() - 15000;
-    return activePlayers
-      .filter((player) => {
-        if (!player.liveState || player.liveState.systemSeed !== currentSystemSeed) return false;
-        return new Date(player.liveState.updatedAt).getTime() >= staleCutoff;
-      })
-      .map((player) => {
-        const liveState = player.liveState!;
-        const anchor = getBodyWorldPosition(liveState.currentPlanetId, solarSystem, elapsed, orbitMap, new THREE.Vector3());
-        const absolutePosition = new THREE.Vector3(liveState.position.x, liveState.position.y, liveState.position.z).add(anchor);
-        return {
-          uid: player.uid,
-          name: player.displayName,
-          isSelf: auth.currentUser?.uid === player.uid,
-          absolutePosition,
-          active: auth.currentUser?.uid === player.uid || absolutePosition.distanceTo(selfAbsolutePosition) < 3200,
-        };
-      });
-  }, [activePlayers, currentSystemSeed, solarSystem, orbitMap, selfAbsolutePosition]);
-
-  const lastLiveSyncRef = useRef({
-    time: 0,
-    position: new THREE.Vector3(Number.POSITIVE_INFINITY, 0, 0),
-    rotation: new THREE.Euler(Number.POSITIVE_INFINITY, 0, 0),
-  });
-
-  useEffect(() => {
-    if (!isShipMode || !solarSystem || !auth.currentUser) return;
-    const interval = window.setInterval(() => {
-      const now = performance.now();
-      const movedEnough = lastLiveSyncRef.current.position.distanceToSquared(shipTelemetry.position) > 0.35;
-      if (!movedEnough && now - lastLiveSyncRef.current.time < 1200) return;
-      const rotation = new THREE.Euler().setFromQuaternion(minimapCameraQuaternionRef.current, 'YXZ');
-      const deltaRot = Math.abs(rotation.x - lastLiveSyncRef.current.rotation.x) + Math.abs(rotation.y - lastLiveSyncRef.current.rotation.y) + Math.abs(rotation.z - lastLiveSyncRef.current.rotation.z);
-      if (!movedEnough && deltaRot < 0.08 && now - lastLiveSyncRef.current.time < 2500) return;
-      lastLiveSyncRef.current = {
-        time: now,
-        position: shipTelemetry.position.clone(),
-        rotation: rotation.clone(),
-      };
-      gameManager.updateLivePlayerState(currentSystemSeed, currentPlanetId, shipTelemetry.position, rotation, shipTelemetry.velocity).catch(console.error);
-    }, 250);
-
-    return () => window.clearInterval(interval);
-  }, [isShipMode, solarSystem, currentSystemSeed, currentPlanetId, shipTelemetry.position, shipTelemetry.velocity]);
-
   useEffect(() => {
     const system = generateSolarSystem(currentSystemSeed);
     setSolarSystem(system);
 
     const planets = system.bodies.filter((b): b is PlanetData => b.type === 'planet');
+    const planetNames = getOrCreatePlanetNames(currentSystemSeed, planets.map((p) => p.id));
     const firstPlanet = planets[0];
     if (firstPlanet) {
       geographyManager.setSeed(firstPlanet.seed, firstPlanet.noiseScale, firstPlanet.landThreshold);
@@ -368,16 +308,16 @@ export default function App() {
         setLoadingStatus({
           active: true,
           progress: i / Math.max(planets.length, 1),
-          label: `Generating ${getPlanetName(currentSystemSeed, planet.id)} in ${currentSystemSeed}...`,
+          label: `Initializing ${planetNames[planet.id] ?? planet.id}...`,
         });
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() => {
-            GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold, 'enhanced').finally(() => resolve());
+            GeographyManager.warmCacheAsync(planet.seed, planet.noiseScale, planet.landThreshold, 'enhanced').then(() => resolve());
           });
         });
       }
       if (!cancelled) {
-        setLoadingStatus({ active: true, progress: 1, label: `Star system ${currentSystemSeed} locked.` });
+        setLoadingStatus({ active: true, progress: 1, label: `Star system locked.` });
         setTimeout(() => {
           if (!cancelled) setLoadingStatus({ active: false, progress: 1, label: 'Ready' });
         }, 350);
@@ -391,31 +331,100 @@ export default function App() {
   }, [currentSystemSeed]);
 
 
+  // Orbit detection (solar-frame), triggers when the player enters a planet's orbit radius.
   useEffect(() => {
-    if (solarSystem && currentPlanetId) {
-      const planet = solarSystem.bodies.find(b => b.id === currentPlanetId) as PlanetData;
-      if (planet) {
-        geographyManager.setSeed(planet.seed, planet.noiseScale, planet.landThreshold);
-        void geographyManager.initializeTopicRegions();
-        
-        // Show welcome message
-        const planetName = getPlanetName(currentSystemSeed, planet.id);
-        const descriptions = [
-          "Entering Orbital Sector",
-          "Atmospheric Entry Confirmed",
-          "Scanning Surface Anomalies",
-          "Establishing Communication Link",
-          "Gravity Well Detected",
-          "Synchronizing Orbital Velocity"
-        ];
-        const descPrng = createPRNG(hashCombine(currentSystemSeed, planet.id, 'welcome'));
-        const randomDesc = descriptions[Math.floor(descPrng() * descriptions.length)];
-        
-        setWelcomeMessage({ name: planetName, desc: randomDesc });
-        setTimeout(() => setWelcomeMessage(null), 4000);
+    if (!isShipMode || !solarSystem) return;
+
+    const orbitMap = buildOrbitMap(solarSystem.bodies);
+    const planets = solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet');
+    const planetIds = planets.map((p) => p.id);
+
+    const tmpBodyPos = new THREE.Vector3();
+    const tmpPlanetPos = new THREE.Vector3();
+
+    // hysteresis to avoid jitter
+    const entryRadiusFor = (p: PlanetData) => getScaledPlanetRadius(p.radius) * 7.5 + 24;
+    const exitRadiusFor = (p: PlanetData) => getScaledPlanetRadius(p.radius) * 9.2 + 30;
+
+    let raf = 0;
+    const step = () => {
+      const t = elapsedTimeRef.current;
+
+      // Current focus body world position (solar-frame).
+      if (currentPlanetId) {
+        const cur = planets.find((p) => p.id === currentPlanetId);
+        if (cur) getPlanetWorldPosition(cur, t, orbitMap, tmpBodyPos);
+        else tmpBodyPos.set(0, 0, 0);
+      } else {
+        tmpBodyPos.set(0, 0, 0);
       }
-    }
-  }, [currentPlanetId, solarSystem]);
+
+      // self absolute position in solar-frame.
+      selfAbsPosRef.current.copy(shipScenePosRef.current).add(tmpBodyPos);
+
+      // find nearest planet
+      let nearest: PlanetData | null = null;
+      let nearestDist = Number.POSITIVE_INFINITY;
+      for (const p of planets) {
+        getPlanetWorldPosition(p, t, orbitMap, tmpPlanetPos);
+        const d = tmpPlanetPos.distanceTo(selfAbsPosRef.current);
+        if (d < nearestDist) {
+          nearestDist = d;
+          nearest = p;
+        }
+      }
+
+      const focused = currentPlanetId ? planets.find((p) => p.id === currentPlanetId) : null;
+
+      if (!focused) {
+        if (nearest && nearestDist < entryRadiusFor(nearest)) {
+          setCurrentPlanetId(nearest.id);
+          setOrbitToastName(getPlanetName(currentSystemSeed, nearest.id, planetIds));
+          setOrbitToastNonce((n) => n + 1);
+        }
+      } else {
+        // If we drift out of orbit, release focus or switch directly to next planet.
+        getPlanetWorldPosition(focused, t, orbitMap, tmpPlanetPos);
+        const distToFocused = tmpPlanetPos.distanceTo(selfAbsPosRef.current);
+        if (distToFocused > exitRadiusFor(focused)) {
+          if (nearest && nearest.id !== focused.id && nearestDist < entryRadiusFor(nearest)) {
+            setCurrentPlanetId(nearest.id);
+            setOrbitToastName(getPlanetName(currentSystemSeed, nearest.id, planetIds));
+            setOrbitToastNonce((n) => n + 1);
+          } else {
+            setCurrentPlanetId(null);
+          }
+        }
+      }
+
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+
+    return () => cancelAnimationFrame(raf);
+  }, [isShipMode, solarSystem, currentPlanetId, currentSystemSeed]);
+
+  // Configure geography when a planet becomes the current orbital focus.
+  useEffect(() => {
+    if (!solarSystem || !currentPlanetId) return;
+    const planet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId);
+    if (!planet) return;
+    geographyManager.setSeed(planet.seed, planet.noiseScale, planet.landThreshold);
+    geographyManager.initializeTopicRegions();
+  }, [solarSystem, currentPlanetId]);
+
+  // Multiplayer position sync (throttled + interpolated on clients).
+  useEffect(() => {
+    if (!isShipMode || !solarSystem || !userData) return;
+    const rotEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+    const stop = startLocalPlayerPositionSync({
+      systemSeed: currentSystemSeed,
+      getPosition: () => selfAbsPosRef.current,
+      getRotationEuler: () => rotEuler.setFromQuaternion(cameraQuatRef.current),
+      hz: isMobile ? 5 : 10,
+    });
+    return () => stop();
+  }, [isShipMode, solarSystem, userData?.uid, currentSystemSeed, isMobile]);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -430,6 +439,15 @@ export default function App() {
   useEffect(() => {
     setQualityPreset(isMobile ? 'low' : 'high');
   }, [isMobile]);
+
+  useEffect(() => {
+    // Optional persistent planet texture cache (disabled on mobile for quota safety).
+    setPersistentTextureCacheEnabled(!isMobile);
+  }, [isMobile]);
+
+  useEffect(() => {
+    shipScenePosRef.current.copy(shipScenePos);
+  }, [shipScenePos]);
 
 
   const prevTagsRef = useRef<Record<string, any>>({});
@@ -514,15 +532,11 @@ export default function App() {
     gameManager.onSatelliteUsersUpdate = (users) => {
       setSatelliteUsers(users);
     };
-    gameManager.onPlayersUpdate = (players) => {
-      setActivePlayers(players);
-    };
     
     return () => {
       gameManager.onUserDataUpdate = null;
       gameManager.onBasesUpdate = null;
       gameManager.onSatelliteUsersUpdate = null;
-      gameManager.onPlayersUpdate = null;
     };
   }, []);
 
@@ -767,7 +781,11 @@ export default function App() {
   const dpr = qualityPreset === 'low' ? [1, 1.2] as [number, number] : qualityPreset === 'medium' ? [1, 1.5] as [number, number] : [1, 2] as [number, number];
   const enableEnvironment = qualityPreset !== 'low';
   const bodyCount = solarSystem?.bodies.filter(b => b.type === 'planet').length ?? 0;
-  const activePlanetName = currentPlanetId ? getPlanetName(currentSystemSeed, currentPlanetId) : 'Sol';
+  const planetIdsInSystem = useMemo(() => solarSystem ? solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet').map((p) => p.id) : [], [solarSystem]);
+  const activePlanetName = useMemo(() => {
+    if (!currentPlanetId) return 'SOL';
+    return getPlanetName(currentSystemSeed, currentPlanetId, planetIdsInSystem);
+  }, [currentPlanetId, currentSystemSeed, planetIdsInSystem]);
 
   return (
     <motion.div 
@@ -833,6 +851,16 @@ export default function App() {
 
       {/* Ship UI */}
       {isShipMode && <ShipUI onExit={handleExitShip} userData={userData} solarSystem={solarSystem} currentPlanetId={currentPlanetId} setCurrentPlanetId={setCurrentPlanetId} />}
+
+      {/* 3D Minimap (ship mode only) */}
+      {isShipMode && (
+        <Minimap3D
+          solarSystem={solarSystem}
+          systemSeed={currentSystemSeed}
+          selfAbsPos={solarSystem ? selfAbsPosRef.current : null}
+          isMobile={isMobile}
+        />
+      )}
 
       {/* UI Overlay */}
       <div className="absolute top-0 left-0 w-full p-6 pointer-events-none flex justify-between items-start z-40">
@@ -974,33 +1002,7 @@ export default function App() {
         </AnimatePresence>
       </div>
 
-      <AnimatePresence>
-        {loadingStatus.active && (
-          <motion.div
-            initial={{ opacity: 1 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[80] bg-black flex items-center justify-center pointer-events-auto overflow-hidden"
-          >
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.14),transparent_35%),linear-gradient(180deg,rgba(8,47,73,0.26),transparent_50%)]" />
-            <div className="absolute inset-0 opacity-30">
-              <div className="sleek-grid h-full w-full" />
-            </div>
-            <div className="absolute h-[420px] w-[420px] rounded-full border border-cyan-400/10 animate-pulse-slow" />
-            <div className="w-full max-w-md px-8 relative">
-              <div className="flex items-center justify-center gap-3 mb-6">
-                <LoaderCircle size={28} className="text-cyan-400 animate-spin" />
-                <div className="text-white text-2xl font-black tracking-wider">PLANET:US</div>
-              </div>
-              <div className="text-center text-zinc-400 text-sm mb-4 tracking-[0.18em] uppercase">{loadingStatus.label}</div>
-              <div className="h-3 bg-zinc-800 rounded-full overflow-hidden border border-zinc-700">
-                <motion.div className="h-full bg-cyan-500" initial={{ width: 0 }} animate={{ width: `${Math.round(loadingStatus.progress * 100)}%` }} />
-              </div>
-              <div className="text-center text-cyan-300 text-xs mt-3 font-mono tracking-[0.28em]">{Math.round(loadingStatus.progress * 100)}% SYNCHRONIZED</div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <LoadingScreen active={loadingStatus.active} progress={loadingStatus.progress} label={loadingStatus.label} />
 
       {showMarket && <MarketUI onClose={() => setShowMarket(false)} userData={userData} />}
 
@@ -1139,18 +1141,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <OrbitBanner message={welcomeMessage} />
-
-      {solarSystem && isShipMode && (
-        <SystemMinimap
-          solarSystem={solarSystem}
-          currentPlanetId={currentPlanetId}
-          selfAbsolutePosition={selfAbsolutePosition}
-          cameraQuaternion={minimapCameraQuaternionRef.current}
-          players={minimapPlayers}
-          planetNames={planetNameMap}
-        />
-      )}
+      <OrbitNameToast name={orbitToastName} nonce={orbitToastNonce} />
 
       {/* Spawn Ship Button */}
       <AnimatePresence>

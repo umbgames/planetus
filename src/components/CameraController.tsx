@@ -2,7 +2,6 @@ import React, { useRef, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { minimapCameraQuaternionRef } from '../services/shipStore';
 
 interface CameraControllerProps {
   trackedSatellite: any | null;
@@ -21,7 +20,6 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
   const skyColor = useMemo(() => new THREE.Color('#cda077'), []);
   
   useFrame((state) => {
-    minimapCameraQuaternionRef.current.copy(camera.quaternion);
     const dist = camera.position.length();
     const R = currentPlanetId ? planetRadius : 8; // Planet radius or Sun radius
     const altitude = dist - R;

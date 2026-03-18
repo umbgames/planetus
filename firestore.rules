@@ -87,7 +87,7 @@ service cloud.firestore {
 
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'displayName', 'commonResources', 'rareResources', 'hasSatellite', 'satelliteHealth', 'machineGunAmmo', 'missileAmmo', 'createdAt']) &&
-             data.keys().hasOnly(['uid', 'displayName', 'commonResources', 'rareResources', 'hasSatellite', 'satelliteHealth', 'satelliteDestroyedAt', 'machineGunAmmo', 'missileAmmo', 'createdAt', 'playerSave', 'liveState']) &&
+             data.keys().hasOnly(['uid', 'displayName', 'commonResources', 'rareResources', 'hasSatellite', 'satelliteHealth', 'satelliteDestroyedAt', 'machineGunAmmo', 'missileAmmo', 'createdAt', 'playerSave']) &&
              data.uid is string && data.uid == request.auth.uid &&
              data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 50 &&
              data.commonResources is number && data.commonResources >= 0 &&
@@ -105,18 +105,7 @@ service cloud.firestore {
                data.playerSave.position.keys().hasAll(['x', 'y', 'z']) &&
                data.playerSave.rotation.keys().hasAll(['x', 'y', 'z']) &&
                data.playerSave.position.x is number && data.playerSave.position.y is number && data.playerSave.position.z is number &&
-               data.playerSave.rotation.x is number && data.playerSave.rotation.y is number && data.playerSave.rotation.z is number)) &&
-             (!('liveState' in data) || data.liveState == null || (data.liveState is map &&
-               data.liveState.keys().hasAll(['systemSeed', 'currentPlanetId', 'position', 'rotation', 'velocity', 'updatedAt']) &&
-               data.liveState.systemSeed is string &&
-               (data.liveState.currentPlanetId == null || data.liveState.currentPlanetId is string) &&
-               data.liveState.position is map && data.liveState.rotation is map &&
-               data.liveState.position.keys().hasAll(['x', 'y', 'z']) &&
-               data.liveState.rotation.keys().hasAll(['x', 'y', 'z']) &&
-               data.liveState.position.x is number && data.liveState.position.y is number && data.liveState.position.z is number &&
-               data.liveState.rotation.x is number && data.liveState.rotation.y is number && data.liveState.rotation.z is number &&
-               data.liveState.velocity is number &&
-               isValidDateString(data.liveState.updatedAt)));
+               data.playerSave.rotation.x is number && data.playerSave.rotation.y is number && data.playerSave.rotation.z is number));
     }
 
     function isValidBase(data) {
@@ -152,6 +141,18 @@ service cloud.firestore {
              data.position.x is number && data.position.y is number && data.position.z is number &&
              data.active is bool &&
              isValidDateString(data.createdAt);
+    }
+
+    function isValidPlayerPosition(data) {
+      return data.keys().hasAll(['uid', 'name', 'systemSeed', 'pos', 'rot']) &&
+             data.keys().hasOnly(['uid', 'name', 'systemSeed', 'pos', 'rot', 'updatedAt']) &&
+             data.uid is string && data.uid == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 50 &&
+             data.systemSeed is string && data.systemSeed.size() > 0 && data.systemSeed.size() < 120 &&
+             data.pos is map && data.pos.keys().hasAll(['x', 'y', 'z']) &&
+             data.pos.x is number && data.pos.y is number && data.pos.z is number &&
+             data.rot is map && data.rot.keys().hasAll(['x', 'y', 'z']) &&
+             data.rot.x is number && data.rot.y is number && data.rot.z is number;
     }
 
     // ===============================================================
@@ -214,6 +215,12 @@ service cloud.firestore {
         (request.resource.data.active == true && resource.data.active == false)
       );
       allow delete: if isAuthenticated();
+    }
+
+    match /player_positions/{userId} {
+      // Shared, low-trust positional telemetry for minimap.
+      allow read: if true;
+      allow create, update, delete: if isOwner(userId) && isValidPlayerPosition(request.resource.data);
     }
   }
 }
