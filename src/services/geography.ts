@@ -1,6 +1,11 @@
 import { createNoise3D } from 'simplex-noise';
 import * as THREE from 'three';
 import { createPRNG, hashCombine, hashToUnitFloat, seededRange } from '../utils/random';
+import {
+  hasValidPlanetTextures,
+  loadPlanetTextures,
+  putPlanetTextures,
+} from './planetTextureCache';
 
 export interface Region {
   id: string;
@@ -81,6 +86,30 @@ export class GeographyManager {
     tex.needsUpdate = true;
   }
 
+  private configureDisplacementTexture(tex: THREE.CanvasTexture, repeat = false) {
+    tex.wrapS = repeat ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
+    tex.wrapT = repeat ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
+    tex.generateMipmaps = true;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.anisotropy = 8;
+    tex.needsUpdate = true;
+  }
+
+  private adoptPersistentTextures(
+    texture: THREE.Texture,
+    displacementMap: THREE.Texture,
+    detailTexture: THREE.Texture
+  ) {
+    this.texture = texture as THREE.CanvasTexture;
+    this.displacementMap = displacementMap as THREE.CanvasTexture;
+    this.detailTexture = detailTexture as THREE.CanvasTexture;
+
+    this.configureTexture(this.texture, false);
+    this.configureDisplacementTexture(this.displacementMap, false);
+    this.configureTexture(this.detailTexture, true);
+  }
+
   setSeed(
     seed: string,
     noiseScale: number = 1.5,
@@ -117,7 +146,7 @@ export class GeographyManager {
   ) {
     const manager = new GeographyManager();
     manager.setSeed(seed, noiseScale, landThreshold, textureDetail);
-    manager.initializeTopicRegions();
+    void manager.initializeTopicRegions();
     return manager;
   }
 
@@ -154,17 +183,17 @@ export class GeographyManager {
     return this.getTerrain(x, y, z) > this.landThreshold;
   }
 
-  initializeTopicRegions() {
-    const cached = geometryCache.get(this.getCacheKey());
-    if (cached) {
-      this.regions = cached.regions.map((region) => ({
+  async initializeTopicRegions() {
+    const memoryCached = geometryCache.get(this.getCacheKey());
+    if (memoryCached) {
+      this.regions = memoryCached.regions.map((region) => ({
         ...region,
         center: region.center.clone(),
         color: region.color.clone(),
       }));
-      this.texture = cached.texture;
-      this.displacementMap = cached.displacementMap;
-      this.detailTexture = cached.detailTexture;
+      this.texture = memoryCached.texture;
+      this.displacementMap = memoryCached.displacementMap;
+      this.detailTexture = memoryCached.detailTexture;
 
       if (this.onTextureUpdate && this.texture && this.displacementMap && this.detailTexture) {
         this.onTextureUpdate(this.texture, this.displacementMap, this.detailTexture);
@@ -172,7 +201,9 @@ export class GeographyManager {
       return;
     }
 
-    if (this.regions.length > 0 && this.texture && this.displacementMap && this.detailTexture) return;
+    if (this.regions.length > 0 && this.texture && this.displacementMap && this.detailTexture) {
+      return;
+    }
 
     const TOPICS = [
       { name: 'Tech', zone: 'high' as const },
@@ -219,6 +250,35 @@ export class GeographyManager {
     }
 
     this.regions = newRegions;
+
+    const cacheKey = this.getCacheKey();
+    if (hasValidPlanetTextures(cacheKey)) {
+      const persistent = await loadPlanetTextures(cacheKey);
+      if (persistent) {
+        this.adoptPersistentTextures(
+          persistent.texture,
+          persistent.displacementMap,
+          persistent.detailTexture
+        );
+
+        geometryCache.set(cacheKey, {
+          regions: this.regions.map((region) => ({
+            ...region,
+            center: region.center.clone(),
+            color: region.color.clone(),
+          })),
+          texture: this.texture,
+          displacementMap: this.displacementMap,
+          detailTexture: this.detailTexture,
+        });
+
+        if (this.onTextureUpdate && this.texture && this.displacementMap && this.detailTexture) {
+          this.onTextureUpdate(this.texture, this.displacementMap, this.detailTexture);
+        }
+        return;
+      }
+    }
+
     this.generateTexture();
   }
 
@@ -380,7 +440,6 @@ export class GeographyManager {
     const detailData = this.detailImgData!.data;
     const palette = this.getBiomePalette();
 
-    // Base color map + displacement map
     for (let y = 0; y < height; y++) {
       const v = y / height;
       const phi = v * Math.PI;
@@ -491,7 +550,6 @@ export class GeographyManager {
       }
     }
 
-    // Dedicated close-up detail texture
     for (let y = 0; y < detailHeight; y++) {
       const v = y / detailHeight;
 
@@ -543,20 +601,16 @@ export class GeographyManager {
     if (!this.displacementMap) {
       this.displacementMap = new THREE.CanvasTexture(this.dispCanvas!);
     }
-    this.displacementMap.wrapS = THREE.ClampToEdgeWrapping;
-    this.displacementMap.wrapT = THREE.ClampToEdgeWrapping;
-    this.displacementMap.generateMipmaps = true;
-    this.displacementMap.minFilter = THREE.LinearMipmapLinearFilter;
-    this.displacementMap.magFilter = THREE.LinearFilter;
-    this.displacementMap.anisotropy = 8;
-    this.displacementMap.needsUpdate = true;
+    this.configureDisplacementTexture(this.displacementMap, false);
 
     if (!this.detailTexture) {
       this.detailTexture = new THREE.CanvasTexture(this.detailCanvas!);
     }
     this.configureTexture(this.detailTexture, true);
 
-    geometryCache.set(this.getCacheKey(), {
+    const cacheKey = this.getCacheKey();
+
+    geometryCache.set(cacheKey, {
       regions: this.regions.map((region) => ({
         ...region,
         center: region.center.clone(),
@@ -566,6 +620,10 @@ export class GeographyManager {
       displacementMap: this.displacementMap,
       detailTexture: this.detailTexture,
     });
+
+    if (this.canvas && this.dispCanvas && this.detailCanvas) {
+      putPlanetTextures(cacheKey, this.canvas, this.dispCanvas, this.detailCanvas);
+    }
 
     if (this.onTextureUpdate) {
       this.onTextureUpdate(this.texture, this.displacementMap, this.detailTexture);
