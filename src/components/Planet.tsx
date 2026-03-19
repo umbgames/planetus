@@ -101,15 +101,19 @@ const Clouds = memo(function Clouds({
   serverTime = 0,
   density = 0.75,
   speed = 0.025,
-  rotationSpeed = 0.02
+  rotationSpeed = 0.02,
 }: CloudsProps) {
   const cloudsRef = useRef<THREE.Mesh>(null);
-  const uniforms = useMemo(() => ({
-    uTime: { value: 0 },
-    uDensity: { value: density },
-    uSeedA: { value: seededRange(hashCombine(seed, 'cloudA'), 0, 1) },
-    uSeedB: { value: seededRange(hashCombine(seed, 'cloudB'), 0, 1) },
-  }), [seed, density]);
+
+  const uniforms = useMemo(
+    () => ({
+      uTime: { value: 0 },
+      uDensity: { value: density },
+      uSeedA: { value: seededRange(hashCombine(seed, 'cloudA'), 0, 1) },
+      uSeedB: { value: seededRange(hashCombine(seed, 'cloudB'), 0, 1) },
+    }),
+    [seed, density]
+  );
 
   const cloudSegments = isMobile ? 28 : 44;
   const hazeSegments = isMobile ? 20 : 30;
@@ -117,6 +121,7 @@ const Clouds = memo(function Clouds({
   useFrame((state) => {
     const t = serverTime || state.clock.elapsedTime;
     uniforms.uTime.value = t * Math.max(0.01, speed * 24);
+
     if (cloudsRef.current) {
       cloudsRef.current.rotation.y = t * rotationSpeed;
       cloudsRef.current.rotation.z = t * rotationSpeed * 0.35;
@@ -180,12 +185,12 @@ export const Planet = memo(function Planet({
   textureDetail = 'enhanced',
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
-  const detailShellRef = useRef<THREE.Mesh>(null);
   const detailMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
   const { camera } = useThree();
 
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
   const [displacementMap, setDisplacementMap] = useState<THREE.CanvasTexture | null>(null);
+  const [detailTexture, setDetailTexture] = useState<THREE.CanvasTexture | null>(null);
   const [segments, setSegments] = useState(isMobile ? 64 : 128);
   const [geographyManager] = useState(() => new GeographyManager());
 
@@ -195,6 +200,7 @@ export const Planet = memo(function Planet({
 
     const nextTexture = geographyManager.texture ?? null;
     const nextDisplacement = geographyManager.displacementMap ?? null;
+    const nextDetail = geographyManager.detailTexture ?? null;
 
     setTexture((prev) => {
       if (prev && prev !== nextTexture) prev.dispose();
@@ -206,14 +212,25 @@ export const Planet = memo(function Planet({
       return nextDisplacement;
     });
 
-    geographyManager.onTextureUpdate = (newTexture, newDisplacementMap) => {
+    setDetailTexture((prev) => {
+      if (prev && prev !== nextDetail) prev.dispose();
+      return nextDetail;
+    });
+
+    geographyManager.onTextureUpdate = (newTexture, newDisplacementMap, newDetailTexture) => {
       setTexture((prev) => {
         if (prev && prev !== newTexture) prev.dispose();
         return newTexture;
       });
+
       setDisplacementMap((prev) => {
         if (prev && prev !== newDisplacementMap) prev.dispose();
         return newDisplacementMap;
+      });
+
+      setDetailTexture((prev) => {
+        if (prev && prev !== newDetailTexture) prev.dispose();
+        return newDetailTexture;
       });
     };
 
@@ -234,9 +251,10 @@ export const Planet = memo(function Planet({
       ? dist < radius * 14 ? 128 : dist < radius * 34 ? 64 : 32
       : dist < radius * 16 ? 256 : dist < radius * 38 ? 128 : 64;
 
-    if (nextSegments !== segments) setSegments(nextSegments);
+    if (nextSegments !== segments) {
+      setSegments(nextSegments);
+    }
 
-    // Fade in tiled detail once player is below / through cloud layer
     if (detailMaterialRef.current) {
       const cloudOuterRadius = radius * 1.12;
       const detailStart = cloudOuterRadius * 1.02;
@@ -249,33 +267,38 @@ export const Planet = memo(function Planet({
 
   const atmosphereSegments = useMemo(() => (isMobile ? 24 : 32), [isMobile]);
 
-  const materialProps = useMemo(() => ({
-    map: texture,
-    displacementMap,
-    displacementScale: isMobile ? 0.4 : 0.62,
-    bumpMap: displacementMap,
-    bumpScale: isMobile ? 0.1 : 0.17,
-    roughness: 0.88,
-    metalness: 0.04,
-  }), [texture, displacementMap, isMobile]);
+  const materialProps = useMemo(
+    () => ({
+      map: texture,
+      displacementMap,
+      displacementScale: isMobile ? 0.4 : 0.62,
+      bumpMap: displacementMap,
+      bumpScale: isMobile ? 0.1 : 0.17,
+      roughness: 0.88,
+      metalness: 0.04,
+    }),
+    [texture, displacementMap, isMobile]
+  );
 
   const tiledTexture = useMemo(() => {
-    if (!texture) return null;
-    const tex = texture.clone();
+    if (!detailTexture) return null;
+
+    const tex = detailTexture.clone();
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(isMobile ? 8 : 12, isMobile ? 4 : 6);
+    tex.repeat.set(isMobile ? 8 : 12, isMobile ? 8 : 12);
     tex.anisotropy = 8;
     tex.needsUpdate = true;
     return tex;
-  }, [texture, isMobile]);
+  }, [detailTexture, isMobile]);
 
   const tiledDisplacement = useMemo(() => {
     if (!displacementMap) return null;
+
     const tex = displacementMap.clone();
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(isMobile ? 8 : 12, isMobile ? 4 : 6);
+    tex.repeat.set(isMobile ? 8 : 12, isMobile ? 8 : 12);
     tex.anisotropy = 8;
     tex.needsUpdate = true;
     return tex;
@@ -290,15 +313,13 @@ export const Planet = memo(function Planet({
 
   return (
     <group>
-      {/* Base orbital texture */}
       <mesh ref={planetRef} castShadow receiveShadow frustumCulled>
         <sphereGeometry args={[radius, segments, segments]} />
         <meshStandardMaterial {...materialProps} />
       </mesh>
 
-      {/* Near-surface tiled detail shell */}
       {tiledTexture && tiledDisplacement && (
-        <mesh ref={detailShellRef} frustumCulled>
+        <mesh frustumCulled>
           <sphereGeometry args={[radius * 1.002, segments, segments]} />
           <meshStandardMaterial
             ref={detailMaterialRef}
@@ -317,13 +338,12 @@ export const Planet = memo(function Planet({
         </mesh>
       )}
 
-      {/* Higher atmosphere */}
       <mesh frustumCulled>
         <sphereGeometry args={[radius * 1.19, atmosphereSegments, atmosphereSegments]} />
         <meshBasicMaterial
           color="#5e93ff"
           transparent
-          opacity={0.10}
+          opacity={0.1}
           side={THREE.BackSide}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
