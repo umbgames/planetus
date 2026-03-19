@@ -195,46 +195,29 @@ export const Planet = memo(function Planet({
   const [geographyManager] = useState(() => new GeographyManager());
 
   useEffect(() => {
-    geographyManager.setSeed(seed, noiseScale, landThreshold, textureDetail);
-    geographyManager.initializeTopicRegions();
+    let cancelled = false;
 
-    const nextTexture = geographyManager.texture ?? null;
-    const nextDisplacement = geographyManager.displacementMap ?? null;
-    const nextDetail = geographyManager.detailTexture ?? null;
+    const run = async () => {
+      geographyManager.setSeed(seed, noiseScale, landThreshold, textureDetail);
+      await geographyManager.initializeTopicRegions();
+      if (cancelled) return;
 
-    setTexture((prev) => {
-      if (prev && prev !== nextTexture) prev.dispose();
-      return nextTexture;
-    });
+      setTexture(geographyManager.texture ?? null);
+      setDisplacementMap(geographyManager.displacementMap ?? null);
+      setDetailTexture(geographyManager.detailTexture ?? null);
 
-    setDisplacementMap((prev) => {
-      if (prev && prev !== nextDisplacement) prev.dispose();
-      return nextDisplacement;
-    });
-
-    setDetailTexture((prev) => {
-      if (prev && prev !== nextDetail) prev.dispose();
-      return nextDetail;
-    });
-
-    geographyManager.onTextureUpdate = (newTexture, newDisplacementMap, newDetailTexture) => {
-      setTexture((prev) => {
-        if (prev && prev !== newTexture) prev.dispose();
-        return newTexture;
-      });
-
-      setDisplacementMap((prev) => {
-        if (prev && prev !== newDisplacementMap) prev.dispose();
-        return newDisplacementMap;
-      });
-
-      setDetailTexture((prev) => {
-        if (prev && prev !== newDetailTexture) prev.dispose();
-        return newDetailTexture;
-      });
+      geographyManager.onTextureUpdate = (newTexture, newDisplacementMap, newDetailTexture) => {
+        if (cancelled) return;
+        setTexture(newTexture);
+        setDisplacementMap(newDisplacementMap);
+        setDetailTexture(newDetailTexture);
+      };
     };
 
+    void run();
+
     return () => {
+      cancelled = true;
       geographyManager.onTextureUpdate = null;
     };
   }, [geographyManager, seed, noiseScale, landThreshold, textureDetail]);
@@ -244,7 +227,6 @@ export const Planet = memo(function Planet({
 
     const worldPos = new THREE.Vector3();
     planetRef.current.getWorldPosition(worldPos);
-
     const dist = camera.position.distanceTo(worldPos);
 
     const nextSegments = isMobile
