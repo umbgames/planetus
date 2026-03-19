@@ -84,7 +84,6 @@ const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, 
           cloudSpeed={0.015}
           cloudRotationSpeed={0.012}
           textureDetail={getTextureDetailForQuality(quality)}
-          visualClass={moon.visualClass}
         />
       </group>
     </group>
@@ -135,37 +134,33 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
       onPointerOut={() => { document.body.style.cursor = 'auto'; }}
     >
       <group ref={spinRef}>
-        {planet.ring && (
-          <RingMesh
-            innerRadius={getScaledPlanetRadius(planet.ring.innerRadius)}
-            outerRadius={getScaledPlanetRadius(planet.ring.outerRadius)}
-            color={planet.ring.color}
-            opacity={planet.ring.opacity}
-          />
-        )}
+        {isActive && (
+          <>
+            {planet.ring && (
+              <RingMesh
+                innerRadius={getScaledPlanetRadius(planet.ring.innerRadius)}
+                outerRadius={getScaledPlanetRadius(planet.ring.outerRadius)}
+                color={planet.ring.color}
+                opacity={planet.ring.opacity}
+              />
+            )}
 
-        {isActive ? (
-          <Planet
-            radius={scaledRadius}
-            isMobile={isMobile}
-            seed={planet.seed}
-            noiseScale={planet.noiseScale}
-            landThreshold={planet.landThreshold}
-            showClouds={planet.hasClouds}
-            cloudDensity={planet.cloudDensity}
-            cloudSpeed={planet.cloudSpeed}
-            cloudRotationSpeed={planet.cloudRotationSpeed}
-            textureDetail={getTextureDetailForQuality(quality)}
-            visualClass={planet.visualClass}
-          />
-        ) : (
-          <mesh>
-            <sphereGeometry args={[scaledRadius, quality === 'low' ? 10 : quality === 'medium' ? 14 : 18, quality === 'low' ? 10 : quality === 'medium' ? 14 : 18]} />
-            <meshStandardMaterial color={planet.ring ? '#8a7f72' : '#6b6b75'} emissive={planet.ring ? '#3d342b' : '#202028'} emissiveIntensity={0.18} roughness={1} />
-          </mesh>
-        )}
+            <Planet
+              radius={scaledRadius}
+              isMobile={isMobile}
+              seed={planet.seed}
+              noiseScale={planet.noiseScale}
+              landThreshold={planet.landThreshold}
+              showClouds={planet.hasClouds}
+              cloudDensity={planet.cloudDensity}
+              cloudSpeed={planet.cloudSpeed}
+              cloudRotationSpeed={planet.cloudRotationSpeed}
+              textureDetail={getTextureDetailForQuality(quality)}
+            />
 
-        {planet.moons.map((moon) => <OrbitingMoon key={moon.id} moon={moon} parentPlanet={planet} isMobile={isMobile} quality={quality} setCurrentPlanetId={setCurrentPlanetId} />)}
+            {planet.moons.map((moon) => <OrbitingMoon key={moon.id} moon={moon} parentPlanet={planet} isMobile={isMobile} quality={quality} setCurrentPlanetId={setCurrentPlanetId} />)}
+          </>
+        )}
       </group>
     </group>
   );

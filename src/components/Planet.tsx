@@ -169,8 +169,6 @@ interface PlanetProps {
   cloudSpeed?: number;
   cloudRotationSpeed?: number;
   textureDetail?: 'standard' | 'enhanced';
-  visualClass?: 'lush' | 'oceanic' | 'desert' | 'arid_rocky' | 'barren_gray' | 'icy' | 'volcanic';
-  atmosphereColor?: string;
 }
 
 export const Planet = memo(function Planet({
@@ -185,8 +183,6 @@ export const Planet = memo(function Planet({
   cloudSpeed = 0.02,
   cloudRotationSpeed = 0.02,
   textureDetail = 'enhanced',
-  visualClass = 'lush',
-  atmosphereColor,
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
   const detailMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
@@ -202,7 +198,7 @@ export const Planet = memo(function Planet({
     let cancelled = false;
 
     const run = async () => {
-      geographyManager.setSeed(seed, noiseScale, landThreshold, textureDetail, visualClass);
+      geographyManager.setSeed(seed, noiseScale, landThreshold, textureDetail);
       await geographyManager.initializeTopicRegions();
       if (cancelled) return;
 
@@ -224,7 +220,7 @@ export const Planet = memo(function Planet({
       cancelled = true;
       geographyManager.onTextureUpdate = null;
     };
-  }, [geographyManager, seed, noiseScale, landThreshold, textureDetail, visualClass]);
+  }, [geographyManager, seed, noiseScale, landThreshold, textureDetail]);
 
   useFrame(() => {
     if (!planetRef.current) return;
@@ -252,20 +248,6 @@ export const Planet = memo(function Planet({
   });
 
   const atmosphereSegments = useMemo(() => (isMobile ? 24 : 32), [isMobile]);
-
-  const resolvedAtmosphereColor = useMemo(() => {
-    if (atmosphereColor) return atmosphereColor;
-    const fallback: Record<NonNullable<PlanetProps['visualClass']>, string> = {
-      lush: '#8ad3ff',
-      oceanic: '#6fb8ff',
-      desert: '#ffd39a',
-      arid_rocky: '#d8b08a',
-      barren_gray: '#c8d0e0',
-      icy: '#dff6ff',
-      volcanic: '#ff8a6b',
-    };
-    return fallback[visualClass];
-  }, [atmosphereColor, visualClass]);
 
   const materialProps = useMemo(
     () => ({

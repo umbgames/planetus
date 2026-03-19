@@ -9,7 +9,8 @@ export interface TextureKitchenProgress {
 
 function warmBodyTexture(id: string, noiseScale: number, landThreshold: number, visualClass: PlanetData["visualClass"] | MoonData["visualClass"], width: number, height: number) {
   const gm = new GeographyManager();
-  gm.setSeed(id, noiseScale, landThreshold, width >= 1536 ? 'enhanced' : 'standard', visualClass as any);
+  gm.setSeed(id, noiseScale, landThreshold, visualClass);
+  gm.setTextureResolution(width, height);
   gm.initializeTopicRegions();
   gm.generateTexture();
 }

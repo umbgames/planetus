@@ -12,7 +12,6 @@ import { ShipUpgradeUI } from './components/ShipUpgradeUI';
 import { CameraController } from './components/CameraController';
 import { Ship } from './components/Ship';
 import { ShipUI } from './components/ShipUI';
-import { Planet } from './components/Planet';
 import { MarketUI } from './components/MarketUI';
 import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp, ArrowRightLeft, MonitorPlay, Gauge, Orbit, Zap, Settings, X, LoaderCircle, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -184,96 +183,6 @@ function GalaxyStarField({
 }
 
 
-function SystemPlanetImpostors({
-  solarSystem,
-  currentPlanetId,
-  quality = 'low',
-}: {
-  solarSystem: SolarSystemData | null;
-  currentPlanetId: string | null;
-  quality?: 'low' | 'medium' | 'high';
-}) {
-  const { camera } = useThree();
-  const groupRef = useRef<THREE.Group>(null);
-  const orbitMap = useMemo(() => (solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>()), [solarSystem]);
-
-  useFrame((state) => {
-    if (!groupRef.current || !solarSystem) return;
-    const time = state.clock.getElapsedTime();
-    const bodies = solarSystem.bodies.filter((body): body is PlanetData => body.type === 'planet');
-    const anchor = getBodyWorldPosition(currentPlanetId, solarSystem, time, orbitMap, new THREE.Vector3());
-
-    groupRef.current.children.forEach((child, index) => {
-      const planet = bodies[index];
-      if (!planet) return;
-      const mesh = child as THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
-      const worldPos = getBodyWorldPosition(planet.id, solarSystem, time, orbitMap, new THREE.Vector3());
-      const relativePos = worldPos.sub(anchor);
-      mesh.position.copy(relativePos);
-
-      const distance = camera.position.distanceTo(relativePos);
-      const isCurrent = planet.id === currentPlanetId;
-      const revealStart = Math.max(260, getScaledPlanetRadius(planet.radius) * 48);
-      const revealEnd = Math.max(48, getScaledPlanetRadius(planet.radius) * 12);
-      const detailMix = 1 - THREE.MathUtils.smoothstep(distance, revealEnd, revealStart);
-
-      const baseScale = isCurrent ? getScaledPlanetRadius(planet.radius) : (quality === 'low' ? 1.6 : quality === 'medium' ? 2.1 : 2.6);
-      const scale = isCurrent
-        ? baseScale
-        : baseScale + getScaledPlanetRadius(planet.radius) * (quality === 'low' ? 0.12 : 0.16);
-      mesh.scale.setScalar(scale * (isCurrent ? 1 : (0.92 + (1 - detailMix) * 0.18)));
-      mesh.material.opacity = isCurrent ? 0 : THREE.MathUtils.clamp(0.2 + (1 - detailMix) * 0.55, 0.1, 0.82);
-    });
-  });
-
-  if (!solarSystem) return null;
-  const planets = solarSystem.bodies.filter((body): body is PlanetData => body.type === 'planet');
-
-  return (
-    <group ref={groupRef}>
-      {planets.map((planet) => (
-        <mesh key={planet.id} visible={planet.id !== currentPlanetId}>
-          <sphereGeometry args={[1, 8, 8]} />
-          <meshBasicMaterial color="#f5f7ff" transparent opacity={0.5} toneMapped={false} />
-        </mesh>
-      ))}
-    </group>
-  );
-}
-
-
-function ActivePlanetShell({
-  solarSystem,
-  currentPlanetId,
-  isMobile,
-  quality = 'medium',
-}: {
-  solarSystem: SolarSystemData | null;
-  currentPlanetId: string | null;
-  isMobile: boolean;
-  quality?: 'low' | 'medium' | 'high';
-}) {
-  const planet = useMemo(() => solarSystem?.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId) ?? null, [solarSystem, currentPlanetId]);
-
-  if (!planet) return null;
-
-  return (
-    <Planet
-      radius={getScaledPlanetRadius(planet.radius)}
-      isMobile={isMobile}
-      seed={planet.seed}
-      noiseScale={planet.noiseScale}
-      landThreshold={planet.landThreshold}
-      showClouds={planet.hasClouds}
-      cloudDensity={planet.cloudDensity}
-      cloudSpeed={planet.cloudSpeed}
-      cloudRotationSpeed={planet.cloudRotationSpeed}
-      textureDetail={getTextureDetailForQuality(quality)}
-      visualClass={planet.visualClass}
-    />
-  );
-}
-
 function SystemTransitionController({
   transition,
   onCommit,
@@ -434,7 +343,7 @@ export default function App() {
     const firstPlanet = planets[0];
 
     if (firstPlanet) {
-      geographyManager.setSeed(firstPlanet.seed, firstPlanet.noiseScale, firstPlanet.landThreshold, getTextureDetailForQuality(qualityPreset), firstPlanet.visualClass);
+      geographyManager.setSeed(firstPlanet.seed, firstPlanet.noiseScale, firstPlanet.landThreshold);
       setCurrentPlanetId(null);
     } else {
       setCurrentPlanetId(null);
@@ -442,34 +351,20 @@ export default function App() {
 
     let cancelled = false;
 
-    const queue = planets.flatMap((planet) => [{
-      seed: planet.seed,
-      noiseScale: planet.noiseScale,
-      landThreshold: planet.landThreshold,
-      visualClass: planet.visualClass,
-      label: planet.id.replace('planet_', 'PLANET-'),
-    }, ...planet.moons.map((moon) => ({
-      seed: moon.seed,
-      noiseScale: moon.noiseScale,
-      landThreshold: moon.landThreshold,
-      visualClass: moon.visualClass,
-      label: moon.id.replace('planet_', 'MOON-'),
-    }))]);
-
     const warmTextures = async () => {
-      for (let i = 0; i < queue.length; i++) {
-        const body = queue[i];
+      for (let i = 0; i < planets.length; i++) {
+        const planet = planets[i];
         if (cancelled) return;
 
         setLoadingStatus({
           active: true,
-          progress: i / Math.max(queue.length, 1),
-          label: `Generating ${body.label} in ${currentSystemSeed}...`,
+          progress: i / Math.max(planets.length, 1),
+          label: `Generating ${planet.id.replace('planet_', 'PLANET-')} in ${currentSystemSeed}...`,
         });
 
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() => {
-            GeographyManager.warmCache(body.seed, body.noiseScale, body.landThreshold, getTextureDetailForQuality(qualityPreset), body.visualClass);
+            GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold, getTextureDetailForQuality(qualityPreset));
             resolve();
           });
         });
@@ -488,47 +383,13 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [currentSystemSeed]);
-
-  useEffect(() => {
-    if (!solarSystem) return;
-    const planets = solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet');
-    const queue = planets.flatMap((planet) => [{
-      seed: planet.seed,
-      noiseScale: planet.noiseScale,
-      landThreshold: planet.landThreshold,
-      visualClass: planet.visualClass,
-    }, ...planet.moons.map((moon) => ({
-      seed: moon.seed,
-      noiseScale: moon.noiseScale,
-      landThreshold: moon.landThreshold,
-      visualClass: moon.visualClass,
-    }))]);
-
-    let cancelled = false;
-    const refreshQualityCache = async () => {
-      for (const body of queue) {
-        if (cancelled) return;
-        await new Promise<void>((resolve) => {
-          requestAnimationFrame(() => {
-            GeographyManager.warmCache(body.seed, body.noiseScale, body.landThreshold, getTextureDetailForQuality(qualityPreset), body.visualClass);
-            resolve();
-          });
-        });
-      }
-    };
-
-    void refreshQualityCache();
-    return () => {
-      cancelled = true;
-    };
-  }, [qualityPreset, solarSystem]);
+  }, [currentSystemSeed, qualityPreset]);
 
   useEffect(() => {
     if (solarSystem && currentPlanetId) {
       const planet = solarSystem.bodies.find((b) => b.id === currentPlanetId) as PlanetData;
       if (planet) {
-        geographyManager.setSeed(planet.seed, planet.noiseScale, planet.landThreshold, getTextureDetailForQuality(qualityPreset), planet.visualClass);
+        geographyManager.setSeed(planet.seed, planet.noiseScale, planet.landThreshold, getTextureDetailForQuality(qualityPreset));
         geographyManager.initializeTopicRegions();
 
         const planetName = planet.id.replace('planet_', 'PLANET-');
@@ -996,20 +857,17 @@ export default function App() {
           onComplete={completeSystemTransition}
         />
 
-        {!isShipMode && solarSystem && (
+        {solarSystem && (
           <SolarSystemView
-            key={currentSystemSeed}
+            key={`${currentSystemSeed}:${qualityPreset}:${isShipMode ? 'ship' : 'orbit'}`}
             data={solarSystem}
             isMobile={isMobile}
             currentPlanetId={currentPlanetId}
             setCurrentPlanetId={setCurrentPlanetId}
-            showOrbitRings={showOrbitRings}
+            showOrbitRings={!isShipMode && showOrbitRings}
             quality={qualityPreset}
           />
         )}
-
-        {isShipMode && currentPlanetId && <ActivePlanetShell solarSystem={solarSystem} currentPlanetId={currentPlanetId} isMobile={isMobile} quality={qualityPreset} />}
-        {isShipMode && <SystemPlanetImpostors solarSystem={solarSystem} currentPlanetId={currentPlanetId} quality={qualityPreset} />}
 
         <Satellite
           satellites={topSatellites}
