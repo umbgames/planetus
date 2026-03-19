@@ -14,6 +14,7 @@ interface CloudsProps {
   density?: number;
   speed?: number;
   rotationSpeed?: number;
+  atmosphereColor?: string;
 }
 
 const CLOUD_VERTEX_SHADER = `
@@ -102,6 +103,7 @@ const Clouds = memo(function Clouds({
   density = 0.75,
   speed = 0.025,
   rotationSpeed = 0.02,
+  atmosphereColor = '#8cc7ff',
 }: CloudsProps) {
   const cloudsRef = useRef<THREE.Mesh>(null);
 
@@ -327,7 +329,7 @@ export const Planet = memo(function Planet({
       <mesh frustumCulled>
         <sphereGeometry args={[radius * 1.19, atmosphereSegments, atmosphereSegments]} />
         <meshBasicMaterial
-          color="#5e93ff"
+          color={atmosphereColor}
           transparent
           opacity={0.1}
           side={THREE.BackSide}
@@ -345,6 +347,7 @@ export const Planet = memo(function Planet({
           density={cloudDensity}
           speed={cloudSpeed}
           rotationSpeed={cloudRotationSpeed}
+          atmosphereColor={atmosphereColor}
         />
       )}
 
