@@ -23,7 +23,7 @@ interface CachedGeographyData {
 }
 
 type TextureDetail = 'standard' | 'enhanced';
-type VisualClass = 'lush' | 'oceanic' | 'desert' | 'arid_rocky' | 'barren_gray' | 'icy' | 'volcanic' | 'gas_giant' | 'red_desert';
+type VisualClass = 'lush' | 'oceanic' | 'desert' | 'arid_rocky' | 'barren_gray' | 'icy' | 'volcanic';
 type BiomeName = 'tundra' | 'snow_forest' | 'grassland' | 'forest' | 'desert' | 'jungle';
 
 const geometryCache = new Map<string, CachedGeographyData>();
@@ -117,8 +117,8 @@ export class GeographyManager {
     seed: string,
     noiseScale: number = 1.5,
     landThreshold: number = 0.2,
-    visualClass: VisualClass = 'lush',
-    textureDetail: TextureDetail = 'enhanced'
+    textureDetail: TextureDetail = 'enhanced',
+    visualClass: VisualClass = 'lush'
   ) {
     if (
       this.seed !== seed ||
@@ -148,11 +148,11 @@ export class GeographyManager {
     seed: string,
     noiseScale: number,
     landThreshold: number,
-    visualClass: VisualClass = 'lush',
-    textureDetail: TextureDetail = 'enhanced'
+    textureDetail: TextureDetail = 'enhanced',
+    visualClass: VisualClass = 'lush'
   ) {
     const manager = new GeographyManager();
-    manager.setSeed(seed, noiseScale, landThreshold, visualClass, textureDetail);
+    manager.setSeed(seed, noiseScale, landThreshold, textureDetail, visualClass);
     void manager.initializeTopicRegions();
     return manager;
   }
@@ -364,22 +364,9 @@ export class GeographyManager {
   }
 
   private getBiomePalette() {
-    const palettePresets: Record<VisualClass, { hueShift: number; satShift: number; lightShift: number; waterHue: number; }> = {
-      lush: { hueShift: 0, satShift: 0.08, lightShift: 0.02, waterHue: 0.56 },
-      oceanic: { hueShift: -0.03, satShift: 0.1, lightShift: 0.04, waterHue: 0.6 },
-      desert: { hueShift: -0.08, satShift: 0.03, lightShift: 0.08, waterHue: 0.53 },
-      arid_rocky: { hueShift: -0.05, satShift: -0.02, lightShift: 0.03, waterHue: 0.55 },
-      barren_gray: { hueShift: 0, satShift: -0.28, lightShift: -0.02, waterHue: 0.58 },
-      icy: { hueShift: 0.02, satShift: -0.08, lightShift: 0.12, waterHue: 0.57 },
-      volcanic: { hueShift: -0.12, satShift: 0.14, lightShift: -0.08, waterHue: 0.03 },
-      gas_giant: { hueShift: -0.06, satShift: 0.04, lightShift: 0.1, waterHue: 0.1 },
-      red_desert: { hueShift: -0.15, satShift: 0.12, lightShift: 0.02, waterHue: 0.04 },
-    };
-
-    const preset = palettePresets[this.visualClass];
-    const hueShift = preset.hueShift + seededRange(hashCombine(this.seed, 'biomeHueShift'), -0.035, 0.035);
-    const lightShift = preset.lightShift + seededRange(hashCombine(this.seed, 'biomeLightShift'), -0.06, 0.06);
-    const satShift = preset.satShift + seededRange(hashCombine(this.seed, 'biomeSatShift'), -0.08, 0.08);
+    const hueShift = seededRange(hashCombine(this.seed, 'biomeHueShift'), -0.06, 0.06);
+    const lightShift = seededRange(hashCombine(this.seed, 'biomeLightShift'), -0.08, 0.08);
+    const satShift = seededRange(hashCombine(this.seed, 'biomeSatShift'), -0.1, 0.1);
 
     const mk = (h: number, s: number, l: number) =>
       new THREE.Color().setHSL(
@@ -388,18 +375,39 @@ export class GeographyManager {
         THREE.MathUtils.clamp(l + lightShift, 0, 1)
       );
 
+    const visualTweaks: Record<VisualClass, { hue: number; sat: number; light: number; waterHue: number; waterLight: number }> = {
+      lush: { hue: 0.0, sat: 0.12, light: 0.02, waterHue: 0.0, waterLight: 0.0 },
+      oceanic: { hue: -0.03, sat: 0.08, light: 0.04, waterHue: -0.04, waterLight: 0.06 },
+      desert: { hue: -0.02, sat: 0.08, light: 0.1, waterHue: -0.02, waterLight: -0.02 },
+      arid_rocky: { hue: -0.01, sat: -0.08, light: -0.02, waterHue: 0.01, waterLight: -0.04 },
+      barren_gray: { hue: 0.0, sat: -0.24, light: -0.02, waterHue: 0.0, waterLight: -0.08 },
+      icy: { hue: 0.04, sat: -0.12, light: 0.14, waterHue: 0.04, waterLight: 0.12 },
+      volcanic: { hue: -0.06, sat: 0.1, light: -0.08, waterHue: -0.06, waterLight: -0.12 },
+    };
+
+    const tweak = visualTweaks[this.visualClass];
+    const tint = (color: THREE.Color, isWater = false) => {
+      const next = color.clone();
+      next.offsetHSL(
+        tweak.hue + (isWater ? tweak.waterHue : 0),
+        tweak.sat,
+        tweak.light + (isWater ? tweak.waterLight : 0)
+      );
+      return next;
+    };
+
     return {
-      tundra: mk(this.visualClass === 'volcanic' ? 0.03 : 0.14, 0.22, 0.66),
-      snow_forest: mk(0.54, 0.26, this.visualClass === 'icy' ? 0.84 : 0.77),
-      grassland: mk(this.visualClass === 'red_desert' ? 0.05 : 0.26, this.visualClass === 'barren_gray' ? 0.12 : 0.42, this.visualClass === 'gas_giant' ? 0.6 : 0.48),
-      forest: mk(this.visualClass === 'volcanic' ? 0.05 : 0.32, this.visualClass === 'desert' ? 0.2 : 0.5, this.visualClass === 'barren_gray' ? 0.28 : 0.34),
-      desert: mk(this.visualClass === 'red_desert' ? 0.03 : 0.11, this.visualClass === 'volcanic' ? 0.75 : 0.55, this.visualClass === 'icy' ? 0.72 : 0.58),
-      jungle: mk(this.visualClass === 'volcanic' ? 0.04 : 0.36, this.visualClass === 'lush' ? 0.68 : 0.62, this.visualClass === 'volcanic' ? 0.2 : 0.3),
-      waterDeep: mk(preset.waterHue, this.visualClass === 'barren_gray' ? 0.18 : 0.55, this.visualClass === 'volcanic' ? 0.12 : 0.18),
-      waterShallow: mk(preset.waterHue - 0.04, this.visualClass === 'barren_gray' ? 0.12 : 0.48, this.visualClass === 'volcanic' ? 0.22 : 0.32),
-      shoreline: mk(this.visualClass === 'red_desert' ? 0.04 : 0.13, 0.45, 0.68),
-      mountain: mk(this.visualClass === 'volcanic' ? 0.02 : 0.08, this.visualClass === 'barren_gray' ? 0.06 : 0.12, this.visualClass === 'volcanic' ? 0.28 : 0.62),
-      snowCap: mk(0.56, 0.12, 0.9),
+      tundra: tint(mk(0.14, 0.22, 0.66)),
+      snow_forest: tint(mk(0.54, 0.26, 0.77)),
+      grassland: tint(mk(0.26, 0.42, 0.48)),
+      forest: tint(mk(0.32, 0.5, 0.34)),
+      desert: tint(mk(0.11, 0.55, 0.58)),
+      jungle: tint(mk(0.36, 0.62, 0.3)),
+      waterDeep: tint(mk(0.58, 0.55, 0.18), true),
+      waterShallow: tint(mk(0.54, 0.48, 0.32), true),
+      shoreline: tint(mk(0.13, 0.45, 0.68)),
+      mountain: tint(mk(0.08, 0.12, 0.62)),
+      snowCap: tint(mk(0.56, 0.12, 0.9)),
     };
   }
 
@@ -459,7 +467,6 @@ export class GeographyManager {
     const dispData = this.dispImgData!.data;
     const detailData = this.detailImgData!.data;
     const palette = this.getBiomePalette();
-    const isGasGiant = this.visualClass === 'gas_giant';
 
     for (let y = 0; y < height; y++) {
       const v = y / height;
@@ -476,23 +483,6 @@ export class GeographyManager {
         const idx = (y * width + x) * 4;
         const terrain = this.getTerrain(px, py, pz);
         const elevation = this.getElevation(px, py, pz);
-
-        if (isGasGiant) {
-          const band = Math.sin(py * 18 + this.noise3D(px * 5, py * 5, pz * 5) * 3.5);
-          const storm = this.noise3D(px * 14, py * 9, pz * 14) * 0.18;
-          const tone = THREE.MathUtils.clamp(0.5 + band * 0.32 + storm, 0, 1);
-          const gasColor = palette.desert.clone().lerp(palette.shoreline, tone * 0.55).lerp(palette.mountain, (1 - tone) * 0.2);
-          data[idx] = Math.round(gasColor.r * 255);
-          data[idx + 1] = Math.round(gasColor.g * 255);
-          data[idx + 2] = Math.round(gasColor.b * 255);
-          data[idx + 3] = 255;
-          const dispValue = Math.floor((0.22 + Math.abs(storm) * 0.4) * 255);
-          dispData[idx] = dispValue;
-          dispData[idx + 1] = dispValue;
-          dispData[idx + 2] = dispValue;
-          dispData[idx + 3] = 255;
-          continue;
-        }
 
         if (terrain <= this.landThreshold) {
           const coastFactor = THREE.MathUtils.clamp(

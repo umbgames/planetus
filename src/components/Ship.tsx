@@ -802,34 +802,36 @@ export function Ship({
       </group>
 
       <group ref={shipRef}>
+        <pointLight position={[0, 0.28, -0.4]} intensity={1.4} distance={1.8} color="#8fd3ff" />
+        <pointLight position={[0, 0.05, 1.2]} intensity={1.1} distance={1.4} color="#6ee7ff" />
         <group ref={shipModelRef} position={[0, -0.002, -0.005]} scale={0.01}>
           <mesh position={[0, 0, 0]}>
             <boxGeometry args={[0.6, 0.4, 2.5]} />
-            <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
+            <meshStandardMaterial color="#707784" metalness={0.78} roughness={0.2} emissive="#1b2434" emissiveIntensity={0.32} />
           </mesh>
           <mesh position={[0, 0, -1.5]} rotation={[-Math.PI / 2, 0, 0]}>
             <coneGeometry args={[0.3, 1, 4]} />
-            <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.1} />
+            <meshStandardMaterial color="#626c79" metalness={0.72} roughness={0.24} emissive="#111827" emissiveIntensity={0.24} />
           </mesh>
           <mesh position={[0, 0.3, -0.5]}>
             <boxGeometry args={[0.4, 0.3, 1]} />
-            <meshStandardMaterial color="#00ffff" metalness={1} roughness={0} transparent opacity={0.8} />
+            <meshStandardMaterial color="#8be9ff" emissive="#57d9ff" emissiveIntensity={0.8} metalness={0.85} roughness={0.05} transparent opacity={0.92} />
           </mesh>
           <mesh position={[0, 0, 0.2]}>
             <boxGeometry args={[3.5, 0.05, 1]} />
-            <meshStandardMaterial color="#2a2a2a" metalness={0.8} roughness={0.2} />
+            <meshStandardMaterial color="#5c6472" metalness={0.75} roughness={0.24} emissive="#111827" emissiveIntensity={0.18} />
           </mesh>
           <mesh position={[-0.2, 0.4, 1]}>
             <boxGeometry args={[0.05, 0.8, 0.5]} />
-            <meshStandardMaterial color="#ff3333" metalness={0.5} roughness={0.5} />
+            <meshStandardMaterial color="#ff7a7a" emissive="#ff4d4d" emissiveIntensity={0.45} metalness={0.4} roughness={0.35} />
           </mesh>
           <mesh position={[0.2, 0.4, 1]}>
             <boxGeometry args={[0.05, 0.8, 0.5]} />
-            <meshStandardMaterial color="#ff3333" metalness={0.5} roughness={0.5} />
+            <meshStandardMaterial color="#ff7a7a" emissive="#ff4d4d" emissiveIntensity={0.45} metalness={0.4} roughness={0.35} />
           </mesh>
           <mesh position={[0, 0, 1.26]}>
             <boxGeometry args={[0.4, 0.2, 0.05]} />
-            <meshStandardMaterial color="#00ffff" emissive="#00ffff" emissiveIntensity={3} />
+            <meshStandardMaterial color="#b8f6ff" emissive="#72e8ff" emissiveIntensity={4.5} />
           </mesh>
 
           <Trail width={0.08} length={isMobile ? 2 : 4} color={new THREE.Color('#00ffff')} attenuation={(t) => t * t}>

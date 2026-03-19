@@ -14,7 +14,6 @@ interface CloudsProps {
   density?: number;
   speed?: number;
   rotationSpeed?: number;
-  atmosphereColor?: string;
 }
 
 const CLOUD_VERTEX_SHADER = `
@@ -103,7 +102,6 @@ const Clouds = memo(function Clouds({
   density = 0.75,
   speed = 0.025,
   rotationSpeed = 0.02,
-  atmosphereColor = '#8cc7ff',
 }: CloudsProps) {
   const cloudsRef = useRef<THREE.Mesh>(null);
 
@@ -147,7 +145,7 @@ const Clouds = memo(function Clouds({
       <mesh frustumCulled>
         <sphereGeometry args={[radius * 1.085, hazeSegments, hazeSegments]} />
         <meshStandardMaterial
-          color={atmosphereColor}
+          color="#b9d7ff"
           transparent
           opacity={0.18}
           roughness={1}
@@ -171,7 +169,7 @@ interface PlanetProps {
   cloudSpeed?: number;
   cloudRotationSpeed?: number;
   textureDetail?: 'standard' | 'enhanced';
-  visualClass?: 'lush' | 'oceanic' | 'desert' | 'arid_rocky' | 'barren_gray' | 'icy' | 'volcanic' | 'gas_giant' | 'red_desert';
+  visualClass?: 'lush' | 'oceanic' | 'desert' | 'arid_rocky' | 'barren_gray' | 'icy' | 'volcanic';
   atmosphereColor?: string;
 }
 
@@ -188,7 +186,7 @@ export const Planet = memo(function Planet({
   cloudRotationSpeed = 0.02,
   textureDetail = 'enhanced',
   visualClass = 'lush',
-  atmosphereColor = '#8cc7ff',
+  atmosphereColor,
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
   const detailMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
@@ -204,7 +202,7 @@ export const Planet = memo(function Planet({
     let cancelled = false;
 
     const run = async () => {
-      geographyManager.setSeed(seed, noiseScale, landThreshold, visualClass, textureDetail);
+      geographyManager.setSeed(seed, noiseScale, landThreshold, textureDetail, visualClass);
       await geographyManager.initializeTopicRegions();
       if (cancelled) return;
 
@@ -254,6 +252,20 @@ export const Planet = memo(function Planet({
   });
 
   const atmosphereSegments = useMemo(() => (isMobile ? 24 : 32), [isMobile]);
+
+  const resolvedAtmosphereColor = useMemo(() => {
+    if (atmosphereColor) return atmosphereColor;
+    const fallback: Record<NonNullable<PlanetProps['visualClass']>, string> = {
+      lush: '#8ad3ff',
+      oceanic: '#6fb8ff',
+      desert: '#ffd39a',
+      arid_rocky: '#d8b08a',
+      barren_gray: '#c8d0e0',
+      icy: '#dff6ff',
+      volcanic: '#ff8a6b',
+    };
+    return fallback[visualClass];
+  }, [atmosphereColor, visualClass]);
 
   const materialProps = useMemo(
     () => ({
@@ -329,7 +341,7 @@ export const Planet = memo(function Planet({
       <mesh frustumCulled>
         <sphereGeometry args={[radius * 1.19, atmosphereSegments, atmosphereSegments]} />
         <meshBasicMaterial
-          color={atmosphereColor}
+          color="#5e93ff"
           transparent
           opacity={0.1}
           side={THREE.BackSide}
@@ -347,7 +359,6 @@ export const Planet = memo(function Planet({
           density={cloudDensity}
           speed={cloudSpeed}
           rotationSpeed={cloudRotationSpeed}
-          atmosphereColor={atmosphereColor}
         />
       )}
 

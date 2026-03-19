@@ -12,6 +12,7 @@ import { ShipUpgradeUI } from './components/ShipUpgradeUI';
 import { CameraController } from './components/CameraController';
 import { Ship } from './components/Ship';
 import { ShipUI } from './components/ShipUI';
+import { Planet } from './components/Planet';
 import { MarketUI } from './components/MarketUI';
 import { Rocket, Maximize, Pickaxe, Shield, Crosshair, RadioTower, LogIn, ArrowUp, ArrowRightLeft, MonitorPlay, Gauge, Orbit, Zap, Settings, X, LoaderCircle, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -23,9 +24,24 @@ import { useShipStore } from './services/shipStore';
 import { generateSolarSystem, SolarSystemData, PlanetData } from './services/solarSystem';
 import { createPRNG, hashCombine } from './utils/random';
 import { SolarSystemView } from './components/SolarSystemView';
-import { getScaledPlanetRadius, getScaledStarRadius } from './services/orbitUtils';
+import { getScaledPlanetRadius, getScaledStarRadius, buildOrbitMap, getBodyWorldPosition } from './services/orbitUtils';
 
 export const planetRotationRef = { current: 0 };
+
+
+const QUALITY_STORAGE_KEY = 'planetus:qualityPreset';
+
+function getInitialQualityPreset() {
+  if (typeof window === 'undefined') return 'low' as const;
+  const saved = window.localStorage.getItem(QUALITY_STORAGE_KEY);
+  if (saved === 'low' || saved === 'medium' || saved === 'high') return saved;
+  return 'low' as const;
+}
+
+function getTextureDetailForQuality(quality: 'low' | 'medium' | 'high') {
+  return quality === 'high' ? 'enhanced' : 'standard';
+}
+
 
 function RotatingSystem({ children }: { children: React.ReactNode }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -167,6 +183,97 @@ function GalaxyStarField({
   );
 }
 
+
+function SystemPlanetImpostors({
+  solarSystem,
+  currentPlanetId,
+  quality = 'low',
+}: {
+  solarSystem: SolarSystemData | null;
+  currentPlanetId: string | null;
+  quality?: 'low' | 'medium' | 'high';
+}) {
+  const { camera } = useThree();
+  const groupRef = useRef<THREE.Group>(null);
+  const orbitMap = useMemo(() => (solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>()), [solarSystem]);
+
+  useFrame((state) => {
+    if (!groupRef.current || !solarSystem) return;
+    const time = state.clock.getElapsedTime();
+    const bodies = solarSystem.bodies.filter((body): body is PlanetData => body.type === 'planet');
+    const anchor = getBodyWorldPosition(currentPlanetId, solarSystem, time, orbitMap, new THREE.Vector3());
+
+    groupRef.current.children.forEach((child, index) => {
+      const planet = bodies[index];
+      if (!planet) return;
+      const mesh = child as THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>;
+      const worldPos = getBodyWorldPosition(planet.id, solarSystem, time, orbitMap, new THREE.Vector3());
+      const relativePos = worldPos.sub(anchor);
+      mesh.position.copy(relativePos);
+
+      const distance = camera.position.distanceTo(relativePos);
+      const isCurrent = planet.id === currentPlanetId;
+      const revealStart = Math.max(260, getScaledPlanetRadius(planet.radius) * 48);
+      const revealEnd = Math.max(48, getScaledPlanetRadius(planet.radius) * 12);
+      const detailMix = 1 - THREE.MathUtils.smoothstep(distance, revealEnd, revealStart);
+
+      const baseScale = isCurrent ? getScaledPlanetRadius(planet.radius) : (quality === 'low' ? 1.6 : quality === 'medium' ? 2.1 : 2.6);
+      const scale = isCurrent
+        ? baseScale
+        : baseScale + getScaledPlanetRadius(planet.radius) * (quality === 'low' ? 0.12 : 0.16);
+      mesh.scale.setScalar(scale * (isCurrent ? 1 : (0.92 + (1 - detailMix) * 0.18)));
+      mesh.material.opacity = isCurrent ? 0 : THREE.MathUtils.clamp(0.2 + (1 - detailMix) * 0.55, 0.1, 0.82);
+    });
+  });
+
+  if (!solarSystem) return null;
+  const planets = solarSystem.bodies.filter((body): body is PlanetData => body.type === 'planet');
+
+  return (
+    <group ref={groupRef}>
+      {planets.map((planet) => (
+        <mesh key={planet.id} visible={planet.id !== currentPlanetId}>
+          <sphereGeometry args={[1, 8, 8]} />
+          <meshBasicMaterial color="#f5f7ff" transparent opacity={0.5} toneMapped={false} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+
+function ActivePlanetShell({
+  solarSystem,
+  currentPlanetId,
+  isMobile,
+  quality = 'medium',
+}: {
+  solarSystem: SolarSystemData | null;
+  currentPlanetId: string | null;
+  isMobile: boolean;
+  quality?: 'low' | 'medium' | 'high';
+}) {
+  const planet = useMemo(() => solarSystem?.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId) ?? null, [solarSystem, currentPlanetId]);
+
+  if (!planet) return null;
+
+  return (
+    <Planet
+      radius={getScaledPlanetRadius(planet.radius)}
+      isMobile={isMobile}
+      seed={planet.seed}
+      noiseScale={planet.noiseScale}
+      landThreshold={planet.landThreshold}
+      showClouds={planet.hasClouds}
+      cloudDensity={planet.cloudDensity}
+      cloudSpeed={planet.cloudSpeed}
+      cloudRotationSpeed={planet.cloudRotationSpeed}
+      textureDetail={getTextureDetailForQuality(quality)}
+      visualClass={planet.visualClass}
+    />
+  );
+}
+
 function SystemTransitionController({
   transition,
   onCommit,
@@ -269,10 +376,7 @@ export default function App() {
   const [shipRespawnNonce, setShipRespawnNonce] = useState(0);
   const [solarSystem, setSolarSystem] = useState<SolarSystemData | null>(null);
   const [welcomeMessage, setWelcomeMessage] = useState<{ name: string; desc: string } | null>(null);
-  const [qualityPreset, setQualityPreset] = useState<'low' | 'medium' | 'high'>(() => {
-    const saved = typeof window !== 'undefined' ? window.localStorage.getItem('planetus-quality') : null;
-    return saved === 'high' || saved === 'medium' || saved === 'low' ? saved : 'low';
-  });
+  const [qualityPreset, setQualityPreset] = useState<'low' | 'medium' | 'high'>(() => getInitialQualityPreset());
   const [showOrbitRings, setShowOrbitRings] = useState(true);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState<{ active: boolean; progress: number; label: string }>({
@@ -330,7 +434,7 @@ export default function App() {
     const firstPlanet = planets[0];
 
     if (firstPlanet) {
-      geographyManager.setSeed(firstPlanet.seed, firstPlanet.noiseScale, firstPlanet.landThreshold, firstPlanet.visualClass, qualityPreset === 'high' ? 'enhanced' : 'standard');
+      geographyManager.setSeed(firstPlanet.seed, firstPlanet.noiseScale, firstPlanet.landThreshold, getTextureDetailForQuality(qualityPreset), firstPlanet.visualClass);
       setCurrentPlanetId(null);
     } else {
       setCurrentPlanetId(null);
@@ -338,20 +442,34 @@ export default function App() {
 
     let cancelled = false;
 
+    const queue = planets.flatMap((planet) => [{
+      seed: planet.seed,
+      noiseScale: planet.noiseScale,
+      landThreshold: planet.landThreshold,
+      visualClass: planet.visualClass,
+      label: planet.id.replace('planet_', 'PLANET-'),
+    }, ...planet.moons.map((moon) => ({
+      seed: moon.seed,
+      noiseScale: moon.noiseScale,
+      landThreshold: moon.landThreshold,
+      visualClass: moon.visualClass,
+      label: moon.id.replace('planet_', 'MOON-'),
+    }))]);
+
     const warmTextures = async () => {
-      for (let i = 0; i < planets.length; i++) {
-        const planet = planets[i];
+      for (let i = 0; i < queue.length; i++) {
+        const body = queue[i];
         if (cancelled) return;
 
         setLoadingStatus({
           active: true,
-          progress: i / Math.max(planets.length, 1),
-          label: `Generating ${planet.id.replace('planet_', 'PLANET-')} in ${currentSystemSeed}...`,
+          progress: i / Math.max(queue.length, 1),
+          label: `Generating ${body.label} in ${currentSystemSeed}...`,
         });
 
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() => {
-            GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold, planet.visualClass, qualityPreset === 'high' ? 'enhanced' : 'standard');
+            GeographyManager.warmCache(body.seed, body.noiseScale, body.landThreshold, getTextureDetailForQuality(qualityPreset), body.visualClass);
             resolve();
           });
         });
@@ -373,10 +491,44 @@ export default function App() {
   }, [currentSystemSeed]);
 
   useEffect(() => {
+    if (!solarSystem) return;
+    const planets = solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet');
+    const queue = planets.flatMap((planet) => [{
+      seed: planet.seed,
+      noiseScale: planet.noiseScale,
+      landThreshold: planet.landThreshold,
+      visualClass: planet.visualClass,
+    }, ...planet.moons.map((moon) => ({
+      seed: moon.seed,
+      noiseScale: moon.noiseScale,
+      landThreshold: moon.landThreshold,
+      visualClass: moon.visualClass,
+    }))]);
+
+    let cancelled = false;
+    const refreshQualityCache = async () => {
+      for (const body of queue) {
+        if (cancelled) return;
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            GeographyManager.warmCache(body.seed, body.noiseScale, body.landThreshold, getTextureDetailForQuality(qualityPreset), body.visualClass);
+            resolve();
+          });
+        });
+      }
+    };
+
+    void refreshQualityCache();
+    return () => {
+      cancelled = true;
+    };
+  }, [qualityPreset, solarSystem]);
+
+  useEffect(() => {
     if (solarSystem && currentPlanetId) {
       const planet = solarSystem.bodies.find((b) => b.id === currentPlanetId) as PlanetData;
       if (planet) {
-        geographyManager.setSeed(planet.seed, planet.noiseScale, planet.landThreshold, planet.visualClass, qualityPreset === 'high' ? 'enhanced' : 'standard');
+        geographyManager.setSeed(planet.seed, planet.noiseScale, planet.landThreshold, getTextureDetailForQuality(qualityPreset), planet.visualClass);
         geographyManager.initializeTopicRegions();
 
         const planetName = planet.id.replace('planet_', 'PLANET-');
@@ -415,7 +567,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem('planetus-quality');
+    if (typeof window === 'undefined') return;
+    const saved = window.localStorage.getItem(QUALITY_STORAGE_KEY);
     if (saved === 'low' || saved === 'medium' || saved === 'high') {
       setQualityPreset(saved);
       return;
@@ -424,7 +577,8 @@ export default function App() {
   }, [isMobile]);
 
   useEffect(() => {
-    window.localStorage.setItem('planetus-quality', qualityPreset);
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(QUALITY_STORAGE_KEY, qualityPreset);
   }, [qualityPreset]);
 
   const prevTagsRef = useRef<Record<string, any>>({});
@@ -766,14 +920,29 @@ export default function App() {
     return null;
   };
 
-  const starsCount = qualityPreset === 'low' ? 800 : qualityPreset === 'medium' ? 1600 : 3000;
-  const dpr =
-    qualityPreset === 'low'
-      ? ([1, 1.2] as [number, number])
+  const starsCount = isMobile
+    ? qualityPreset === 'low'
+      ? 320
       : qualityPreset === 'medium'
-        ? ([1, 1.5] as [number, number])
-        : ([1, 2] as [number, number]);
-  const enableEnvironment = qualityPreset !== 'low';
+        ? 720
+        : 1400
+    : qualityPreset === 'low'
+      ? 700
+      : qualityPreset === 'medium'
+        ? 1400
+        : 2600;
+  const dpr = isMobile
+    ? qualityPreset === 'low'
+      ? ([0.75, 1] as [number, number])
+      : qualityPreset === 'medium'
+        ? ([0.9, 1.1] as [number, number])
+        : ([1, 1.4] as [number, number])
+    : qualityPreset === 'low'
+      ? ([1, 1.15] as [number, number])
+      : qualityPreset === 'medium'
+        ? ([1, 1.4] as [number, number])
+        : ([1, 1.85] as [number, number]);
+  const enableEnvironment = !isShipMode && ((!isMobile && qualityPreset !== 'low') || qualityPreset === 'high');
   const bodyCount = solarSystem?.bodies.filter((b) => b.type === 'planet').length ?? 0;
   const activePlanetName = currentPlanetId ? currentPlanetId.replace('planet_', 'PLANET-') : 'SOL';
 
@@ -802,7 +971,7 @@ export default function App() {
         performance={{ min: 0.5 }}
         gl={{ antialias: qualityPreset !== 'low', powerPreference: 'high-performance' }}
       >
-        <ambientLight intensity={0.2} />
+        <ambientLight intensity={isShipMode ? 0.26 : 0.2} />
 
         <Stars
           radius={1000000}
@@ -827,17 +996,20 @@ export default function App() {
           onComplete={completeSystemTransition}
         />
 
-        {solarSystem && (
+        {!isShipMode && solarSystem && (
           <SolarSystemView
+            key={currentSystemSeed}
             data={solarSystem}
             isMobile={isMobile}
             currentPlanetId={currentPlanetId}
             setCurrentPlanetId={setCurrentPlanetId}
             showOrbitRings={showOrbitRings}
             quality={qualityPreset}
-            shipView={isShipMode}
           />
         )}
+
+        {isShipMode && currentPlanetId && <ActivePlanetShell solarSystem={solarSystem} currentPlanetId={currentPlanetId} isMobile={isMobile} quality={qualityPreset} />}
+        {isShipMode && <SystemPlanetImpostors solarSystem={solarSystem} currentPlanetId={currentPlanetId} quality={qualityPreset} />}
 
         <Satellite
           satellites={topSatellites}
@@ -1048,7 +1220,7 @@ export default function App() {
               </div>
 
               <div className="mt-3 text-[11px] text-zinc-400 leading-relaxed">
-                Lower quality reduces stars, environment, antialiasing, and asteroid density for smoother play on weaker GPUs.
+                The game now boots in LOW by default. On mobile, LOW aggressively cuts stars, DPR, environment, and texture detail to keep flight smooth and texture swaps reliable.
               </div>
             </motion.div>
           )}

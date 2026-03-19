@@ -1,6 +1,6 @@
 import { createPRNG, hashCombine, seededRange } from '../utils/random';
 
-export type VisualClass = 'lush' | 'oceanic' | 'desert' | 'arid_rocky' | 'barren_gray' | 'icy' | 'volcanic' | 'gas_giant' | 'red_desert';
+export type VisualClass = 'lush' | 'oceanic' | 'desert' | 'arid_rocky' | 'barren_gray' | 'icy' | 'volcanic';
 
 export interface MoonData {
   id: string;
@@ -17,7 +17,7 @@ export interface MoonData {
   landThreshold: number;
   paletteSeed: number;
   hasClouds: boolean;
-  visualClass: VisualClass;
+  visualClass: 'barren_gray' | 'icy' | 'volcanic' | 'arid_rocky';
 }
 
 export interface RingData {
@@ -29,8 +29,8 @@ export interface RingData {
 
 export interface PlanetData {
   id: string;
-  name: string;
   seed: string;
+  name: string;
   type: 'planet';
   radius: number;
   orbitDistance: number;
@@ -48,10 +48,9 @@ export interface PlanetData {
   cloudDensity: number;
   cloudSpeed: number;
   cloudRotationSpeed: number;
+  visualClass: VisualClass;
   moons: MoonData[];
   ring: RingData | null;
-  visualClass: VisualClass;
-  atmosphereColor: string;
 }
 
 export interface AsteroidBeltData {
@@ -76,36 +75,12 @@ export interface SolarSystemData {
 
 const STAR_COLORS = ['#fff4de', '#ffe8b5', '#ffd6a5', '#cfe8ff', '#bcd5ff', '#ffd1dc'];
 const RING_COLORS = ['#d8c3a5', '#c4b5a0', '#bfa88a', '#d9d1c7', '#c7c2b8'];
-
-const PLANET_NAMES = ['Astra','Virel','Kharon','Cinder','Ossia','Mira','Tethys','Nyra','Dune','Brakka','Helion','Voss','Rhea','Talos','Sirocco'];
-const VISUAL_CLASSES: VisualClass[] = ['lush','oceanic','desert','arid_rocky','barren_gray','icy','volcanic','red_desert'];
-const ATMOSPHERE_BY_CLASS: Record<VisualClass, string> = {
-  lush: '#7fc8ff',
-  oceanic: '#72b6ff',
-  desert: '#ffd28a',
-  arid_rocky: '#e2b07a',
-  barren_gray: '#b5c0cf',
-  icy: '#c7ebff',
-  volcanic: '#ff8d6a',
-  gas_giant: '#f4d3a1',
-  red_desert: '#ff9b7a',
-};
-
-function clampMoonCount(radius: number, prng: () => number) {
-  if (radius > 24) return 2;
-  if (radius > 12) return prng() > 0.5 ? 2 : 1;
-  return prng() > 0.68 ? 1 : 0;
-}
-
-function pickVisualClass(radialRatio: number, radius: number, bodySeed: string): VisualClass {
-  if (radius > 22) return 'gas_giant';
-  const roll = seededRange(hashCombine(bodySeed, 'visualClass'), 0, 1);
-  if (radialRatio < 0.2) return roll > 0.55 ? 'volcanic' : 'arid_rocky';
-  if (radialRatio < 0.38) return roll > 0.7 ? 'red_desert' : 'desert';
-  if (radialRatio < 0.62) return roll > 0.45 ? 'lush' : 'oceanic';
-  if (radialRatio < 0.82) return roll > 0.55 ? 'barren_gray' : 'icy';
-  return roll > 0.45 ? 'icy' : 'barren_gray';
-}
+const PLANET_CLASSES_BY_ZONE: VisualClass[][] = [
+  ['volcanic', 'desert', 'arid_rocky'],
+  ['desert', 'arid_rocky', 'lush', 'oceanic'],
+  ['lush', 'oceanic', 'icy', 'barren_gray'],
+];
+const MOON_CLASSES: Array<MoonData['visualClass']> = ['barren_gray', 'icy', 'volcanic', 'arid_rocky'];
 
 export function generateSolarSystem(worldSeed: string): SolarSystemData {
   const prng = createPRNG(worldSeed);
@@ -138,6 +113,10 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
       continue;
     }
 
+    const climateBand = radialRatio < 0.24 ? 0 : radialRatio < 0.68 ? 1 : 2;
+    const classPool = PLANET_CLASSES_BY_ZONE[climateBand];
+    const visualClass = classPool[Math.floor(seededRange(hashCombine(bodySeed, 'visualClass'), 0, classPool.length - 0.001))];
+
     const giantBias = Math.pow(radialRatio, 1.7);
     const baseRadius = seededRange(hashCombine(bodySeed, 'radius'), 6.5, 13.5);
     const giantRoll = seededRange(hashCombine(bodySeed, 'giantRoll'), 0, 1);
@@ -145,9 +124,8 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
       ? seededRange(hashCombine(bodySeed, 'giantMultiplier'), 1.5, 3.2 + giantBias * 2.2)
       : seededRange(hashCombine(bodySeed, 'standardMultiplier'), 0.95, 1.45 + giantBias * 0.45);
     const radius = baseRadius * giantMultiplier;
-    const visualClass = pickVisualClass(radialRatio, radius, bodySeed);
-    const hasRing = radius > 18 && radialRatio > 0.45 && bodyPrng() > 0.28;
-    const moonCount = clampMoonCount(radius, bodyPrng);
+    const hasRing = radius > 22 && radialRatio > 0.45 && bodyPrng() > 0.38;
+    const moonCount = Math.min(2, radius > 15 ? 2 : radius > 9 && bodyPrng() > 0.55 ? 1 : 0);
 
     const moons: MoonData[] = Array.from({ length: moonCount }, (_, moonIndex) => {
       const moonSeed = hashCombine(bodySeed, 'moon', moonIndex);
@@ -156,7 +134,7 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
         id: `planet_${i}_moon_${moonIndex}`,
         seed: moonSeed,
         parentPlanetId: `planet_${i}`,
-        name: `${PLANET_NAMES[i % PLANET_NAMES.length]}-${moonIndex + 1}`,
+        name: `Moon ${i + 1}-${moonIndex + 1}`,
         radius: seededRange(hashCombine(moonSeed, 'radius'), Math.max(1.2, radius * 0.1), Math.max(2.8, radius * 0.26)),
         orbitDistance: radius * seededRange(hashCombine(moonSeed, 'orbit'), 3.8 + moonIndex * 1.1, 6.6 + moonIndex * 1.6),
         orbitSpeed: seededRange(hashCombine(moonSeed, 'speed'), 0.014, 0.065) * (moonPrng() > 0.5 ? 1 : -1),
@@ -167,14 +145,14 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
         landThreshold: seededRange(hashCombine(moonSeed, 'landThreshold'), 0.03, 0.33),
         paletteSeed: seededRange(hashCombine(moonSeed, 'paletteSeed'), 0, 1),
         hasClouds: false,
-        visualClass: 'barren_gray',
+        visualClass: MOON_CLASSES[Math.floor(seededRange(hashCombine(moonSeed, 'visualClass'), 0, MOON_CLASSES.length - 0.001))],
       };
     });
 
     bodies.push({
       id: `planet_${i}`,
-      name: PLANET_NAMES[i % PLANET_NAMES.length],
       seed: bodySeed,
+      name: `Planet ${i + 1}`,
       type: 'planet',
       radius,
       orbitDistance,
@@ -188,10 +166,11 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
       temperatureBias: seededRange(hashCombine(bodySeed, 'temperatureBias'), -0.25, 0.25),
       humidityBias: seededRange(hashCombine(bodySeed, 'humidityBias'), -0.25, 0.25),
       paletteSeed: seededRange(hashCombine(bodySeed, 'paletteSeed'), 0, 1),
-      hasClouds: visualClass !== 'barren_gray' && visualClass !== 'volcanic' && bodyPrng() > 0.18,
+      hasClouds: bodyPrng() > 0.22,
       cloudDensity: seededRange(hashCombine(bodySeed, 'cloudDensity'), 0.4, 1.0),
       cloudSpeed: seededRange(hashCombine(bodySeed, 'cloudSpeed'), 0.012, 0.05),
       cloudRotationSpeed: seededRange(hashCombine(bodySeed, 'cloudRotationSpeed'), -0.08, 0.08),
+      visualClass,
       moons,
       ring: hasRing
         ? {
@@ -201,8 +180,6 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
             opacity: seededRange(hashCombine(bodySeed, 'ringOpacity'), 0.18, 0.42),
           }
         : null,
-      visualClass,
-      atmosphereColor: ATMOSPHERE_BY_CLASS[visualClass],
     });
   }
 
