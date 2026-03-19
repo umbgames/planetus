@@ -145,7 +145,7 @@ const Clouds = memo(function Clouds({
       <mesh frustumCulled>
         <sphereGeometry args={[radius * 1.085, hazeSegments, hazeSegments]} />
         <meshStandardMaterial
-          color="#b9d7ff"
+          color={atmosphereColor}
           transparent
           opacity={0.18}
           roughness={1}
@@ -169,6 +169,8 @@ interface PlanetProps {
   cloudSpeed?: number;
   cloudRotationSpeed?: number;
   textureDetail?: 'standard' | 'enhanced';
+  visualClass?: 'lush' | 'oceanic' | 'desert' | 'arid_rocky' | 'barren_gray' | 'icy' | 'volcanic' | 'gas_giant' | 'red_desert';
+  atmosphereColor?: string;
 }
 
 export const Planet = memo(function Planet({
@@ -183,6 +185,8 @@ export const Planet = memo(function Planet({
   cloudSpeed = 0.02,
   cloudRotationSpeed = 0.02,
   textureDetail = 'enhanced',
+  visualClass = 'lush',
+  atmosphereColor = '#8cc7ff',
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
   const detailMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
@@ -198,7 +202,7 @@ export const Planet = memo(function Planet({
     let cancelled = false;
 
     const run = async () => {
-      geographyManager.setSeed(seed, noiseScale, landThreshold, textureDetail);
+      geographyManager.setSeed(seed, noiseScale, landThreshold, visualClass, textureDetail);
       await geographyManager.initializeTopicRegions();
       if (cancelled) return;
 
@@ -220,7 +224,7 @@ export const Planet = memo(function Planet({
       cancelled = true;
       geographyManager.onTextureUpdate = null;
     };
-  }, [geographyManager, seed, noiseScale, landThreshold, textureDetail]);
+  }, [geographyManager, seed, noiseScale, landThreshold, textureDetail, visualClass]);
 
   useFrame(() => {
     if (!planetRef.current) return;

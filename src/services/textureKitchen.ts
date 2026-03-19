@@ -7,10 +7,9 @@ export interface TextureKitchenProgress {
   label: string;
 }
 
-function warmBodyTexture(id: string, noiseScale: number, landThreshold: number, visualClass: PlanetData["visualClass"] | MoonData["visualClass"], width: number, height: number) {
+function warmBodyTexture(id: string, noiseScale: number, landThreshold: number, visualClass: PlanetData['visualClass'] | MoonData['visualClass'], detail: 'standard' | 'enhanced') {
   const gm = new GeographyManager();
-  gm.setSeed(id, noiseScale, landThreshold, visualClass);
-  gm.setTextureResolution(width, height);
+  gm.setSeed(id, noiseScale, landThreshold, visualClass, detail);
   gm.initializeTopicRegions();
   gm.generateTexture();
 }
@@ -29,18 +28,18 @@ export async function prewarmTextureKitchen(
     onProgress?.({ completed, total, label });
   };
 
-  const baseRes = isMobile ? { width: 768, height: 384 } : { width: 1536, height: 768 };
-  const heroRes = isMobile ? { width: 1024, height: 512 } : { width: 2048, height: 1024 };
+  const baseDetail = isMobile ? 'standard' : 'enhanced';
+  const heroDetail = 'enhanced';
 
   for (let i = 0; i < planets.length; i += 1) {
     const planet = planets[i];
-    const res = i === 0 ? heroRes : baseRes;
-    warmBodyTexture(planet.id, planet.noiseScale, planet.landThreshold, planet.visualClass, res.width, res.height);
+    const detail = i === 0 ? heroDetail : baseDetail;
+    warmBodyTexture(planet.id, planet.noiseScale, planet.landThreshold, planet.visualClass, detail);
     update(`Cooking ${planet.id.toUpperCase()} textures`);
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
     for (const moon of planet.moons) {
-      warmBodyTexture(moon.id, moon.noiseScale, moon.landThreshold, moon.visualClass, baseRes.width, baseRes.height);
+      warmBodyTexture(moon.id, moon.noiseScale, moon.landThreshold, moon.visualClass, baseDetail);
       update(`Cooking ${moon.id.toUpperCase()} textures`);
       await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
     }

@@ -1,4 +1,4 @@
-import React, { useRef, useMemo, useState, memo, useEffect } from 'react';
+import React, { useRef, useMemo, useState, memo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { SolarSystemData, PlanetData, AsteroidBeltData, MoonData } from '../services/solarSystem';
@@ -13,9 +13,6 @@ import {
 import { createPRNG } from '../utils/random';
 import { useShipStore } from '../services/shipStore';
 
-const getTextureDetailForQuality = (quality: 'low' | 'medium' | 'high') => (quality === 'high' ? 'enhanced' : 'standard');
-import { getMoonWorldPosition } from '../services/orbitUtils';
-
 interface SolarSystemViewProps {
   data: SolarSystemData;
   isMobile: boolean;
@@ -23,6 +20,7 @@ interface SolarSystemViewProps {
   setCurrentPlanetId: (id: string | null) => void;
   showOrbitRings?: boolean;
   quality?: 'low' | 'medium' | 'high';
+  shipView?: boolean;
 }
 
 interface OrbitingPlanetProps {
@@ -32,6 +30,7 @@ interface OrbitingPlanetProps {
   setCurrentPlanetId: (id: string | null) => void;
   scaledOrbitDistance: number;
   quality?: 'low' | 'medium' | 'high';
+  shipView?: boolean;
 }
 
 const RingMesh = memo(function RingMesh({ innerRadius, outerRadius, color, opacity }: { innerRadius: number; outerRadius: number; color: string; opacity: number }) {
@@ -44,6 +43,7 @@ const RingMesh = memo(function RingMesh({ innerRadius, outerRadius, color, opaci
     </group>
   );
 });
+
 
 const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, quality = 'medium', setCurrentPlanetId }: { moon: MoonData; parentPlanet: PlanetData; isMobile: boolean; quality?: 'low' | 'medium' | 'high'; setCurrentPlanetId: (id: string | null) => void; }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -79,11 +79,13 @@ const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, 
           seed={moon.seed}
           noiseScale={moon.noiseScale}
           landThreshold={moon.landThreshold}
-          showClouds={moon.hasClouds}
-          cloudDensity={0.28}
+          showClouds={false}
+          visualClass={moon.visualClass}
+          atmosphereColor="#8ca0b3"
+          cloudDensity={0.18}
           cloudSpeed={0.015}
           cloudRotationSpeed={0.012}
-          textureDetail={getTextureDetailForQuality(quality)}
+          textureDetail={quality === 'high' ? 'enhanced' : 'standard'}
         />
       </group>
     </group>
@@ -93,17 +95,27 @@ const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, 
 const OrbitingPlanet = memo(function OrbitingPlanet({
   planet,
   isMobile,
+  currentPlanetId,
   setCurrentPlanetId,
   scaledOrbitDistance,
   quality = 'medium',
+  shipView = false,
 }: OrbitingPlanetProps) {
   const groupRef = useRef<THREE.Group>(null);
   const spinRef = useRef<THREE.Group>(null);
   const [isActive, setIsActive] = useState(false);
+  const impostorGroupRef = useRef<THREE.Group>(null);
+  const impostorMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
+  const impostorGlowRef = useRef<THREE.MeshBasicMaterial>(null);
+  const impostorRingRef = useRef<THREE.MeshBasicMaterial>(null);
   const { camera } = useThree();
   const worldPos = useMemo(() => new THREE.Vector3(), []);
 
   const scaledRadius = useMemo(() => getScaledPlanetRadius(planet.radius), [planet.radius]);
+  const activationDistance = useMemo(
+    () => Math.max(shipView ? 900 : 220, scaledRadius * (shipView ? 72 : 40) * VISUAL_SCALE.PLANET_LOD_DISTANCE_MULTIPLIER),
+    [scaledRadius, shipView]
+  );
 
   useFrame((state, delta) => {
     if (!groupRef.current) return;
@@ -118,9 +130,17 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
 
     groupRef.current.getWorldPosition(worldPos);
     const dist = camera.position.distanceTo(worldPos);
-    const activationDistance = Math.max(220, scaledRadius * 40 * VISUAL_SCALE.PLANET_LOD_DISTANCE_MULTIPLIER);
-    if (dist < activationDistance && !isActive) setIsActive(true);
-    else if (dist >= activationDistance && isActive) setIsActive(false);
+    const forcedActive = currentPlanetId === planet.id;
+    const nextActive = forcedActive || dist < activationDistance;
+    if (nextActive !== isActive) setIsActive(nextActive);
+
+    const revealT = 1 - THREE.MathUtils.smoothstep(dist, activationDistance * 1.8, activationDistance * 0.22);
+    const opacity = THREE.MathUtils.clamp(revealT * 0.9, 0.08, 0.92);
+    const scale = THREE.MathUtils.lerp(0.9, 4.8, revealT);
+    if (impostorGroupRef.current) impostorGroupRef.current.scale.setScalar(scale);
+    if (impostorMaterialRef.current) impostorMaterialRef.current.opacity = opacity;
+    if (impostorGlowRef.current) impostorGlowRef.current.opacity = opacity * 0.2;
+    if (impostorRingRef.current) impostorRingRef.current.opacity = opacity * 0.28;
   });
 
   return (
@@ -134,36 +154,50 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
       onPointerOut={() => { document.body.style.cursor = 'auto'; }}
     >
       <group ref={spinRef}>
-        {planet.ring && (
-          <RingMesh
-            innerRadius={getScaledPlanetRadius(planet.ring.innerRadius)}
-            outerRadius={getScaledPlanetRadius(planet.ring.outerRadius)}
-            color={planet.ring.color}
-            opacity={planet.ring.opacity}
-          />
-        )}
-
         {isActive ? (
-          <Planet
-            radius={scaledRadius}
-            isMobile={isMobile}
-            seed={planet.seed}
-            noiseScale={planet.noiseScale}
-            landThreshold={planet.landThreshold}
-            showClouds={planet.hasClouds}
-            cloudDensity={planet.cloudDensity}
-            cloudSpeed={planet.cloudSpeed}
-            cloudRotationSpeed={planet.cloudRotationSpeed}
-            textureDetail={getTextureDetailForQuality(quality)}
-          />
+          <>
+            {planet.ring && (
+              <RingMesh
+                innerRadius={getScaledPlanetRadius(planet.ring.innerRadius)}
+                outerRadius={getScaledPlanetRadius(planet.ring.outerRadius)}
+                color={planet.ring.color}
+                opacity={planet.ring.opacity}
+              />
+            )}
+            <Planet
+              radius={scaledRadius}
+              isMobile={isMobile}
+              seed={planet.seed}
+              noiseScale={planet.noiseScale}
+              landThreshold={planet.landThreshold}
+              showClouds={planet.hasClouds}
+              visualClass={planet.visualClass}
+              atmosphereColor={planet.atmosphereColor}
+              cloudDensity={planet.cloudDensity}
+              cloudSpeed={planet.cloudSpeed}
+              cloudRotationSpeed={planet.cloudRotationSpeed}
+              textureDetail={quality === 'high' ? 'enhanced' : 'standard'}
+            />
+            {planet.moons.map((moon) => <OrbitingMoon key={moon.id} moon={moon} parentPlanet={planet} isMobile={isMobile} quality={quality} setCurrentPlanetId={setCurrentPlanetId} />)}
+          </>
         ) : (
-          <mesh>
-            <sphereGeometry args={[scaledRadius, quality === 'low' ? 10 : quality === 'medium' ? 14 : 18, quality === 'low' ? 10 : quality === 'medium' ? 14 : 18]} />
-            <meshStandardMaterial color={planet.ring ? '#8a7f72' : '#6b6b75'} emissive={planet.ring ? '#3d342b' : '#202028'} emissiveIntensity={0.18} roughness={1} />
-          </mesh>
+          <group ref={impostorGroupRef} scale={1}>
+            <mesh>
+              <sphereGeometry args={[Math.max(0.8, scaledRadius * 0.18), 10, 10]} />
+              <meshBasicMaterial ref={impostorMaterialRef} color={planet.visualClass === 'icy' ? '#cde8ff' : planet.visualClass === 'volcanic' ? '#ff8b63' : planet.visualClass === 'desert' || planet.visualClass === 'red_desert' ? '#ffbe7a' : planet.visualClass === 'lush' ? '#9fd2a1' : planet.visualClass === 'gas_giant' ? '#e7c89d' : '#cbd5e1'} transparent opacity={0.72} toneMapped={false} />
+            </mesh>
+            <mesh>
+              <sphereGeometry args={[Math.max(1.1, scaledRadius * 0.28), 8, 8]} />
+              <meshBasicMaterial ref={impostorGlowRef} color={planet.atmosphereColor} transparent opacity={0.16} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
+            </mesh>
+            {planet.ring && (
+              <mesh rotation={[Math.PI / 2.55, 0, 0.25]}>
+                <ringGeometry args={[Math.max(1.2, scaledRadius * 0.32), Math.max(1.7, scaledRadius * 0.48), 48]} />
+                <meshBasicMaterial ref={impostorRingRef} color={planet.ring.color} transparent opacity={0.2} side={THREE.DoubleSide} depthWrite={false} toneMapped={false} />
+              </mesh>
+            )}
+          </group>
         )}
-
-        {planet.moons.map((moon) => <OrbitingMoon key={moon.id} moon={moon} parentPlanet={planet} isMobile={isMobile} quality={quality} setCurrentPlanetId={setCurrentPlanetId} />)}
       </group>
     </group>
   );
@@ -183,8 +217,8 @@ function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'mediu
   const meshRef = useRef<THREE.InstancedMesh>(null);
 
   const asteroidCount = useMemo(() => {
-    const ratio = quality === 'low' ? 0.28 : quality === 'medium' ? 0.5 : 0.8;
-    return Math.max(40, Math.floor(belt.count * ratio));
+    const ratio = quality === 'low' ? 0.2 : quality === 'medium' ? 0.4 : 0.65;
+    return Math.max(28, Math.floor(belt.count * ratio));
   }, [belt.count, quality]);
 
   const asteroids = useMemo(() => {
@@ -206,7 +240,7 @@ function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'mediu
     return items;
   }, [asteroidCount, scaledOrbitDistance, scaledWidth, belt.seed]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     if (!meshRef.current) return;
     const dummy = new THREE.Object3D();
     asteroids.forEach((ast, i) => {
@@ -234,7 +268,7 @@ function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'mediu
   );
 }
 
-export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPlanetId, showOrbitRings = true, quality = 'medium' }: SolarSystemViewProps) {
+export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPlanetId, showOrbitRings = true, quality = 'medium', shipView = false }: SolarSystemViewProps) {
   const groupRef = useRef<THREE.Group>(null);
   const orbitMap = useMemo(() => buildOrbitMap(data.bodies), [data.bodies]);
   const scaledStarRadius = useMemo(() => getScaledStarRadius(data.starRadius), [data.starRadius]);
@@ -251,17 +285,17 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
         const z = Math.sin(angle) * scaledOrbitDistance;
         const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
         groupRef.current.position.set(-x, -y, -z);
+        return;
       }
-    } else {
-      groupRef.current.position.set(0, 0, 0);
     }
+    groupRef.current.position.set(0, 0, 0);
   });
 
   return (
     <group ref={groupRef}>
       <Sun radius={scaledStarRadius} distance={0} speed={0} onClick={() => setCurrentPlanetId(null)} color={data.starColor} />
 
-      {showOrbitRings && data.bodies.map((body) => {
+      {showOrbitRings && !shipView && data.bodies.map((body) => {
         if (body.type !== 'planet') return null;
         const orbitDistance = orbitMap.get(body.id) ?? body.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
         return <OrbitRing key={`ring-${body.id}`} radius={orbitDistance} color={currentPlanetId === body.id ? '#38bdf8' : '#1d4ed8'} />;
@@ -279,6 +313,7 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
               setCurrentPlanetId={setCurrentPlanetId}
               scaledOrbitDistance={scaledOrbitDistance}
               quality={quality}
+              shipView={shipView}
             />
           );
         }

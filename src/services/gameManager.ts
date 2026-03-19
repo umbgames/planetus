@@ -251,17 +251,6 @@ class GameManager {
         machineGunAmmo: 500,
         missileAmmo: 20,
         taxAgreements: {},
-        lastActiveAt: new Date().toISOString(),
-        currentPlanetId: null,
-        playerSave: {
-          lastPlanetID: 'alpha_centauri',
-          position: { x: 0, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          health: 100,
-          shield: 100,
-          maxHealth: 100,
-          maxShield: 100
-        },
         shipConfig: {
           type: 'scout',
           health: 100,
@@ -288,19 +277,6 @@ class GameManager {
         if (data.machineGunAmmo === undefined) data.machineGunAmmo = 500;
         if (data.missileAmmo === undefined) data.missileAmmo = 20;
         if (data.taxAgreements === undefined) data.taxAgreements = {};
-        if (data.currentPlanetId === undefined) data.currentPlanetId = null;
-        if (data.lastActiveAt === undefined) data.lastActiveAt = new Date().toISOString();
-        if (data.playerSave === undefined) {
-          data.playerSave = {
-            lastPlanetID: 'alpha_centauri',
-            position: { x: 0, y: 0, z: 0 },
-            rotation: { x: 0, y: 0, z: 0 },
-            health: 100,
-            shield: 100,
-            maxHealth: 100,
-            maxShield: 100
-          };
-        }
         if (data.shipConfig === undefined) {
           data.shipConfig = {
             type: 'scout',
@@ -548,7 +524,6 @@ class GameManager {
         const baseData: BaseData = {
           id: baseId,
           ownerId: 'npc',
-          clanId: null,
           position: { x: pos[0], y: pos[1], z: pos[2] },
           zone,
           level: 1,
@@ -556,9 +531,6 @@ class GameManager {
           shieldActive: false,
           shieldHealth: 0,
           maxShieldHealth: 100,
-          hasMiner: false,
-          hasMissileBattery: false,
-          hasTaxOffice: false,
           lastMinedAt: new Date().toISOString(),
           createdAt: new Date().toISOString()
         };
@@ -599,7 +571,6 @@ class GameManager {
     const baseData: BaseData = {
       id: baseId,
       ownerId: auth.currentUser.uid,
-      clanId: this.userData.clanId ?? null,
       position: { x: snappedPosition.x, y: snappedPosition.y, z: snappedPosition.z },
       zone,
       level: 1,
@@ -607,9 +578,6 @@ class GameManager {
       shieldActive: false,
       shieldHealth: 0,
       maxShieldHealth: 100,
-      hasMiner: false,
-      hasMissileBattery: false,
-      hasTaxOffice: false,
       lastMinedAt: new Date().toISOString(),
       createdAt: new Date().toISOString()
     };
@@ -835,7 +803,6 @@ class GameManager {
       health: 5000,
       maxHealth: 5000,
       isControlled: false,
-      controlledBy: null,
       createdAt: new Date().toISOString()
     };
     
@@ -884,7 +851,7 @@ class GameManager {
     }
   }
 
-  async savePlayerState(planetId: string, position: THREE.Vector3, rotation: THREE.Euler, health: number = 100, shield: number = 100) {
+  async savePlayerState(planetId: string, position: THREE.Vector3, rotation: THREE.Euler, health: number, shield: number) {
     if (!auth.currentUser || !this.userData) return;
     try {
       await updateDoc(doc(db, 'users', auth.currentUser.uid), {
@@ -1183,7 +1150,6 @@ class GameManager {
       await updateDoc(doc(db, 'bases', baseId), {
         health: 100,
         ownerId: auth.currentUser.uid,
-        clanId: this.userData.clanId ?? null,
         shieldActive: false,
         shieldHealth: 0,
         hasMiner: false,
