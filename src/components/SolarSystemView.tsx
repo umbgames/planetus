@@ -12,6 +12,8 @@ import {
 } from '../services/orbitUtils';
 import { createPRNG } from '../utils/random';
 import { useShipStore } from '../services/shipStore';
+
+const getTextureDetailForQuality = (quality: 'low' | 'medium' | 'high') => (quality === 'high' ? 'enhanced' : 'standard');
 import { getMoonWorldPosition } from '../services/orbitUtils';
 
 interface SolarSystemViewProps {
@@ -81,6 +83,7 @@ const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, 
           cloudDensity={0.28}
           cloudSpeed={0.015}
           cloudRotationSpeed={0.012}
+          textureDetail={getTextureDetailForQuality(quality)}
         />
       </group>
     </group>
@@ -151,6 +154,7 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
             cloudDensity={planet.cloudDensity}
             cloudSpeed={planet.cloudSpeed}
             cloudRotationSpeed={planet.cloudRotationSpeed}
+            textureDetail={getTextureDetailForQuality(quality)}
           />
         ) : (
           <mesh>
