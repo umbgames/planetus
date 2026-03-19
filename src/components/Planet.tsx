@@ -94,7 +94,15 @@ const CLOUD_FRAGMENT_SHADER = `
   }
 `;
 
-const Clouds = memo(function Clouds({ radius, isMobile = false, seed, serverTime = 0, density = 0.75, speed = 0.025, rotationSpeed = 0.02 }: CloudsProps) {
+const Clouds = memo(function Clouds({
+  radius,
+  isMobile = false,
+  seed,
+  serverTime = 0,
+  density = 0.75,
+  speed = 0.025,
+  rotationSpeed = 0.02
+}: CloudsProps) {
   const cloudsRef = useRef<THREE.Mesh>(null);
   const uniforms = useMemo(() => ({
     uTime: { value: 0 },
@@ -118,7 +126,7 @@ const Clouds = memo(function Clouds({ radius, isMobile = false, seed, serverTime
   return (
     <group>
       <mesh ref={cloudsRef} frustumCulled>
-        <sphereGeometry args={[radius * 1.08, cloudSegments, cloudSegments]} />
+        <sphereGeometry args={[radius * 1.12, cloudSegments, cloudSegments]} />
         <shaderMaterial
           vertexShader={CLOUD_VERTEX_SHADER}
           fragmentShader={CLOUD_FRAGMENT_SHADER}
@@ -128,12 +136,13 @@ const Clouds = memo(function Clouds({ radius, isMobile = false, seed, serverTime
           blending={THREE.NormalBlending}
         />
       </mesh>
+
       <mesh frustumCulled>
-        <sphereGeometry args={[radius * 1.04, hazeSegments, hazeSegments]} />
+        <sphereGeometry args={[radius * 1.085, hazeSegments, hazeSegments]} />
         <meshStandardMaterial
           color="#b9d7ff"
           transparent
-          opacity={0.16}
+          opacity={0.18}
           roughness={1}
           depthWrite={false}
           blending={THREE.AdditiveBlending}
@@ -171,7 +180,10 @@ export const Planet = memo(function Planet({
   textureDetail = 'enhanced',
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
+  const detailShellRef = useRef<THREE.Mesh>(null);
+  const detailMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
   const { camera } = useThree();
+
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
   const [displacementMap, setDisplacementMap] = useState<THREE.CanvasTexture | null>(null);
   const [segments, setSegments] = useState(isMobile ? 64 : 128);
@@ -183,10 +195,12 @@ export const Planet = memo(function Planet({
 
     const nextTexture = geographyManager.texture ?? null;
     const nextDisplacement = geographyManager.displacementMap ?? null;
+
     setTexture((prev) => {
       if (prev && prev !== nextTexture) prev.dispose();
       return nextTexture;
     });
+
     setDisplacementMap((prev) => {
       if (prev && prev !== nextDisplacement) prev.dispose();
       return nextDisplacement;
@@ -210,16 +224,31 @@ export const Planet = memo(function Planet({
 
   useFrame(() => {
     if (!planetRef.current) return;
+
     const worldPos = new THREE.Vector3();
     planetRef.current.getWorldPosition(worldPos);
+
     const dist = camera.position.distanceTo(worldPos);
+
     const nextSegments = isMobile
       ? dist < radius * 14 ? 128 : dist < radius * 34 ? 64 : 32
       : dist < radius * 16 ? 256 : dist < radius * 38 ? 128 : 64;
+
     if (nextSegments !== segments) setSegments(nextSegments);
+
+    // Fade in tiled detail once player is below / through cloud layer
+    if (detailMaterialRef.current) {
+      const cloudOuterRadius = radius * 1.12;
+      const detailStart = cloudOuterRadius * 1.02;
+      const detailFull = radius * 1.03;
+
+      const detailFade = 1 - THREE.MathUtils.smoothstep(dist, detailFull, detailStart);
+      detailMaterialRef.current.opacity = THREE.MathUtils.clamp(detailFade * 0.55, 0, 0.55);
+    }
   });
 
   const atmosphereSegments = useMemo(() => (isMobile ? 24 : 32), [isMobile]);
+
   const materialProps = useMemo(() => ({
     map: texture,
     displacementMap,
@@ -230,19 +259,71 @@ export const Planet = memo(function Planet({
     metalness: 0.04,
   }), [texture, displacementMap, isMobile]);
 
+  const tiledTexture = useMemo(() => {
+    if (!texture) return null;
+    const tex = texture.clone();
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(isMobile ? 8 : 12, isMobile ? 4 : 6);
+    tex.anisotropy = 8;
+    tex.needsUpdate = true;
+    return tex;
+  }, [texture, isMobile]);
+
+  const tiledDisplacement = useMemo(() => {
+    if (!displacementMap) return null;
+    const tex = displacementMap.clone();
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(isMobile ? 8 : 12, isMobile ? 4 : 6);
+    tex.anisotropy = 8;
+    tex.needsUpdate = true;
+    return tex;
+  }, [displacementMap, isMobile]);
+
+  useEffect(() => {
+    return () => {
+      tiledTexture?.dispose();
+      tiledDisplacement?.dispose();
+    };
+  }, [tiledTexture, tiledDisplacement]);
+
   return (
     <group>
+      {/* Base orbital texture */}
       <mesh ref={planetRef} castShadow receiveShadow frustumCulled>
         <sphereGeometry args={[radius, segments, segments]} />
         <meshStandardMaterial {...materialProps} />
       </mesh>
 
+      {/* Near-surface tiled detail shell */}
+      {tiledTexture && tiledDisplacement && (
+        <mesh ref={detailShellRef} frustumCulled>
+          <sphereGeometry args={[radius * 1.002, segments, segments]} />
+          <meshStandardMaterial
+            ref={detailMaterialRef}
+            map={tiledTexture}
+            bumpMap={tiledDisplacement}
+            bumpScale={isMobile ? 0.06 : 0.11}
+            roughness={0.92}
+            metalness={0.0}
+            transparent
+            opacity={0}
+            depthWrite={false}
+            polygonOffset
+            polygonOffsetFactor={-1}
+            polygonOffsetUnits={-1}
+          />
+        </mesh>
+      )}
+
+      {/* Higher atmosphere */}
       <mesh frustumCulled>
-        <sphereGeometry args={[radius * 1.15, atmosphereSegments, atmosphereSegments]} />
+        <sphereGeometry args={[radius * 1.19, atmosphereSegments, atmosphereSegments]} />
         <meshBasicMaterial
           color="#5e93ff"
           transparent
-          opacity={0.07}
+          opacity={0.10}
           side={THREE.BackSide}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
