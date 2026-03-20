@@ -7,6 +7,7 @@ import { BaseData, UserData, gameManager } from '../services/gameManager';
 import { useShipStore } from '../services/shipStore';
 import { SolarSystemData, PlanetData } from '../services/solarSystem';
 import { buildOrbitMap, getBodyWorldPosition, getScaledStarRadius, getScaledPlanetRadius, VISUAL_SCALE } from '../services/orbitUtils';
+import { planetRotationRef } from '../services/runtimeRefs';
 
 const INFINITE_TEST_AMMO = true;
 
@@ -100,6 +101,7 @@ export function Ship({
 
   const prevPlanetId = useRef(currentPlanetId);
   const lastRespawnNonce = useRef(respawnNonce);
+  const lastPlanetSpinRef = useRef(planetRotationRef.current);
 
   const { setShipPosition, setVelocity, setAltitude, setBoostEnergy } = useShipStore();
   const frameCount = useRef(0);
@@ -466,9 +468,22 @@ export function Ship({
 
     if (!isLocked && !isLaunching && !isMobile) return;
 
+    const currentPlanetSpin = planetRotationRef.current;
+    const spinDelta = currentPlanetSpin - lastPlanetSpinRef.current;
+    lastPlanetSpinRef.current = currentPlanetSpin;
+
     const distForAtmosphere = position.current.length();
     const R = planetRadius;
     const altitude = distForAtmosphere - R;
+
+    if (currentPlanetId && Math.abs(spinDelta) > 0.000001 && altitude < Math.max(6, planetRadius * 0.35)) {
+      position.current.applyAxisAngle(new THREE.Vector3(0, 1, 0), spinDelta);
+      velocity.current.applyAxisAngle(new THREE.Vector3(0, 1, 0), spinDelta);
+      shipQuaternionRef.current.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), spinDelta));
+      lookQuaternionRef.current.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), spinDelta));
+      if (shipRef.current) shipRef.current.quaternion.copy(shipQuaternionRef.current);
+      rotation.current.setFromQuaternion(shipQuaternionRef.current, 'YXZ');
+    }
 
     let tiltFactor = 0;
     if (altitude < 4) tiltFactor = 1 - altitude / 4;

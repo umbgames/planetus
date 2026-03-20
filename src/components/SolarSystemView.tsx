@@ -23,6 +23,7 @@ interface SolarSystemViewProps {
   setCurrentPlanetId: (id: string | null) => void;
   showOrbitRings?: boolean;
   quality?: 'low' | 'medium' | 'high';
+  enableLOD?: boolean;
 }
 
 interface OrbitingPlanetProps {
@@ -32,6 +33,7 @@ interface OrbitingPlanetProps {
   setCurrentPlanetId: (id: string | null) => void;
   scaledOrbitDistance: number;
   quality?: 'low' | 'medium' | 'high';
+  enableLOD?: boolean;
 }
 
 const RingMesh = memo(function RingMesh({ innerRadius, outerRadius, color, opacity }: { innerRadius: number; outerRadius: number; color: string; opacity: number }) {
@@ -96,6 +98,7 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
   setCurrentPlanetId,
   scaledOrbitDistance,
   quality = 'medium',
+  enableLOD = false,
 }: OrbitingPlanetProps) {
   const groupRef = useRef<THREE.Group>(null);
   const spinRef = useRef<THREE.Group>(null);
@@ -118,6 +121,10 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
 
     groupRef.current.getWorldPosition(worldPos);
     const dist = camera.position.distanceTo(worldPos);
+    if (!enableLOD) {
+      if (!isActive) setIsActive(true);
+      return;
+    }
     const activationDistance = Math.max(220, scaledRadius * 40 * VISUAL_SCALE.PLANET_LOD_DISTANCE_MULTIPLIER);
     if (dist < activationDistance && !isActive) setIsActive(true);
     else if (dist >= activationDistance && isActive) setIsActive(false);
@@ -231,7 +238,7 @@ function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'mediu
   );
 }
 
-export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPlanetId, showOrbitRings = true, quality = 'medium' }: SolarSystemViewProps) {
+export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPlanetId, showOrbitRings = true, quality = 'medium', enableLOD = false }: SolarSystemViewProps) {
   const groupRef = useRef<THREE.Group>(null);
   const orbitMap = useMemo(() => buildOrbitMap(data.bodies), [data.bodies]);
   const scaledStarRadius = useMemo(() => getScaledStarRadius(data.starRadius), [data.starRadius]);
@@ -276,6 +283,7 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
               setCurrentPlanetId={setCurrentPlanetId}
               scaledOrbitDistance={scaledOrbitDistance}
               quality={quality}
+              enableLOD={enableLOD}
             />
           );
         }

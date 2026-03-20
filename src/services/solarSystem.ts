@@ -109,13 +109,14 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
       : seededRange(hashCombine(bodySeed, 'standardMultiplier'), 0.95, 1.45 + giantBias * 0.45);
     const radius = baseRadius * giantMultiplier;
     const hasRing = radius > 12 && bodyPrng() > 0.45;
-    const moonCount = radius > 16
-      ? Math.floor(seededRange(hashCombine(bodySeed, 'moons'), 2, 7))
+    const moonCountBase = radius > 16
+      ? Math.floor(seededRange(hashCombine(bodySeed, 'moons'), 1, 3))
       : radius > 10
-        ? Math.floor(seededRange(hashCombine(bodySeed, 'moonsMid'), 0, 4))
+        ? Math.floor(seededRange(hashCombine(bodySeed, 'moonsMid'), 0, 3))
         : bodyPrng() > 0.7
           ? Math.floor(seededRange(hashCombine(bodySeed, 'moonsSmall'), 0, 2))
           : 0;
+    const moonCount = Math.min(2, moonCountBase);
 
     const moons: MoonData[] = Array.from({ length: moonCount }, (_, moonIndex) => {
       const moonSeed = hashCombine(bodySeed, 'moon', moonIndex);

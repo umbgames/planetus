@@ -24,18 +24,7 @@ import { generateSolarSystem, SolarSystemData, PlanetData } from './services/sol
 import { createPRNG, hashCombine } from './utils/random';
 import { SolarSystemView } from './components/SolarSystemView';
 import { getScaledPlanetRadius, getScaledStarRadius, buildOrbitMap, getBodyWorldPosition } from './services/orbitUtils';
-
-export const planetRotationRef = { current: 0 };
-
-
-const QUALITY_STORAGE_KEY = 'planetus:qualityPreset';
-
-function getInitialQualityPreset() {
-  if (typeof window === 'undefined') return 'low' as const;
-  const saved = window.localStorage.getItem(QUALITY_STORAGE_KEY);
-  if (saved === 'low' || saved === 'medium' || saved === 'high') return saved;
-  return 'low' as const;
-}
+import { planetRotationRef } from './services/runtimeRefs';
 
 function getTextureDetailForQuality(quality: 'low' | 'medium' | 'high') {
   return quality === 'high' ? 'enhanced' : 'standard';
@@ -285,7 +274,7 @@ export default function App() {
   const [shipRespawnNonce, setShipRespawnNonce] = useState(0);
   const [solarSystem, setSolarSystem] = useState<SolarSystemData | null>(null);
   const [welcomeMessage, setWelcomeMessage] = useState<{ name: string; desc: string } | null>(null);
-  const [qualityPreset, setQualityPreset] = useState<'low' | 'medium' | 'high'>(() => getInitialQualityPreset());
+  const qualityPreset: 'low' | 'medium' | 'high' = 'low';
   const [showOrbitRings, setShowOrbitRings] = useState(true);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState<{ active: boolean; progress: number; label: string }>({
@@ -427,20 +416,6 @@ export default function App() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const saved = window.localStorage.getItem(QUALITY_STORAGE_KEY);
-    if (saved === 'low' || saved === 'medium' || saved === 'high') {
-      setQualityPreset(saved);
-      return;
-    }
-    setQualityPreset('low');
-  }, [isMobile]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(QUALITY_STORAGE_KEY, qualityPreset);
-  }, [qualityPreset]);
 
   const prevTagsRef = useRef<Record<string, any>>({});
 
@@ -859,13 +834,14 @@ export default function App() {
 
         {solarSystem && (
           <SolarSystemView
-            key={`${currentSystemSeed}:${qualityPreset}:${isShipMode ? 'ship' : 'orbit'}`}
+            key={`${currentSystemSeed}:${isShipMode ? 'ship' : 'orbit'}`}
             data={solarSystem}
             isMobile={isMobile}
             currentPlanetId={currentPlanetId}
             setCurrentPlanetId={setCurrentPlanetId}
             showOrbitRings={!isShipMode && showOrbitRings}
             quality={qualityPreset}
+            enableLOD={isShipMode}
           />
         )}
 
@@ -1039,25 +1015,6 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="mb-3">
-                <div className="text-[11px] uppercase tracking-wider text-zinc-500 mb-2">Quality Preset</div>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['low', 'medium', 'high'] as const).map((preset) => (
-                    <button
-                      key={preset}
-                      onClick={() => setQualityPreset(preset)}
-                      className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors border ${
-                        qualityPreset === preset
-                          ? 'bg-cyan-600 text-white border-cyan-400'
-                          : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:bg-zinc-700'
-                      }`}
-                    >
-                      {preset.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <div className="flex items-center justify-between bg-zinc-800/70 rounded-xl px-3 py-2 border border-zinc-700">
                 <div>
                   <div className="text-sm text-white font-medium">Orbit Rings</div>
@@ -1078,7 +1035,7 @@ export default function App() {
               </div>
 
               <div className="mt-3 text-[11px] text-zinc-400 leading-relaxed">
-                The game now boots in LOW by default. On mobile, LOW aggressively cuts stars, DPR, environment, and texture detail to keep flight smooth and texture swaps reliable.
+                Performance is now locked to LOW for everyone. Orbit rings remain optional for navigation, but graphics quality switching has been removed.
               </div>
             </motion.div>
           )}
