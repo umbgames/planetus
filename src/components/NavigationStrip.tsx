@@ -3,7 +3,11 @@ import { Html } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { SolarSystemData, PlanetData } from '../services/solarSystem';
-import { buildOrbitMap, getBodyWorldPosition, getMoonWorldPosition } from '../services/orbitUtils';
+import {
+  buildOrbitMap,
+  getBodyWorldPosition,
+  getMoonWorldPosition,
+} from '../services/orbitUtils';
 
 interface NavigationStripProps {
   solarSystem: SolarSystemData | null;
@@ -18,11 +22,17 @@ interface NavMarker {
   active: boolean;
 }
 
-export function NavigationStrip({ solarSystem, currentPlanetId, active }: NavigationStripProps) {
+export function NavigationStrip({
+  solarSystem,
+  currentPlanetId,
+  active,
+}: NavigationStripProps) {
   const { camera, clock } = useThree();
 
   const groupRef = useRef<THREE.Group>(null);
-  const offset = useMemo(() => new THREE.Vector3(0, 2, -8), []);
+
+  // FIX: put the strip in front of the camera, not behind it
+  const offset = useMemo(() => new THREE.Vector3(0, 2, 8), []);
 
   const orbitMap = useMemo(
     () => (solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>()),
@@ -42,19 +52,16 @@ export function NavigationStrip({ solarSystem, currentPlanetId, active }: Naviga
   useFrame(() => {
     frameCounter.current += 1;
 
-    // 🔹 CAMERA FOLLOW (runs every frame)
+    // Camera follow
     if (groupRef.current) {
       const worldOffset = offset.clone().applyQuaternion(camera.quaternion);
-
       const targetPosition = camera.position.clone().add(worldOffset);
 
-      // smooth follow (optional but nicer)
       groupRef.current.position.lerp(targetPosition, 0.15);
-
       groupRef.current.quaternion.copy(camera.quaternion);
     }
 
-    // 🔹 Marker updates (throttled)
+    // Marker updates (throttled)
     if (frameCounter.current % 5 !== 0) return;
 
     if (!active || !solarSystem) {
@@ -68,9 +75,7 @@ export function NavigationStrip({ solarSystem, currentPlanetId, active }: Naviga
       (body): body is PlanetData => body.type === 'planet'
     );
 
-    const activeOrbit = currentPlanetId
-      ? orbitMap.get(currentPlanetId) ?? 0
-      : 0;
+    const activeOrbit = currentPlanetId ? orbitMap.get(currentPlanetId) ?? 0 : 0;
 
     const orbitDistances = planets
       .map((planet) => orbitMap.get(planet.id) ?? planet.orbitDistance)
@@ -110,8 +115,7 @@ export function NavigationStrip({ solarSystem, currentPlanetId, active }: Naviga
     const maxAngle = Math.PI * 0.46;
 
     for (const planet of planets) {
-      const scaledOrbit =
-        orbitMap.get(planet.id) ?? planet.orbitDistance;
+      const scaledOrbit = orbitMap.get(planet.id) ?? planet.orbitDistance;
 
       if (
         currentPlanetId &&
@@ -129,11 +133,7 @@ export function NavigationStrip({ solarSystem, currentPlanetId, active }: Naviga
         scratchTarget
       );
 
-      scratchRelative
-        .copy(planetWorld)
-        .sub(currentOrigin)
-        .sub(camera.position);
-
+      scratchRelative.copy(planetWorld).sub(currentOrigin).sub(camera.position);
       scratchPlanar.set(scratchRelative.x, 0, scratchRelative.z);
 
       if (scratchPlanar.lengthSq() < 1) continue;
@@ -141,8 +141,7 @@ export function NavigationStrip({ solarSystem, currentPlanetId, active }: Naviga
       scratchPlanar.normalize();
 
       const angle = Math.atan2(
-        scratchForward.x * scratchPlanar.z -
-          scratchForward.z * scratchPlanar.x,
+        scratchForward.x * scratchPlanar.z - scratchForward.z * scratchPlanar.x,
         scratchForward.dot(scratchPlanar)
       );
 
@@ -164,11 +163,7 @@ export function NavigationStrip({ solarSystem, currentPlanetId, active }: Naviga
           scratchTarget
         );
 
-        scratchRelative
-          .copy(moonWorld)
-          .sub(currentOrigin)
-          .sub(camera.position);
-
+        scratchRelative.copy(moonWorld).sub(currentOrigin).sub(camera.position);
         scratchPlanar.set(scratchRelative.x, 0, scratchRelative.z);
 
         if (scratchPlanar.lengthSq() < 1) continue;
@@ -176,8 +171,7 @@ export function NavigationStrip({ solarSystem, currentPlanetId, active }: Naviga
         scratchPlanar.normalize();
 
         const moonAngle = Math.atan2(
-          scratchForward.x * scratchPlanar.z -
-            scratchForward.z * scratchPlanar.x,
+          scratchForward.x * scratchPlanar.z - scratchForward.z * scratchPlanar.x,
           scratchForward.dot(scratchPlanar)
         );
 
@@ -203,11 +197,18 @@ export function NavigationStrip({ solarSystem, currentPlanetId, active }: Naviga
 
   return (
     <group ref={groupRef}>
-      <Html center distanceFactor={10} style={{ pointerEvents: 'none' }}>
+      <Html
+        center
+        distanceFactor={10}
+        style={{
+          pointerEvents: 'none',
+          zIndex: 1000,
+        }}
+      >
         <div className="w-[320px]">
           <div className="relative h-10">
-            <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px bg-cyan-400/30" />
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full border border-cyan-300/70 shadow-[0_0_18px_rgba(34,211,238,0.18)]" />
+            <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px bg-cyan-400/80" />
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full border border-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.5)]" />
 
             {markers.map((marker) => (
               <div
