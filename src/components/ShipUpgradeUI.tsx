@@ -5,18 +5,19 @@ import * as THREE from 'three';
 import { motion } from 'motion/react';
 import {
   Rocket,
-  Shield,
   Zap,
+  Shield,
   Target,
   Check,
   ChevronLeft,
   ChevronRight,
   Plus,
   Crown,
-  Swords,
   Gauge,
+  Orbit,
+  Swords,
   Bomb,
-  Building2,
+  Sparkles,
 } from 'lucide-react';
 import { gameManager, UserData } from '../services/gameManager';
 
@@ -25,29 +26,26 @@ interface ShipUpgradeUIProps {
   onClose: () => void;
 }
 
+type ShipId = 'scout' | 'phantom' | 'lancer' | 'destroyer' | 'megaship';
+
 type ShipEntry = {
-  id: 'scout' | 'fighter' | 'interceptor' | 'bomber' | 'megaship';
+  id: ShipId;
   name: string;
   description: string;
   price: { common: number; rare: number };
   stats: { health: number; speed: number; agility: number; damage: number };
-  accent: string;
-  icon: React.ReactNode;
   category: 'ship' | 'station';
+  icon: React.ReactNode;
 };
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
+function statRatio(value: number, max: number) {
+  return Math.max(0, Math.min(1, value / max));
 }
 
-function normalizeStat(value: number, max: number) {
-  return clamp(value / max, 0, 1);
-}
-
-function EngineGlow({
+function GlowCore({
   position,
   scale = [1, 1, 1],
-  color = '#8be9fd',
+  color = '#9bd8ff',
 }: {
   position: [number, number, number];
   scale?: [number, number, number];
@@ -55,7 +53,7 @@ function EngineGlow({
 }) {
   return (
     <mesh position={position} scale={scale}>
-      <sphereGeometry args={[0.18, 20, 20]} />
+      <sphereGeometry args={[0.18, 18, 18]} />
       <meshStandardMaterial
         color={color}
         emissive={color}
@@ -67,346 +65,364 @@ function EngineGlow({
   );
 }
 
-function WingPanel({
+function StripLight({
   position,
   rotation = [0, 0, 0],
-  size = [1.8, 0.06, 0.75],
-  color,
+  size = [0.1, 0.05, 0.7],
+  color = '#8ad7ff',
 }: {
   position: [number, number, number];
   rotation?: [number, number, number];
   size?: [number, number, number];
-  color: string;
+  color?: string;
 }) {
   return (
-    <mesh position={position} rotation={rotation} castShadow>
+    <mesh position={position} rotation={rotation}>
       <boxGeometry args={size} />
       <meshStandardMaterial
         color={color}
-        metalness={0.7}
-        roughness={0.25}
         emissive={color}
-        emissiveIntensity={0.14}
+        emissiveIntensity={1.4}
+        metalness={0.4}
+        roughness={0.15}
       />
     </mesh>
   );
 }
 
-function ShipPreviewModel({ type }: { type: ShipEntry['id'] }) {
-  const hullDark = '#8b98a7';
-  const hullMid = '#b8c4d1';
-  const hullDeep = '#5f6c7d';
-
-  if (type === 'scout') {
-    return (
-      <group rotation={[0.2, Math.PI, 0]} position={[0, -0.1, 0]}>
-        <mesh castShadow>
-          <capsuleGeometry args={[0.42, 2.1, 8, 16]} />
-          <meshStandardMaterial color={hullMid} metalness={0.85} roughness={0.2} />
-        </mesh>
-
-        <mesh position={[0, 0.22, -0.4]} castShadow>
-          <boxGeometry args={[0.46, 0.26, 0.92]} />
-          <meshStandardMaterial
-            color="#d7f6ff"
-            emissive="#8be9fd"
-            emissiveIntensity={0.8}
-            metalness={0.9}
-            roughness={0.05}
-            transparent
-            opacity={0.92}
-          />
-        </mesh>
-
-        <WingPanel position={[0, -0.02, 0.2]} size={[3.4, 0.05, 0.68]} color="#60a5fa" />
-        <WingPanel position={[0, 0.14, 0.95]} size={[1.1, 0.04, 0.42]} color="#93c5fd" />
-        <WingPanel position={[0, -0.12, -1.1]} size={[0.5, 0.22, 0.9]} color={hullDeep} />
-
-        <mesh position={[0, -0.02, -1.55]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
-          <coneGeometry args={[0.26, 0.8, 6]} />
-          <meshStandardMaterial color={hullDark} metalness={0.75} roughness={0.2} />
-        </mesh>
-
-        <EngineGlow position={[0, 0, 1.42]} scale={[1, 0.7, 0.6]} color="#67e8f9" />
-      </group>
-    );
-  }
-
-  if (type === 'fighter') {
-    return (
-      <group rotation={[0.18, Math.PI, 0]} position={[0, -0.05, 0]}>
-        <mesh castShadow>
-          <capsuleGeometry args={[0.5, 2.45, 8, 16]} />
-          <meshStandardMaterial color={hullMid} metalness={0.88} roughness={0.17} />
-        </mesh>
-
-        <mesh position={[0, 0.28, -0.35]} castShadow>
-          <boxGeometry args={[0.55, 0.3, 1.05]} />
-          <meshStandardMaterial
-            color="#dcfff5"
-            emissive="#34d399"
-            emissiveIntensity={0.75}
-            metalness={0.92}
-            roughness={0.05}
-            transparent
-            opacity={0.9}
-          />
-        </mesh>
-
-        <WingPanel position={[-1.45, -0.02, 0.1]} rotation={[0, 0, -0.22]} size={[1.85, 0.05, 0.9]} color="#34d399" />
-        <WingPanel position={[1.45, -0.02, 0.1]} rotation={[0, 0, 0.22]} size={[1.85, 0.05, 0.9]} color="#34d399" />
-
-        <mesh position={[0, -0.08, 0.92]} castShadow>
-          <boxGeometry args={[0.42, 0.16, 0.8]} />
-          <meshStandardMaterial color={hullDeep} metalness={0.7} roughness={0.25} />
-        </mesh>
-
-        <mesh position={[-0.38, -0.1, -0.2]} castShadow>
-          <boxGeometry args={[0.12, 0.12, 1.55]} />
-          <meshStandardMaterial color="#d1d9e6" metalness={0.7} roughness={0.2} />
-        </mesh>
-        <mesh position={[0.38, -0.1, -0.2]} castShadow>
-          <boxGeometry args={[0.12, 0.12, 1.55]} />
-          <meshStandardMaterial color="#d1d9e6" metalness={0.7} roughness={0.2} />
-        </mesh>
-
-        <EngineGlow position={[-0.24, -0.02, 1.55]} scale={[0.7, 0.62, 0.5]} color="#6ee7b7" />
-        <EngineGlow position={[0.24, -0.02, 1.55]} scale={[0.7, 0.62, 0.5]} color="#6ee7b7" />
-      </group>
-    );
-  }
-
-  if (type === 'interceptor') {
-    return (
-      <group rotation={[0.16, Math.PI, 0]} position={[0, -0.08, 0]}>
-        <mesh castShadow>
-          <capsuleGeometry args={[0.38, 2.6, 8, 16]} />
-          <meshStandardMaterial color="#c5d0da" metalness={0.92} roughness={0.14} />
-        </mesh>
-
-        <mesh position={[0, 0.2, -0.4]} castShadow>
-          <boxGeometry args={[0.42, 0.22, 0.86]} />
-          <meshStandardMaterial
-            color="#fff5c9"
-            emissive="#fbbf24"
-            emissiveIntensity={0.78}
-            metalness={0.95}
-            roughness={0.05}
-            transparent
-            opacity={0.9}
-          />
-        </mesh>
-
-        <WingPanel position={[-1.95, 0.02, 0.15]} rotation={[0, 0, -0.48]} size={[2.5, 0.04, 0.48]} color="#fbbf24" />
-        <WingPanel position={[1.95, 0.02, 0.15]} rotation={[0, 0, 0.48]} size={[2.5, 0.04, 0.48]} color="#fbbf24" />
-
-        <mesh position={[0, -0.1, 0.95]} castShadow>
-          <boxGeometry args={[0.26, 0.12, 0.78]} />
-          <meshStandardMaterial color="#64748b" metalness={0.72} roughness={0.25} />
-        </mesh>
-
-        <mesh position={[0, 0.1, -1.5]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
-          <coneGeometry args={[0.22, 1, 6]} />
-          <meshStandardMaterial color="#7c8999" metalness={0.82} roughness={0.18} />
-        </mesh>
-
-        <EngineGlow position={[0, 0, 1.72]} scale={[0.85, 0.5, 0.42]} color="#fde68a" />
-      </group>
-    );
-  }
-
-  if (type === 'bomber') {
-    return (
-      <group rotation={[0.14, Math.PI, 0]} position={[0, -0.12, 0]}>
-        <mesh castShadow>
-          <boxGeometry args={[1.25, 0.62, 3.5]} />
-          <meshStandardMaterial color="#98a5b3" metalness={0.82} roughness={0.22} />
-        </mesh>
-
-        <mesh position={[0, 0.36, -0.5]} castShadow>
-          <boxGeometry args={[0.62, 0.3, 1.05]} />
-          <meshStandardMaterial
-            color="#ffe4ef"
-            emissive="#fb7185"
-            emissiveIntensity={0.72}
-            metalness={0.9}
-            roughness={0.06}
-            transparent
-            opacity={0.9}
-          />
-        </mesh>
-
-        <WingPanel position={[-1.85, -0.05, 0.2]} rotation={[0, 0, -0.18]} size={[2.35, 0.08, 1.15]} color="#fb7185" />
-        <WingPanel position={[1.85, -0.05, 0.2]} rotation={[0, 0, 0.18]} size={[2.35, 0.08, 1.15]} color="#fb7185" />
-
-        <mesh position={[0, -0.22, 0.25]} castShadow>
-          <boxGeometry args={[0.82, 0.22, 1.7]} />
-          <meshStandardMaterial color="#5f6b79" metalness={0.7} roughness={0.3} />
-        </mesh>
-
-        <mesh position={[-0.52, -0.14, -0.35]} castShadow>
-          <boxGeometry args={[0.18, 0.18, 1.4]} />
-          <meshStandardMaterial color="#d6dde7" metalness={0.7} roughness={0.2} />
-        </mesh>
-        <mesh position={[0.52, -0.14, -0.35]} castShadow>
-          <boxGeometry args={[0.18, 0.18, 1.4]} />
-          <meshStandardMaterial color="#d6dde7" metalness={0.7} roughness={0.2} />
-        </mesh>
-
-        <EngineGlow position={[-0.34, -0.04, 1.84]} scale={[0.78, 0.68, 0.52]} color="#fda4af" />
-        <EngineGlow position={[0.34, -0.04, 1.84]} scale={[0.78, 0.68, 0.52]} color="#fda4af" />
-      </group>
-    );
-  }
-
+function ScoutClassic() {
   return (
-    <group rotation={[0.1, Math.PI, 0]} position={[0, -0.2, 0]}>
+    <group rotation={[0.18, Math.PI, 0]} position={[0, -0.08, 0]}>
       <mesh castShadow>
-        <boxGeometry args={[2.2, 0.9, 6.2]} />
-        <meshStandardMaterial color="#8f9cab" metalness={0.86} roughness={0.2} />
+        <capsuleGeometry args={[0.38, 2.05, 8, 16]} />
+        <meshStandardMaterial color="#b9c4cf" metalness={0.8} roughness={0.22} />
       </mesh>
 
-      <mesh position={[0, 0.82, -0.2]} castShadow>
-        <boxGeometry args={[1.25, 0.5, 2.2]} />
+      <mesh position={[0, 0.18, -0.32]} castShadow>
+        <boxGeometry args={[0.38, 0.18, 0.7]} />
         <meshStandardMaterial
-          color="#e6f0ff"
-          emissive="#60a5fa"
-          emissiveIntensity={0.65}
-          metalness={0.95}
-          roughness={0.06}
+          color="#dff6ff"
+          emissive="#9bd8ff"
+          emissiveIntensity={0.7}
           transparent
-          opacity={0.88}
+          opacity={0.9}
+          metalness={0.8}
+          roughness={0.06}
         />
       </mesh>
 
-      <WingPanel position={[-2.3, 0.08, -0.15]} rotation={[0, 0, -0.12]} size={[2.9, 0.12, 2.15]} color="#60a5fa" />
-      <WingPanel position={[2.3, 0.08, -0.15]} rotation={[0, 0, 0.12]} size={[2.9, 0.12, 2.15]} color="#60a5fa" />
-
-      <mesh position={[0, -0.42, -0.6]} castShadow>
-        <boxGeometry args={[1.28, 0.35, 3.3]} />
-        <meshStandardMaterial color="#5c6978" metalness={0.74} roughness={0.3} />
+      <mesh position={[0, 0, 0.1]} castShadow>
+        <boxGeometry args={[2.5, 0.05, 0.55]} />
+        <meshStandardMaterial color="#8fa0b1" metalness={0.7} roughness={0.22} />
       </mesh>
 
-      <mesh position={[0, 0.34, 2.2]} castShadow>
-        <boxGeometry args={[1.35, 0.36, 1.5]} />
-        <meshStandardMaterial color="#667386" metalness={0.72} roughness={0.28} />
+      <mesh position={[0, -0.08, -0.92]} castShadow>
+        <boxGeometry args={[0.42, 0.16, 0.7]} />
+        <meshStandardMaterial color="#748191" metalness={0.75} roughness={0.22} />
       </mesh>
 
-      <mesh position={[-1.45, 0.44, 1.8]} castShadow>
-        <boxGeometry args={[0.5, 0.5, 1.6]} />
-        <meshStandardMaterial color="#7e8a98" metalness={0.78} roughness={0.2} />
-      </mesh>
-      <mesh position={[1.45, 0.44, 1.8]} castShadow>
-        <boxGeometry args={[0.5, 0.5, 1.6]} />
-        <meshStandardMaterial color="#7e8a98" metalness={0.78} roughness={0.2} />
-      </mesh>
-
-      <mesh position={[0, 1.08, 1.3]} castShadow>
-        <boxGeometry args={[0.42, 0.9, 0.42]} />
-        <meshStandardMaterial color="#aab6c5" metalness={0.82} roughness={0.16} />
-      </mesh>
-
-      <mesh position={[0, 0.05, -2.65]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
-        <coneGeometry args={[0.72, 1.6, 8]} />
-        <meshStandardMaterial color="#6f7b8a" metalness={0.8} roughness={0.22} />
-      </mesh>
-
-      <EngineGlow position={[-0.76, 0, 3.22]} scale={[1.15, 0.82, 0.55]} color="#93c5fd" />
-      <EngineGlow position={[0, 0.05, 3.28]} scale={[1.35, 0.9, 0.6]} color="#bfdbfe" />
-      <EngineGlow position={[0.76, 0, 3.22]} scale={[1.15, 0.82, 0.55]} color="#93c5fd" />
+      <GlowCore position={[0, 0, 1.38]} scale={[0.95, 0.62, 0.5]} color="#9bd8ff" />
     </group>
   );
 }
 
-function Starfield() {
+function PhantomShip() {
+  return (
+    <group rotation={[0.14, Math.PI, 0]} position={[0, -0.12, 0]}>
+      <mesh castShadow>
+        <boxGeometry args={[0.75, 0.34, 3.5]} />
+        <meshStandardMaterial color="#d6dde6" metalness={0.9} roughness={0.12} />
+      </mesh>
+
+      <mesh position={[0, 0.2, -0.5]} castShadow>
+        <boxGeometry args={[0.32, 0.16, 0.82]} />
+        <meshStandardMaterial
+          color="#edfff7"
+          emissive="#7cf7c2"
+          emissiveIntensity={0.9}
+          transparent
+          opacity={0.88}
+          metalness={0.85}
+          roughness={0.04}
+        />
+      </mesh>
+
+      <mesh position={[-1.8, 0, -0.15]} rotation={[0, 0, -0.56]} castShadow>
+        <boxGeometry args={[2.6, 0.03, 0.42]} />
+        <meshStandardMaterial color="#8bf4ca" metalness={0.8} roughness={0.14} />
+      </mesh>
+
+      <mesh position={[1.8, 0, -0.15]} rotation={[0, 0, 0.56]} castShadow>
+        <boxGeometry args={[2.6, 0.03, 0.42]} />
+        <meshStandardMaterial color="#8bf4ca" metalness={0.8} roughness={0.14} />
+      </mesh>
+
+      <mesh position={[0, -0.05, 0.8]} castShadow>
+        <boxGeometry args={[0.24, 0.1, 0.7]} />
+        <meshStandardMaterial color="#687687" metalness={0.7} roughness={0.24} />
+      </mesh>
+
+      <StripLight position={[0, 0.05, 0.95]} size={[0.06, 0.04, 1.15]} color="#8bf4ca" />
+      <GlowCore position={[-0.2, -0.01, 1.82]} scale={[0.62, 0.5, 0.38]} color="#91ffd8" />
+      <GlowCore position={[0.2, -0.01, 1.82]} scale={[0.62, 0.5, 0.38]} color="#91ffd8" />
+    </group>
+  );
+}
+
+function LancerShip() {
+  return (
+    <group rotation={[0.12, Math.PI, 0]} position={[0, -0.12, 0]}>
+      <mesh castShadow rotation={[0, 0, 0]}>
+        <capsuleGeometry args={[0.28, 3.4, 8, 16]} />
+        <meshStandardMaterial color="#d9d2ff" metalness={0.92} roughness={0.1} />
+      </mesh>
+
+      <mesh position={[0, 0.14, -0.75]} castShadow>
+        <boxGeometry args={[0.24, 0.14, 0.76]} />
+        <meshStandardMaterial
+          color="#f6e8ff"
+          emissive="#cb9bff"
+          emissiveIntensity={0.85}
+          transparent
+          opacity={0.9}
+          metalness={0.9}
+          roughness={0.05}
+        />
+      </mesh>
+
+      <mesh position={[-1.55, 0.04, 0.05]} rotation={[0, 0, -0.42]} castShadow>
+        <boxGeometry args={[2.15, 0.04, 0.32]} />
+        <meshStandardMaterial color="#bb8cff" metalness={0.84} roughness={0.14} />
+      </mesh>
+
+      <mesh position={[1.55, 0.04, 0.05]} rotation={[0, 0, 0.42]} castShadow>
+        <boxGeometry args={[2.15, 0.04, 0.32]} />
+        <meshStandardMaterial color="#bb8cff" metalness={0.84} roughness={0.14} />
+      </mesh>
+
+      <mesh position={[0, 0, -1.85]} rotation={[-Math.PI / 2, 0, 0]} castShadow>
+        <coneGeometry args={[0.13, 1.6, 5]} />
+        <meshStandardMaterial color="#b8bfd6" metalness={0.9} roughness={0.08} />
+      </mesh>
+
+      <StripLight position={[0, 0.02, 0.65]} size={[0.05, 0.03, 1.5]} color="#d6a9ff" />
+      <GlowCore position={[0, -0.01, 2.06]} scale={[0.7, 0.4, 0.34]} color="#e2bbff" />
+    </group>
+  );
+}
+
+function DestroyerShip() {
+  return (
+    <group rotation={[0.1, Math.PI, 0]} position={[0, -0.22, 0]}>
+      <mesh castShadow>
+        <boxGeometry args={[1.4, 0.7, 4.2]} />
+        <meshStandardMaterial color="#c8d3df" metalness={0.88} roughness={0.16} />
+      </mesh>
+
+      <mesh position={[0, 0.4, -0.4]} castShadow>
+        <boxGeometry args={[0.7, 0.28, 1.18]} />
+        <meshStandardMaterial
+          color="#e5f0ff"
+          emissive="#89b9ff"
+          emissiveIntensity={0.78}
+          transparent
+          opacity={0.9}
+          metalness={0.92}
+          roughness={0.04}
+        />
+      </mesh>
+
+      <mesh position={[-2, 0.04, -0.1]} rotation={[0, 0, -0.16]} castShadow>
+        <boxGeometry args={[2.55, 0.08, 1.15]} />
+        <meshStandardMaterial color="#90b9ff" metalness={0.82} roughness={0.16} />
+      </mesh>
+
+      <mesh position={[2, 0.04, -0.1]} rotation={[0, 0, 0.16]} castShadow>
+        <boxGeometry args={[2.55, 0.08, 1.15]} />
+        <meshStandardMaterial color="#90b9ff" metalness={0.82} roughness={0.16} />
+      </mesh>
+
+      <mesh position={[0, -0.22, 0.25]} castShadow>
+        <boxGeometry args={[0.92, 0.2, 2.15]} />
+        <meshStandardMaterial color="#6d7b8b" metalness={0.72} roughness={0.26} />
+      </mesh>
+
+      <mesh position={[-0.56, -0.08, -0.55]} castShadow>
+        <boxGeometry args={[0.16, 0.16, 1.8]} />
+        <meshStandardMaterial color="#ecf3fb" metalness={0.72} roughness={0.16} />
+      </mesh>
+
+      <mesh position={[0.56, -0.08, -0.55]} castShadow>
+        <boxGeometry args={[0.16, 0.16, 1.8]} />
+        <meshStandardMaterial color="#ecf3fb" metalness={0.72} roughness={0.16} />
+      </mesh>
+
+      <mesh position={[0, 0.7, 0.9]} castShadow>
+        <boxGeometry args={[0.25, 0.78, 0.28]} />
+        <meshStandardMaterial color="#c5d0dc" metalness={0.82} roughness={0.14} />
+      </mesh>
+
+      <StripLight position={[0, 0.1, 0.95]} size={[0.08, 0.04, 1.7]} color="#90b9ff" />
+      <GlowCore position={[-0.36, -0.03, 2.18]} scale={[0.78, 0.6, 0.42]} color="#acd2ff" />
+      <GlowCore position={[0.36, -0.03, 2.18]} scale={[0.78, 0.6, 0.42]} color="#acd2ff" />
+    </group>
+  );
+}
+
+function MegaShipModel() {
+  return (
+    <group rotation={[0.08, Math.PI, 0]} position={[0, -0.3, 0]}>
+      <mesh castShadow>
+        <boxGeometry args={[2.8, 1.02, 6.9]} />
+        <meshStandardMaterial color="#dde4ec" metalness={0.9} roughness={0.12} />
+      </mesh>
+
+      <mesh position={[0, 0.92, -0.25]} castShadow>
+        <boxGeometry args={[1.45, 0.52, 2.4]} />
+        <meshStandardMaterial
+          color="#f2f7ff"
+          emissive="#8dbfff"
+          emissiveIntensity={0.7}
+          transparent
+          opacity={0.88}
+          metalness={0.94}
+          roughness={0.05}
+        />
+      </mesh>
+
+      <mesh position={[-2.8, 0.08, -0.1]} rotation={[0, 0, -0.08]} castShadow>
+        <boxGeometry args={[3.2, 0.12, 2.2]} />
+        <meshStandardMaterial color="#9ac2ff" metalness={0.84} roughness={0.16} />
+      </mesh>
+
+      <mesh position={[2.8, 0.08, -0.1]} rotation={[0, 0, 0.08]} castShadow>
+        <boxGeometry args={[3.2, 0.12, 2.2]} />
+        <meshStandardMaterial color="#9ac2ff" metalness={0.84} roughness={0.16} />
+      </mesh>
+
+      <mesh position={[0, -0.42, -0.4]} castShadow>
+        <boxGeometry args={[1.4, 0.36, 3.8]} />
+        <meshStandardMaterial color="#758596" metalness={0.76} roughness={0.28} />
+      </mesh>
+
+      <mesh position={[-1.65, 0.48, 1.9]} castShadow>
+        <boxGeometry args={[0.58, 0.62, 1.65]} />
+        <meshStandardMaterial color="#a9b6c4" metalness={0.8} roughness={0.18} />
+      </mesh>
+
+      <mesh position={[1.65, 0.48, 1.9]} castShadow>
+        <boxGeometry args={[0.58, 0.62, 1.65]} />
+        <meshStandardMaterial color="#a9b6c4" metalness={0.8} roughness={0.18} />
+      </mesh>
+
+      <mesh position={[0, 1.2, 1.15]} castShadow>
+        <boxGeometry args={[0.45, 1.02, 0.45]} />
+        <meshStandardMaterial color="#d4dde8" metalness={0.82} roughness={0.14} />
+      </mesh>
+
+      <StripLight position={[0, 0.2, 1.32]} size={[0.14, 0.06, 2.5]} color="#9ac2ff" />
+      <GlowCore position={[-0.82, 0.02, 3.58]} scale={[1.1, 0.78, 0.5]} color="#c6deff" />
+      <GlowCore position={[0, 0.06, 3.67]} scale={[1.3, 0.86, 0.54]} color="#dcebff" />
+      <GlowCore position={[0.82, 0.02, 3.58]} scale={[1.1, 0.78, 0.5]} color="#c6deff" />
+    </group>
+  );
+}
+
+function ShipModel({ type }: { type: ShipId }) {
+  if (type === 'scout') return <ScoutClassic />;
+  if (type === 'phantom') return <PhantomShip />;
+  if (type === 'lancer') return <LancerShip />;
+  if (type === 'destroyer') return <DestroyerShip />;
+  return <MegaShipModel />;
+}
+
+function StarField() {
   const stars = useMemo(() => {
-    const positions: [number, number, number][] = [];
-    for (let i = 0; i < 90; i += 1) {
-      positions.push([
-        (Math.random() - 0.5) * 20,
-        Math.random() * 8 - 2,
-        (Math.random() - 0.5) * 20,
+    const points: [number, number, number][] = [];
+    for (let i = 0; i < 110; i += 1) {
+      points.push([
+        (Math.random() - 0.5) * 24,
+        Math.random() * 10 - 3,
+        (Math.random() - 0.5) * 24,
       ]);
     }
-    return positions;
+    return points;
   }, []);
 
   return (
     <group>
-      {stars.map((p, i) => (
-        <mesh key={i} position={p}>
-          <sphereGeometry args={[0.025, 8, 8]} />
-          <meshBasicMaterial color="#dbeafe" />
+      {stars.map((point, i) => (
+        <mesh key={i} position={point}>
+          <sphereGeometry args={[0.022, 8, 8]} />
+          <meshBasicMaterial color="#ffffff" />
         </mesh>
       ))}
     </group>
   );
 }
 
-function PreviewScene({ ship }: { ship: ShipEntry }) {
+function ShipShowcase({ ship }: { ship: ShipEntry }) {
   return (
-    <div className="relative h-[52vh] min-h-[420px] w-full overflow-hidden rounded-[28px] border border-white/10 bg-[#06080d]">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(96,165,250,0.12),transparent_34%),radial-gradient(circle_at_80%_20%,rgba(255,255,255,0.06),transparent_22%)] pointer-events-none" />
+    <div className="relative h-[56vh] min-h-[460px] w-full overflow-hidden bg-[#eef4fb]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.95),rgba(238,244,251,0.65)_30%,transparent_55%),radial-gradient(circle_at_80%_10%,rgba(181,220,255,0.45),transparent_24%),linear-gradient(180deg,#f8fbff_0%,#eaf1f8_100%)]" />
 
       <Canvas
-        camera={{ position: [0, 1.2, 8.2], fov: 34 }}
+        camera={{ position: [0, 1.15, 8], fov: 34 }}
         shadows
-        dpr={[1, 1.75]}
+        dpr={[1, 1.8]}
         gl={{ antialias: true, powerPreference: 'high-performance' }}
       >
-        <color attach="background" args={['#06080d']} />
-        <fog attach="fog" args={['#06080d', 8, 18]} />
+        <color attach="background" args={['#eef4fb']} />
+        <fog attach="fog" args={['#eef4fb', 8, 18]} />
+        <ambientLight intensity={1.1} />
+        <directionalLight position={[8, 10, 6]} intensity={2.2} castShadow />
+        <pointLight position={[0, 2, 3]} intensity={1.8} color="#c8e5ff" />
+        <pointLight position={[-3, 1, 4]} intensity={1.1} color="#ffffff" />
 
-        <ambientLight intensity={0.65} />
-        <directionalLight position={[7, 9, 6]} intensity={1.8} castShadow />
-        <pointLight position={[0, 1.8, 3]} intensity={2.2} color="#93c5fd" />
-        <pointLight position={[-4, 0, 4]} intensity={1.2} color="#ffffff" />
+        <StarField />
 
-        <Starfield />
-
-        <Float speed={1.6} rotationIntensity={0.16} floatIntensity={0.38}>
-          <ShipPreviewModel type={ship.id} />
+        <Float speed={1.5} rotationIntensity={0.16} floatIntensity={0.32}>
+          <ShipModel type={ship.id} />
         </Float>
 
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.55, 0]} receiveShadow>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.62, 0]} receiveShadow>
           <circleGeometry args={[8, 64]} />
-          <meshStandardMaterial color="#0a1018" roughness={1} metalness={0} />
+          <meshStandardMaterial color="#dfe8f2" roughness={1} metalness={0} />
         </mesh>
 
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.54, 0]}>
-          <ringGeometry args={[1.75, 3.1, 64]} />
-          <meshBasicMaterial color="#1d4ed8" transparent opacity={0.15} side={THREE.DoubleSide} />
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.61, 0]}>
+          <ringGeometry args={[1.9, 3.2, 64]} />
+          <meshBasicMaterial color="#b8d7f4" transparent opacity={0.32} side={THREE.DoubleSide} />
         </mesh>
 
         <OrbitControls
           enablePan={false}
           enableZoom={false}
-          minPolarAngle={Math.PI / 2.8}
+          minPolarAngle={Math.PI / 2.9}
           maxPolarAngle={Math.PI / 1.9}
           autoRotate
-          autoRotateSpeed={0.65}
+          autoRotateSpeed={0.7}
         />
-
         <Environment preset="city" />
       </Canvas>
 
-      <div className="absolute left-5 top-5 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 backdrop-blur-md">
-        <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">Drydock View</div>
-        <div className="mt-1 text-lg font-semibold text-white">{ship.name}</div>
-        <div className="text-xs text-zinc-400">{ship.category === 'station' ? 'Capital Asset Model' : 'Hull Preview Model'}</div>
+      <div className="pointer-events-none absolute left-8 top-8">
+        <div className="text-[11px] uppercase tracking-[0.34em] text-slate-400">Fleet View</div>
+        <div className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{ship.name}</div>
+        <div className="mt-1 text-sm text-slate-500">
+          {ship.category === 'station' ? 'capital command asset' : 'tactical hull preview'}
+        </div>
       </div>
 
-      <div className="absolute right-5 top-5 flex items-center gap-2 rounded-2xl border border-white/10 bg-black/35 px-3 py-2 backdrop-blur-md">
-        <div className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-        <span className="text-[11px] uppercase tracking-[0.24em] text-zinc-300">Live 3D</span>
+      <div className="pointer-events-none absolute right-8 top-8 flex items-center gap-2 text-[11px] uppercase tracking-[0.28em] text-slate-400">
+        <Sparkles size={14} />
+        live 3d
       </div>
-
-      <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/50 to-transparent pointer-events-none" />
     </div>
   );
 }
 
-function StatBar({
+function StatRow({
   label,
   value,
   max,
@@ -417,22 +433,19 @@ function StatBar({
   max: number;
   icon: React.ReactNode;
 }) {
-  const ratio = normalizeStat(value, max);
+  const width = statRatio(value, max) * 100;
 
   return (
-    <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-zinc-300">
-          <span className="text-zinc-400">{icon}</span>
-          <span className="text-xs uppercase tracking-[0.22em]">{label}</span>
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-slate-500">
+          <span>{icon}</span>
+          <span>{label}</span>
         </div>
-        <span className="text-sm font-semibold text-white">{value}</span>
+        <div className="text-sm font-medium text-slate-900">{value}</div>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-white/6">
-        <div
-          className="h-full rounded-full bg-white/80 transition-all duration-300"
-          style={{ width: `${ratio * 100}%` }}
-        />
+      <div className="h-[5px] bg-slate-200">
+        <div className="h-full bg-slate-900 transition-all duration-300" style={{ width: `${width}%` }} />
       </div>
     </div>
   );
@@ -447,58 +460,53 @@ export const ShipUpgradeUI: React.FC<ShipUpgradeUIProps> = ({ userData, onClose 
       {
         id: 'scout',
         name: 'Scout',
-        description: 'Light reconnaissance hull built for mobility and fast route discovery.',
+        description: 'Standard deployed starter hull. Clean, familiar, and unchanged in class identity.',
         price: { common: 0, rare: 0 },
         stats: { health: 100, speed: 100, agility: 100, damage: 10 },
-        accent: 'text-sky-300',
+        category: 'ship',
         icon: <Rocket size={16} />,
-        category: 'ship',
       },
       {
-        id: 'fighter',
-        name: 'Fighter',
-        description: 'Balanced frontline craft with stronger armor and better weapons handling.',
-        price: { common: 2000, rare: 500 },
-        stats: { health: 250, speed: 82, agility: 72, damage: 25 },
-        accent: 'text-emerald-300',
+        id: 'phantom',
+        name: 'Phantom',
+        description: 'A stealth-leaning blade frame with split wings, low profile mass, and fast strike behavior.',
+        price: { common: 2600, rare: 650 },
+        stats: { health: 220, speed: 90, agility: 86, damage: 24 },
+        category: 'ship',
+        icon: <Orbit size={16} />,
+      },
+      {
+        id: 'lancer',
+        name: 'Lancer',
+        description: 'Long-form spear hull built for precision engagements, direct entry lines, and elite forward pressure.',
+        price: { common: 6200, rare: 1800 },
+        stats: { health: 190, speed: 96, agility: 80, damage: 34 },
+        category: 'ship',
         icon: <Swords size={16} />,
-        category: 'ship',
       },
       {
-        id: 'interceptor',
-        name: 'Interceptor',
-        description: 'Fast strike frame optimized for burst movement and aggressive approach angles.',
-        price: { common: 5000, rare: 1500 },
-        stats: { health: 150, speed: 100, agility: 92, damage: 15 },
-        accent: 'text-amber-300',
-        icon: <Gauge size={16} />,
+        id: 'destroyer',
+        name: 'Destroyer',
+        description: 'Heavy tactical warship with stronger command presence, reinforced mid-body mass, and upgraded weapons geometry.',
+        price: { common: 11800, rare: 3600 },
+        stats: { health: 580, speed: 46, agility: 34, damage: 72 },
         category: 'ship',
-      },
-      {
-        id: 'bomber',
-        name: 'Bomber',
-        description: 'Heavy attack platform with oversized payload capacity and strong survivability.',
-        price: { common: 10000, rare: 3000 },
-        stats: { health: 500, speed: 42, agility: 36, damage: 60 },
-        accent: 'text-rose-300',
         icon: <Bomb size={16} />,
-        category: 'ship',
       },
       {
         id: 'megaship',
-        name: 'Orbital Command',
-        description: 'Massive clan-scale mobile command ship with full capital-class presence.',
-        price: { common: 25000, rare: 10000 },
-        stats: { health: 1000, speed: 24, agility: 18, damage: 140 },
-        accent: 'text-violet-300',
-        icon: <Crown size={16} />,
+        name: 'Aegis Command',
+        description: 'A capital-scale mobile command platform built for orbital control, fleet coordination, and dominant field presence.',
+        price: { common: 26000, rare: 11000 },
+        stats: { health: 1100, speed: 20, agility: 14, damage: 150 },
         category: 'station',
+        icon: <Crown size={16} />,
       },
     ],
     []
   );
 
-  const activeAsset = assets[activeIndex] ?? assets[0];
+  const activeAsset = assets[activeIndex];
   const currentShipType = userData?.shipConfig?.type || 'scout';
 
   const canAfford =
@@ -525,219 +533,173 @@ export const ShipUpgradeUI: React.FC<ShipUpgradeUIProps> = ({ userData, onClose 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 bg-[#f3f7fb]">
       <motion.div
-        initial={{ opacity: 0, y: 16, scale: 0.985 }}
+        initial={{ opacity: 0, y: 10, scale: 0.995 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        className="mx-auto flex h-screen max-w-[1600px] flex-col px-4 py-4 md:px-6 md:py-6"
+        className="mx-auto flex h-screen max-w-[1650px] flex-col px-4 py-4 md:px-6 md:py-6"
       >
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[32px] border border-white/10 bg-[#0a0d12] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
-          <div className="flex items-center justify-between border-b border-white/6 px-5 py-4 md:px-7 md:py-5">
-            <div className="flex items-center gap-4">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white">
-                <Rocket size={20} />
+        <div className="flex items-center justify-between px-1 pb-4 md:px-2">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.34em] text-slate-400">Fleet Hangar</div>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">
+              Ship Systems
+            </h2>
+          </div>
+
+          <div className="flex items-center gap-5">
+            <div className="hidden items-center gap-6 md:flex">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.28em] text-slate-400">Credits</div>
+                <div className="mt-1 text-base font-semibold text-slate-950">{userData?.commonResources ?? 0}</div>
               </div>
               <div>
-                <h2 className="text-lg font-semibold tracking-[0.08em] text-white md:text-xl">
-                  Fleet Hangar
-                </h2>
-                <div className="text-[11px] uppercase tracking-[0.28em] text-zinc-500">
-                  Minimal Acquisition Interface
-                </div>
+                <div className="text-[10px] uppercase tracking-[0.28em] text-slate-400">Rare</div>
+                <div className="mt-1 text-base font-semibold text-slate-950">{userData?.rareResources ?? 0}</div>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 md:gap-6">
-              <div className="hidden items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 md:flex">
-                <div className="text-right">
-                  <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Credits</div>
-                  <div className="text-sm font-semibold text-white">
-                    {userData?.commonResources ?? 0}
+            <button
+              onClick={onClose}
+              className="flex h-11 w-11 items-center justify-center bg-slate-900 text-white transition hover:bg-slate-700"
+            >
+              <Plus className="rotate-45" size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-[1.62fr_0.78fr]">
+          <div className="min-h-0 overflow-hidden bg-white shadow-[0_20px_80px_rgba(20,40,70,0.08)]">
+            <ShipShowcase ship={activeAsset} />
+
+            <div className="space-y-5 px-5 py-5 md:px-7 md:py-6">
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => setActiveIndex((v) => (v - 1 + assets.length) % assets.length)}
+                  className="flex items-center gap-2 bg-slate-100 px-4 py-3 text-sm font-medium text-slate-900 transition hover:bg-slate-200"
+                >
+                  <ChevronLeft size={16} />
+                  Previous
+                </button>
+
+                <div className="text-center">
+                  <div className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Selection</div>
+                  <div className="mt-1 text-sm font-medium text-slate-900">
+                    {activeIndex + 1} / {assets.length}
                   </div>
                 </div>
-                <div className="h-8 w-px bg-white/8" />
-                <div className="text-right">
-                  <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Rare</div>
-                  <div className="text-sm font-semibold text-violet-300">
-                    {userData?.rareResources ?? 0}
-                  </div>
-                </div>
+
+                <button
+                  onClick={() => setActiveIndex((v) => (v + 1) % assets.length)}
+                  className="flex items-center gap-2 bg-slate-100 px-4 py-3 text-sm font-medium text-slate-900 transition hover:bg-slate-200"
+                >
+                  Next
+                  <ChevronRight size={16} />
+                </button>
               </div>
 
-              <button
-                onClick={onClose}
-                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-zinc-300 transition hover:bg-white/10 hover:text-white"
-              >
-                <Plus className="rotate-45" size={18} />
-              </button>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+                {assets.map((item, index) => {
+                  const selected = activeAsset.id === item.id;
+                  const owned = item.category === 'ship' && currentShipType === item.id;
+
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveIndex(index)}
+                      className={`px-4 py-4 text-left transition ${
+                        selected ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-900 hover:bg-slate-200'
+                      }`}
+                    >
+                      <div className="mb-5 flex items-center justify-between">
+                        <div className={`${selected ? 'text-white' : 'text-slate-600'}`}>{item.icon}</div>
+                        {owned && <Check size={15} className={selected ? 'text-white' : 'text-slate-900'} />}
+                      </div>
+
+                      <div className="text-sm font-semibold">{item.name}</div>
+                      <div className={`mt-1 line-clamp-2 text-xs ${selected ? 'text-white/70' : 'text-slate-500'}`}>
+                        {item.description}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 md:px-6 md:py-6">
-            <div className="grid gap-5 xl:grid-cols-[1.6fr_0.78fr]">
-              <div className="space-y-4">
-                <PreviewScene ship={activeAsset} />
+          <div className="min-h-0 overflow-y-auto bg-white px-5 py-5 shadow-[0_20px_80px_rgba(20,40,70,0.08)] md:px-6 md:py-6">
+            <div className="text-[10px] uppercase tracking-[0.32em] text-slate-400">
+              {activeAsset.category === 'station' ? 'Capital Asset' : 'Ship Profile'}
+            </div>
 
-                <div className="flex items-center justify-between gap-3">
-                  <button
-                    onClick={() => setActiveIndex((v) => (v - 1 + assets.length) % assets.length)}
-                    className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white transition hover:bg-white/[0.08]"
-                  >
-                    <ChevronLeft size={16} />
-                    Previous
-                  </button>
+            <h3 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
+              {activeAsset.name}
+            </h3>
 
-                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-center">
-                    <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Selection</div>
-                    <div className="mt-1 text-sm font-medium text-white">
-                      {activeIndex + 1} / {assets.length}
-                    </div>
-                  </div>
+            <p className="mt-4 text-sm leading-7 text-slate-500">
+              {activeAsset.description}
+            </p>
 
-                  <button
-                    onClick={() => setActiveIndex((v) => (v + 1) % assets.length)}
-                    className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white transition hover:bg-white/[0.08]"
-                  >
-                    Next
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-                  {assets.map((item, index) => {
-                    const selected = activeAsset.id === item.id;
-                    const owned = item.category === 'ship' && currentShipType === item.id;
-
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => setActiveIndex(index)}
-                        className={`group rounded-[22px] border p-4 text-left transition ${
-                          selected
-                            ? 'border-white/25 bg-white/[0.08]'
-                            : 'border-white/8 bg-white/[0.03] hover:bg-white/[0.05]'
-                        }`}
-                      >
-                        <div className="mb-4 flex items-center justify-between">
-                          <div
-                            className={`flex h-10 w-10 items-center justify-center rounded-2xl border ${
-                              selected ? 'border-white/20 bg-white/10 text-white' : 'border-white/10 bg-black/20 text-zinc-400'
-                            }`}
-                          >
-                            {item.icon}
-                          </div>
-                          {owned && <Check size={16} className="text-emerald-300" />}
-                          {item.id === 'megaship' && !owned && <Building2 size={16} className="text-violet-300" />}
-                        </div>
-
-                        <div className="text-sm font-medium text-white">{item.name}</div>
-                        <div className="mt-1 line-clamp-2 text-xs text-zinc-500">{item.description}</div>
-                      </button>
-                    );
-                  })}
-                </div>
+            {isCurrentShip && (
+              <div className="mt-4 inline-flex bg-slate-950 px-3 py-2 text-[10px] uppercase tracking-[0.26em] text-white">
+                Active Deployment
               </div>
+            )}
 
-              <div className="space-y-4">
-                <div className="rounded-[28px] border border-white/8 bg-white/[0.03] p-5 md:p-6">
-                  <div className="mb-5 flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">
-                        {activeAsset.category === 'station' ? 'Capital Asset' : 'Ship Hull'}
-                      </div>
-                      <h3 className="mt-2 text-3xl font-semibold tracking-tight text-white">
-                        {activeAsset.name}
-                      </h3>
-                      <p className="mt-3 text-sm leading-6 text-zinc-400">
-                        {activeAsset.description}
-                      </p>
-                    </div>
+            <div className="mt-8 space-y-5">
+              <StatRow label="Integrity" value={activeAsset.stats.health} max={1100} icon={<Shield size={14} />} />
+              <StatRow label="Speed" value={activeAsset.stats.speed} max={100} icon={<Zap size={14} />} />
+              <StatRow label="Agility" value={activeAsset.stats.agility} max={100} icon={<Gauge size={14} />} />
+              <StatRow label="Damage" value={activeAsset.stats.damage} max={150} icon={<Target size={14} />} />
+            </div>
 
-                    {isCurrentShip && (
-                      <div className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-emerald-300">
-                        Active
-                      </div>
-                    )}
-                  </div>
+            <div className="mt-10 grid grid-cols-2 gap-4">
+              <div className="bg-slate-50 px-4 py-4">
+                <div className="text-[10px] uppercase tracking-[0.28em] text-slate-400">Credits</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-950">{activeAsset.price.common}</div>
+              </div>
+              <div className="bg-slate-50 px-4 py-4">
+                <div className="text-[10px] uppercase tracking-[0.28em] text-slate-400">Rare</div>
+                <div className="mt-2 text-2xl font-semibold text-slate-950">{activeAsset.price.rare}</div>
+              </div>
+            </div>
 
-                  <div className="grid gap-3">
-                    <StatBar label="Integrity" value={activeAsset.stats.health} max={1000} icon={<Shield size={14} />} />
-                    <StatBar label="Speed" value={activeAsset.stats.speed} max={100} icon={<Zap size={14} />} />
-                    <StatBar label="Agility" value={activeAsset.stats.agility} max={100} icon={<Gauge size={14} />} />
-                    <StatBar label="Damage" value={activeAsset.stats.damage} max={140} icon={<Target size={14} />} />
-                  </div>
+            <button
+              onClick={handleAcquire}
+              disabled={loading !== null || isCurrentShip || !canAfford}
+              className={`mt-8 flex w-full items-center justify-center gap-2 px-5 py-4 text-sm font-semibold transition ${
+                isCurrentShip
+                  ? 'bg-slate-950 text-white'
+                  : 'bg-slate-950 text-white hover:bg-slate-700 disabled:bg-slate-200 disabled:text-slate-400'
+              }`}
+            >
+              {loading === activeAsset.id ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+              ) : isCurrentShip ? (
+                <>
+                  <Check size={16} />
+                  Deployed
+                </>
+              ) : activeAsset.id === 'megaship' ? (
+                'Authorize Construction'
+              ) : (
+                'Acquire Ship'
+              )}
+            </button>
 
-                  <div className="mt-6 rounded-[22px] border border-white/8 bg-black/20 p-4">
-                    <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Cost</div>
-                    <div className="mt-3 flex items-end gap-5">
-                      <div>
-                        <div className="text-2xl font-semibold text-white">
-                          {activeAsset.price.common}
-                        </div>
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Credits</div>
-                      </div>
-                      <div>
-                        <div className="text-2xl font-semibold text-violet-300">
-                          {activeAsset.price.rare}
-                        </div>
-                        <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Rare</div>
-                      </div>
-                    </div>
-                  </div>
+            <div className="mt-10 space-y-4">
+              <div className="text-[10px] uppercase tracking-[0.32em] text-slate-400">System Notes</div>
 
-                  <button
-                    onClick={handleAcquire}
-                    disabled={loading !== null || isCurrentShip || !canAfford}
-                    className={`mt-6 flex w-full items-center justify-center gap-2 rounded-[20px] border px-5 py-4 text-sm font-medium transition ${
-                      isCurrentShip
-                        ? 'cursor-default border-emerald-400/20 bg-emerald-400/10 text-emerald-300'
-                        : 'border-white/10 bg-white text-black hover:bg-zinc-200 disabled:border-white/8 disabled:bg-white/5 disabled:text-zinc-600'
-                    }`}
-                  >
-                    {loading === activeAsset.id ? (
-                      <div className="h-4 w-4 animate-spin rounded-full border-2 border-black/20 border-t-black" />
-                    ) : isCurrentShip ? (
-                      <>
-                        <Check size={16} />
-                        Deployed
-                      </>
-                    ) : activeAsset.id === 'megaship' ? (
-                      'Authorize Construction'
-                    ) : (
-                      'Acquire Hull'
-                    )}
-                  </button>
-                </div>
-
-                <div className="rounded-[28px] border border-white/8 bg-white/[0.03] p-5">
-                  <div className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">Notes</div>
-                  <div className="mt-4 space-y-3 text-sm leading-6 text-zinc-400">
-                    <p>
-                      The interface is intentionally reduced: the 3D view dominates the upper screen, while lower actions are compressed into icon-driven selectors.
-                    </p>
-                    <p>
-                      The former mega ship card is now treated as a real previewable capital model, not a text-only block.
-                    </p>
-                    <p>
-                      All ships use more refined silhouettes, stronger engine lighting, and cleaner materials for a higher-end presentation.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-4 rounded-[24px] border border-white/8 bg-white/[0.03] px-4 py-3 text-[11px] uppercase tracking-[0.22em] text-zinc-500">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2.5 w-2.5 rounded-full bg-white/50" />
-                    <span>Minimal UI</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="h-2.5 w-2.5 rounded-full bg-sky-300/70" />
-                    <span>3D Hero View</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="h-2.5 w-2.5 rounded-full bg-violet-300/70" />
-                    <span>Capital Ship Model</span>
-                  </div>
-                </div>
+              <div className="space-y-3 text-sm leading-7 text-slate-500">
+                <p>
+                  The UI is now intentionally sharper and cleaner: no outlines, no card borders, no boxed chrome.
+                </p>
+                <p>
+                  The starter scout remains visually familiar, while Phantom, Lancer, Destroyer, and Aegis Command are new hull directions.
+                </p>
+                <p>
+                  The destroyer has been pushed further with stronger mass, harder wing geometry, a taller command spine, and a more premium heavy-warship silhouette.
+                </p>
               </div>
             </div>
           </div>
