@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Html } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { SolarSystemData, PlanetData } from '../services/solarSystem';
+import type { SolarSystemData, PlanetData } from '../services/solarSystem';
 import { buildOrbitMap, getBodyWorldPosition, getMoonWorldPosition } from '../services/orbitUtils';
 
 interface NavigationStripProps {
