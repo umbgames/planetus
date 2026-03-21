@@ -1,5 +1,4 @@
 import React, { useRef, useEffect, useState, useMemo, memo } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { BaseManager } from './BaseManager';
 import { ResourceManager } from './ResourceManager';
@@ -30,10 +29,9 @@ export const Planet = memo(function Planet({
   visualClass = 'rocky',
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
-  const { camera } = useThree();
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
   const [displacementMap, setDisplacementMap] = useState<THREE.CanvasTexture | null>(null);
-  const [segments, setSegments] = useState(isMobile ? 24 : 40);
+  const segments = useMemo(() => (isMobile ? 30 : 46), [isMobile]);
   const [geographyManager] = useState(() => new GeographyManager());
 
   useEffect(() => {
@@ -44,29 +42,12 @@ export const Planet = memo(function Planet({
       if (cancelled) return;
       setTexture(geographyManager.texture ?? null);
       setDisplacementMap(geographyManager.displacementMap ?? null);
-      geographyManager.onTextureUpdate = (newTexture, newDisplacementMap) => {
-        if (cancelled) return;
-        setTexture(newTexture);
-        setDisplacementMap(newDisplacementMap);
-      };
     };
     void run();
     return () => {
       cancelled = true;
-      geographyManager.onTextureUpdate = null;
     };
   }, [geographyManager, seed, noiseScale, landThreshold, textureDetail, visualClass]);
-
-  useFrame(() => {
-    if (!planetRef.current) return;
-    const worldPos = new THREE.Vector3();
-    planetRef.current.getWorldPosition(worldPos);
-    const dist = camera.position.distanceTo(worldPos);
-    const nextSegments = isMobile
-      ? dist < radius * 10 ? 40 : dist < radius * 24 ? 24 : 16
-      : dist < radius * 12 ? 56 : dist < radius * 26 ? 40 : 24;
-    if (nextSegments !== segments) setSegments(nextSegments);
-  });
 
   const atmosphereSegments = useMemo(() => (isMobile ? 16 : 20), [isMobile]);
 

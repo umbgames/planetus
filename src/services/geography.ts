@@ -40,6 +40,7 @@ export class GeographyManager {
   private seed = 'default';
   private textureDetail: TextureDetail = 'standard';
   private visualClass: BiomeName = 'rocky';
+  private textureResolution: { width: number; height: number } | null = null;
 
   canvas: HTMLCanvasElement | null = null;
   ctx: CanvasRenderingContext2D | null = null;
@@ -60,7 +61,7 @@ export class GeographyManager {
   }
 
   private getCacheKey(seed = this.seed, noiseScale = this.noiseScale, landThreshold = this.landThreshold, textureDetail = this.textureDetail, visualClass = this.visualClass) {
-    return `flat-v2|${seed}|${noiseScale}|${landThreshold}|${textureDetail}|${visualClass}`;
+    return `flat-v3|${seed}|${noiseScale}|${landThreshold}|${textureDetail}|${visualClass}`;
   }
 
   private configureTexture(tex: THREE.CanvasTexture, repeat = false) {
@@ -110,10 +111,14 @@ export class GeographyManager {
     }
   }
 
-  static warmCache(seed: string, noiseScale: number, landThreshold: number, textureDetail: TextureDetail = 'standard', visualClass: BiomeName = 'rocky') {
+  setTextureResolution(width: number, height: number) {
+    this.textureResolution = { width, height };
+  }
+
+  static async warmCache(seed: string, noiseScale: number, landThreshold: number, textureDetail: TextureDetail = 'standard', visualClass: BiomeName = 'rocky') {
     const manager = new GeographyManager();
     manager.setSeed(seed, noiseScale, landThreshold, textureDetail, visualClass);
-    void manager.initializeTopicRegions();
+    await manager.initializeTopicRegions();
     return manager;
   }
 
@@ -275,10 +280,10 @@ export class GeographyManager {
   }
 
   generateTexture() {
-    const width = this.textureDetail === 'enhanced' ? 512 : 256;
-    const height = this.textureDetail === 'enhanced' ? 256 : 128;
-    const detailWidth = 64;
-    const detailHeight = 64;
+    const width = this.textureResolution?.width ?? 1024;
+    const height = this.textureResolution?.height ?? 512;
+    const detailWidth = 32;
+    const detailHeight = 32;
 
     if (!this.canvas) { this.canvas = document.createElement('canvas'); this.ctx = this.canvas.getContext('2d')!; }
     if (!this.dispCanvas) { this.dispCanvas = document.createElement('canvas'); this.dispCtx = this.dispCanvas.getContext('2d')!; }

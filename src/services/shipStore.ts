@@ -29,6 +29,8 @@ interface ShipState {
   setVelocity: (v: number) => void;
   altitude: number;
   setAltitude: (a: number) => void;
+  cameraQuaternion: THREE.Quaternion;
+  setCameraQuaternion: (q: THREE.Quaternion) => void;
   health: number;
   shield: number;
   setHealth: (h: number) => void;
@@ -64,6 +66,8 @@ export const useShipStore = create<ShipState>((set) => ({
   setVelocity: (v) => set({ velocity: v }),
   altitude: 0,
   setAltitude: (a) => set({ altitude: a }),
+  cameraQuaternion: new THREE.Quaternion(),
+  setCameraQuaternion: (q) => set({ cameraQuaternion: q.clone() }),
   health: 100,
   shield: 100,
   setHealth: (h) => set({ health: h }),

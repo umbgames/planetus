@@ -7,7 +7,6 @@ import { BaseData, UserData, gameManager } from '../services/gameManager';
 import { useShipStore } from '../services/shipStore';
 import { SolarSystemData, PlanetData } from '../services/solarSystem';
 import { buildOrbitMap, getBodyWorldPosition, getScaledStarRadius, getScaledPlanetRadius, VISUAL_SCALE } from '../services/orbitUtils';
-import { planetRotationRef } from '../services/runtimeRefs';
 
 const INFINITE_TEST_AMMO = true;
 
@@ -101,9 +100,8 @@ export function Ship({
 
   const prevPlanetId = useRef(currentPlanetId);
   const lastRespawnNonce = useRef(respawnNonce);
-  const lastPlanetSpinRef = useRef(planetRotationRef.current);
 
-  const { setShipPosition, setVelocity, setAltitude, setBoostEnergy } = useShipStore();
+  const { setShipPosition, setVelocity, setAltitude, setBoostEnergy, setCameraQuaternion } = useShipStore();
   const frameCount = useRef(0);
   const orbitMap = useMemo(() => solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>(), [solarSystem]);
 
@@ -272,7 +270,7 @@ export function Ship({
       }
 
       const perspectiveCamera = camera as THREE.PerspectiveCamera;
-      perspectiveCamera.fov = 45;
+      perspectiveCamera.fov = 42;
       perspectiveCamera.updateProjectionMatrix();
     };
   }, [camera, gl]);
@@ -445,7 +443,7 @@ export function Ship({
           setLockedTarget(null);
 
           const perspectiveCamera = camera as THREE.PerspectiveCamera;
-          perspectiveCamera.fov = 45;
+          perspectiveCamera.fov = 42;
           perspectiveCamera.updateProjectionMatrix();
         } else {
           const jumpDir = new THREE.Vector3().subVectors(relativeTarget, position.current).normalize();
@@ -458,7 +456,7 @@ export function Ship({
           rotation.current.setFromQuaternion(shipRef.current!.quaternion);
 
           const perspectiveCamera = camera as THREE.PerspectiveCamera;
-          perspectiveCamera.fov = THREE.MathUtils.lerp(perspectiveCamera.fov, 110, 0.1);
+          perspectiveCamera.fov = THREE.MathUtils.lerp(perspectiveCamera.fov, 78, 0.1);
           perspectiveCamera.updateProjectionMatrix();
         }
 
@@ -467,7 +465,6 @@ export function Ship({
     }
 
     if (!isLocked && !isLaunching && !isMobile) return;
-    lastPlanetSpinRef.current = planetRotationRef.current;
 
     const distForAtmosphere = position.current.length();
     const R = planetRadius;
@@ -675,9 +672,9 @@ export function Ship({
     const effectiveAccel = (isBoostingActive ? boostBaseAccel : baseAccel) * (isBoostingActive ? THREE.MathUtils.lerp(1.2, 14, outsideFactor) * THREE.MathUtils.lerp(1, 2.6, deepSpaceFactor) : 1);
 
     if (cameraRef.current) {
-      const targetFov = isBoostingActive ? 92 : 60;
+      const targetFov = isBoostingActive ? 68 : 50;
       cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFov, 0.14);
-      cameraRef.current.far = 250000;
+      cameraRef.current.far = 9000;
       cameraRef.current.updateProjectionMatrix();
 
       const targetCameraZ = isBoostingActive ? 0.24 : 0.15; // hard limit
@@ -775,6 +772,7 @@ export function Ship({
       const cameraFollowLerp = isBoostingActive ? 0.24 : 0.16;
       cameraRigRef.current.position.lerp(position.current, cameraFollowLerp);
       cameraRigRef.current.quaternion.slerp(lookQuaternionRef.current, 0.22);
+      setCameraQuaternion(cameraRigRef.current.quaternion);
     }
 
     if (shipModelRef.current) {
@@ -798,9 +796,9 @@ export function Ship({
           ref={cameraRef}
           position={[0, 0.04, 0.15]}
           rotation={[-0.1, 0, 0]}
-          fov={60}
+          fov={50}
           near={0.001}
-          far={250000}
+          far={9000}
         />
       </group>
 

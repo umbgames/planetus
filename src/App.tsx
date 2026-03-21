@@ -26,7 +26,7 @@ import { SolarSystemView } from './components/SolarSystemView';
 import { getScaledPlanetRadius, getScaledStarRadius, buildOrbitMap, getBodyWorldPosition } from './services/orbitUtils';
 import { planetRotationRef } from './services/runtimeRefs';
 
-function getTextureDetailForQuality(_quality: 'low' | 'medium' | 'high') {
+function getTextureDetailForQuality(_quality: 'low' | 'medium' | 'high'): 'standard' | 'enhanced' {
   return 'standard';
 }
 
@@ -282,6 +282,7 @@ export default function App() {
     progress: 0,
     label: 'Booting navigation core...',
   });
+  const [systemRenderNonce, setSystemRenderNonce] = useState(0);
 
   const handleSystemSelect = useCallback(
     (star: GalaxyStarData) => {
@@ -341,29 +342,36 @@ export default function App() {
     let cancelled = false;
 
     const warmTextures = async () => {
-      for (let i = 0; i < planets.length; i++) {
-        const planet = planets[i];
+      const textureJobs = planets.flatMap((planet) => ([
+        { seed: planet.seed, noiseScale: planet.noiseScale, landThreshold: planet.landThreshold, visualClass: planet.visualClass, label: planet.id.replace('planet_', 'PLANET-') },
+        ...planet.moons.map((moon) => ({ seed: moon.seed, noiseScale: moon.noiseScale, landThreshold: moon.landThreshold, visualClass: moon.visualClass, label: moon.id.replace(/_/g, ' ').toUpperCase() })),
+      ]));
+
+      for (let i = 0; i < textureJobs.length; i++) {
+        const job = textureJobs[i];
         if (cancelled) return;
 
         setLoadingStatus({
           active: true,
-          progress: i / Math.max(planets.length, 1),
-          label: `Generating ${planet.id.replace('planet_', 'PLANET-')} in ${currentSystemSeed}...`,
+          progress: i / Math.max(textureJobs.length, 1),
+          label: `Baking texture atlas for ${job.label}...`,
         });
 
-        await new Promise<void>((resolve) => {
-          requestAnimationFrame(() => {
-            GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold, getTextureDetailForQuality(qualityPreset), planet.visualClass);
-            resolve();
-          });
-        });
+        await GeographyManager.warmCache(
+          job.seed,
+          job.noiseScale,
+          job.landThreshold,
+          getTextureDetailForQuality(qualityPreset),
+          job.visualClass
+        );
       }
 
       if (!cancelled) {
-        setLoadingStatus({ active: true, progress: 1, label: `Star system ${currentSystemSeed} locked.` });
+        setSystemRenderNonce((value) => value + 1);
+        setLoadingStatus({ active: true, progress: 1, label: `Textures locked for ${currentSystemSeed}. Reapplying materials...` });
         setTimeout(() => {
           if (!cancelled) setLoadingStatus({ active: false, progress: 1, label: 'Ready' });
-        }, 350);
+        }, 450);
       }
     };
 
@@ -802,7 +810,7 @@ export default function App() {
 
       <Canvas
         shadows={false}
-        camera={{ position: [0, 0, 25], fov: 45, near: 0.0001, far: 1000000 }}
+        camera={{ position: [0, 0, 25], fov: 42, near: 0.0001, far: 12000 }}
         dpr={dpr}
         performance={{ min: 0.5 }}
         gl={{ antialias: false, powerPreference: 'high-performance' }}
@@ -834,7 +842,7 @@ export default function App() {
 
         {solarSystem && (
           <SolarSystemView
-            key={`${currentSystemSeed}:${isShipMode ? 'ship' : 'orbit'}`}
+            key={`${currentSystemSeed}:${systemRenderNonce}:${isShipMode ? 'ship' : 'orbit'}`}
             data={solarSystem}
             isMobile={isMobile}
             currentPlanetId={currentPlanetId}

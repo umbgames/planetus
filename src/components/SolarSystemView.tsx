@@ -5,6 +5,7 @@ import { SolarSystemData, PlanetData, AsteroidBeltData, MoonData } from '../serv
 import { Planet } from './Planet';
 import { Sun } from './Sun';
 import { VISUAL_SCALE, buildOrbitMap, getScaledPlanetRadius, getScaledStarRadius } from '../services/orbitUtils';
+import { NavigationStrip } from './NavigationStrip';
 import { createPRNG } from '../utils/random';
 import { useShipStore } from '../services/shipStore';
 import { planetRotationRef } from '../services/runtimeRefs';
@@ -29,6 +30,7 @@ interface OrbitingPlanetProps {
   scaledOrbitDistance: number;
   quality?: 'low' | 'medium' | 'high';
   enableLOD?: boolean;
+  isVisibleInContext?: boolean;
 }
 
 const RingMesh = memo(function RingMesh({ innerRadius, outerRadius, color, opacity }: { innerRadius: number; outerRadius: number; color: string; opacity: number }) {
@@ -85,7 +87,7 @@ const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, 
   );
 });
 
-const OrbitingPlanet = memo(function OrbitingPlanet({ planet, isMobile, currentPlanetId, setCurrentPlanetId, scaledOrbitDistance, quality = 'medium', enableLOD = false }: OrbitingPlanetProps) {
+const OrbitingPlanet = memo(function OrbitingPlanet({ planet, isMobile, currentPlanetId, setCurrentPlanetId, scaledOrbitDistance, quality = 'medium', enableLOD = false, isVisibleInContext = true }: OrbitingPlanetProps) {
   const groupRef = useRef<THREE.Group>(null);
   const spinRef = useRef<THREE.Group>(null);
   const [isActive, setIsActive] = useState(false);
@@ -110,6 +112,11 @@ const OrbitingPlanet = memo(function OrbitingPlanet({ planet, isMobile, currentP
 
     groupRef.current.getWorldPosition(worldPos);
     const dist = camera.position.distanceTo(worldPos);
+    if (!isVisibleInContext) {
+      if (isActive) setIsActive(false);
+      return;
+    }
+
     if (!enableLOD) {
       if (!isActive) setIsActive(true);
       return;
@@ -118,6 +125,8 @@ const OrbitingPlanet = memo(function OrbitingPlanet({ planet, isMobile, currentP
     if (dist < activationDistance && !isActive) setIsActive(true);
     else if (dist >= activationDistance && isActive) setIsActive(false);
   });
+
+  if (!isVisibleInContext) return null;
 
   return (
     <group
@@ -169,7 +178,7 @@ function OrbitRing({ radius, color = '#1e3a8a' }: { radius: number; color?: stri
   );
 }
 
-function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'medium' }: { belt: AsteroidBeltData; scaledOrbitDistance: number; scaledWidth: number; quality?: 'low' | 'medium' | 'high'; }) {
+function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'medium', visible = true }: { belt: AsteroidBeltData; scaledOrbitDistance: number; scaledWidth: number; quality?: 'low' | 'medium' | 'high'; visible?: boolean; }) {
   const groupRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const asteroidCount = useMemo(() => {
@@ -224,6 +233,17 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
   const groupRef = useRef<THREE.Group>(null);
   const orbitMap = useMemo(() => buildOrbitMap(data.bodies), [data.bodies]);
   const scaledStarRadius = useMemo(() => getScaledStarRadius(data.starRadius), [data.starRadius]);
+  const planets = useMemo(() => data.bodies.filter((body): body is PlanetData => body.type === 'planet'), [data.bodies]);
+  const visibilityBand = useMemo(() => {
+    if (!currentPlanetId) return Number.POSITIVE_INFINITY;
+    const activeOrbit = orbitMap.get(currentPlanetId) ?? 0;
+    const gaps = planets
+      .map((planet) => Math.abs((orbitMap.get(planet.id) ?? planet.orbitDistance) - activeOrbit))
+      .filter((gap) => gap > 0.01)
+      .sort((a, b) => a - b);
+    const nearestGap = gaps[0] ?? 300;
+    return Math.max(180, nearestGap + 120);
+  }, [currentPlanetId, orbitMap, planets]);
 
   useFrame((state) => {
     if (!groupRef.current) return;
@@ -250,17 +270,23 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
       {showOrbitRings && data.bodies.map((body) => {
         if (body.type !== 'planet') return null;
         const orbitDistance = orbitMap.get(body.id) ?? body.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
+        const visible = !currentPlanetId || body.id === currentPlanetId || Math.abs(orbitDistance - (orbitMap.get(currentPlanetId) ?? 0)) <= visibilityBand;
+        if (!visible) return null;
         return <OrbitRing key={`ring-${body.id}`} radius={orbitDistance} color={currentPlanetId === body.id ? '#38bdf8' : '#1d4ed8'} />;
       })}
+
+      <NavigationStrip solarSystem={data} currentPlanetId={currentPlanetId} active={enableLOD} />
 
       {data.bodies.map((body) => {
         if (body.type === 'planet') {
           const scaledOrbitDistance = orbitMap.get(body.id) ?? body.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
-          return <OrbitingPlanet key={body.id} planet={body} isMobile={isMobile} currentPlanetId={currentPlanetId} setCurrentPlanetId={setCurrentPlanetId} scaledOrbitDistance={scaledOrbitDistance} quality={quality} enableLOD={enableLOD} />;
+          const isVisibleInContext = !currentPlanetId || body.id === currentPlanetId || Math.abs(scaledOrbitDistance - (orbitMap.get(currentPlanetId) ?? 0)) <= visibilityBand;
+          return <OrbitingPlanet key={body.id} planet={body} isMobile={isMobile} currentPlanetId={currentPlanetId} setCurrentPlanetId={setCurrentPlanetId} scaledOrbitDistance={scaledOrbitDistance} quality={quality} enableLOD={enableLOD} isVisibleInContext={isVisibleInContext} />;
         }
         const scaledOrbitDistance = body.orbitDistance * VISUAL_SCALE.ASTEROID_DISTANCE_MULTIPLIER;
         const scaledWidth = body.width * VISUAL_SCALE.ASTEROID_WIDTH_MULTIPLIER;
-        return <AsteroidBelt key={body.id} belt={body} scaledOrbitDistance={scaledOrbitDistance} scaledWidth={scaledWidth} quality={quality} />;
+        const visible = !currentPlanetId || Math.abs(scaledOrbitDistance - (orbitMap.get(currentPlanetId) ?? 0)) <= visibilityBand;
+        return <AsteroidBelt key={body.id} belt={body} scaledOrbitDistance={scaledOrbitDistance} scaledWidth={scaledWidth} quality={quality} visible={visible} />;
       })}
     </group>
   );
