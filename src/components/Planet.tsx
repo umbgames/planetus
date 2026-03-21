@@ -5,6 +5,7 @@ import { BaseManager } from './BaseManager';
 import { ResourceManager } from './ResourceManager';
 import { GeographyManager } from '../services/geography';
 import { hashCombine, seededRange } from '../utils/random';
+import type { VisualClass } from '../services/solarSystem';
 
 interface CloudsProps {
   radius: number;
@@ -169,6 +170,8 @@ interface PlanetProps {
   cloudSpeed?: number;
   cloudRotationSpeed?: number;
   textureDetail?: 'standard' | 'enhanced';
+  visualClass?: VisualClass;
+  atmosphereColor?: string;
 }
 
 export const Planet = memo(function Planet({
@@ -183,6 +186,8 @@ export const Planet = memo(function Planet({
   cloudSpeed = 0.02,
   cloudRotationSpeed = 0.02,
   textureDetail = 'enhanced',
+  visualClass = 'lush',
+  atmosphereColor = '#5e93ff',
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
   const detailMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
@@ -198,7 +203,7 @@ export const Planet = memo(function Planet({
     let cancelled = false;
 
     const run = async () => {
-      geographyManager.setSeed(seed, noiseScale, landThreshold, textureDetail);
+      geographyManager.setSeed(seed, noiseScale, landThreshold, textureDetail, visualClass);
       await geographyManager.initializeTopicRegions();
       if (cancelled) return;
 
@@ -220,7 +225,7 @@ export const Planet = memo(function Planet({
       cancelled = true;
       geographyManager.onTextureUpdate = null;
     };
-  }, [geographyManager, seed, noiseScale, landThreshold, textureDetail]);
+  }, [geographyManager, seed, noiseScale, landThreshold, textureDetail, visualClass]);
 
   useFrame(() => {
     if (!planetRef.current) return;
@@ -323,7 +328,7 @@ export const Planet = memo(function Planet({
       <mesh frustumCulled>
         <sphereGeometry args={[radius * 1.19, atmosphereSegments, atmosphereSegments]} />
         <meshBasicMaterial
-          color="#5e93ff"
+          color={atmosphereColor}
           transparent
           opacity={0.1}
           side={THREE.BackSide}

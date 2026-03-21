@@ -83,7 +83,7 @@ function GalaxyStarField({
   const hitMeshRef = useRef<THREE.InstancedMesh>(null);
 
   const starData = useMemo<GalaxyStarData[]>(() => {
-    const count = quality === 'low' ? 240 : quality === 'medium' ? 480 : 900;
+    const count = quality === 'low' ? 160 : quality === 'medium' ? 360 : 720;
     const random = createPRNG(hashCombine(galaxySeed, 'galaxy-stars', quality));
     const colors = ['#ffd27f', '#ffe7b8', '#cfe7ff', '#ffc8d2', '#fff4dd', '#9fd4ff', '#ffb38f'];
 
@@ -353,7 +353,7 @@ export default function App() {
 
         await new Promise<void>((resolve) => {
           requestAnimationFrame(() => {
-            GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold, getTextureDetailForQuality(qualityPreset));
+            GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold, getTextureDetailForQuality(qualityPreset), planet.visualClass);
             resolve();
           });
         });
@@ -378,7 +378,7 @@ export default function App() {
     if (solarSystem && currentPlanetId) {
       const planet = solarSystem.bodies.find((b) => b.id === currentPlanetId) as PlanetData;
       if (planet) {
-        geographyManager.setSeed(planet.seed, planet.noiseScale, planet.landThreshold, getTextureDetailForQuality(qualityPreset));
+        geographyManager.setSeed(planet.seed, planet.noiseScale, planet.landThreshold, getTextureDetailForQuality(qualityPreset), planet.visualClass);
         geographyManager.initializeTopicRegions();
 
         const planetName = planet.id.replace('planet_', 'PLANET-');

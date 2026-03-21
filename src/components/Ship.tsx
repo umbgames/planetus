@@ -400,6 +400,7 @@ export function Ship({
       camera.position.add(shift);
 
       prevPlanetId.current = currentPlanetId;
+      lastPlanetSpinRef.current = planetRotationRef.current;
     }
 
     if (!isJumping && solarSystem && frameCount.current % 30 === 0) {
@@ -476,7 +477,7 @@ export function Ship({
     const R = planetRadius;
     const altitude = distForAtmosphere - R;
 
-    if (currentPlanetId && Math.abs(spinDelta) > 0.000001 && altitude < Math.max(6, planetRadius * 0.35)) {
+    if (currentPlanetId && Math.abs(spinDelta) > 0.000001 && altitude < Math.max(10, planetRadius * 0.7)) {
       position.current.applyAxisAngle(new THREE.Vector3(0, 1, 0), spinDelta);
       velocity.current.applyAxisAngle(new THREE.Vector3(0, 1, 0), spinDelta);
       shipQuaternionRef.current.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), spinDelta));

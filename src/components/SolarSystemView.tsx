@@ -12,9 +12,9 @@ import {
 } from '../services/orbitUtils';
 import { createPRNG } from '../utils/random';
 import { useShipStore } from '../services/shipStore';
+import { planetRotationRef } from '../services/runtimeRefs';
 
 const getTextureDetailForQuality = (quality: 'low' | 'medium' | 'high') => (quality === 'high' ? 'enhanced' : 'standard');
-import { getMoonWorldPosition } from '../services/orbitUtils';
 
 interface SolarSystemViewProps {
   data: SolarSystemData;
@@ -86,6 +86,8 @@ const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, 
           cloudSpeed={0.015}
           cloudRotationSpeed={0.012}
           textureDetail={getTextureDetailForQuality(quality)}
+          visualClass={moon.visualClass}
+          atmosphereColor={moon.atmosphereColor}
         />
       </group>
     </group>
@@ -99,6 +101,7 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
   scaledOrbitDistance,
   quality = 'medium',
   enableLOD = false,
+  currentPlanetId,
 }: OrbitingPlanetProps) {
   const groupRef = useRef<THREE.Group>(null);
   const spinRef = useRef<THREE.Group>(null);
@@ -117,7 +120,12 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
     const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
     groupRef.current.position.set(x, y, z);
 
-    if (spinRef.current) spinRef.current.rotation.y += 0.018 * delta;
+    if (spinRef.current) {
+      spinRef.current.rotation.y += 0.018 * delta;
+      if (planet.id === currentPlanetId) {
+        planetRotationRef.current = spinRef.current.rotation.y;
+      }
+    }
 
     groupRef.current.getWorldPosition(worldPos);
     const dist = camera.position.distanceTo(worldPos);
@@ -163,6 +171,8 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
               cloudSpeed={planet.cloudSpeed}
               cloudRotationSpeed={planet.cloudRotationSpeed}
               textureDetail={getTextureDetailForQuality(quality)}
+              visualClass={planet.visualClass}
+              atmosphereColor={planet.atmosphereColor}
             />
 
             {planet.moons.map((moon) => <OrbitingMoon key={moon.id} moon={moon} parentPlanet={planet} isMobile={isMobile} quality={quality} setCurrentPlanetId={setCurrentPlanetId} />)}
@@ -257,6 +267,7 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
         groupRef.current.position.set(-x, -y, -z);
       }
     } else {
+      planetRotationRef.current = 0;
       groupRef.current.position.set(0, 0, 0);
     }
   });

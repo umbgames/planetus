@@ -1,5 +1,5 @@
-import { SolarSystemData, PlanetData, MoonData } from "./solarSystem";
-import { GeographyManager } from "./geography";
+import { SolarSystemData, PlanetData } from './solarSystem';
+import { GeographyManager } from './geography';
 
 export interface TextureKitchenProgress {
   completed: number;
@@ -7,12 +7,8 @@ export interface TextureKitchenProgress {
   label: string;
 }
 
-function warmBodyTexture(id: string, noiseScale: number, landThreshold: number, visualClass: PlanetData["visualClass"] | MoonData["visualClass"], width: number, height: number) {
-  const gm = new GeographyManager();
-  gm.setSeed(id, noiseScale, landThreshold, visualClass);
-  gm.setTextureResolution(width, height);
-  gm.initializeTopicRegions();
-  gm.generateTexture();
+function warmBodyTexture(planet: PlanetData | PlanetData['moons'][number], textureDetail: 'standard' | 'enhanced') {
+  GeographyManager.warmCache(planet.seed, planet.noiseScale, planet.landThreshold, textureDetail, planet.visualClass);
 }
 
 export async function prewarmTextureKitchen(
@@ -23,24 +19,20 @@ export async function prewarmTextureKitchen(
   const planets = solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet');
   const total = planets.length + planets.reduce((sum, p) => sum + p.moons.length, 0) + 1;
   let completed = 0;
+  const textureDetail = isMobile ? 'standard' : 'enhanced';
 
   const update = (label: string) => {
     completed += 1;
     onProgress?.({ completed, total, label });
   };
 
-  const baseRes = isMobile ? { width: 768, height: 384 } : { width: 1536, height: 768 };
-  const heroRes = isMobile ? { width: 1024, height: 512 } : { width: 2048, height: 1024 };
-
-  for (let i = 0; i < planets.length; i += 1) {
-    const planet = planets[i];
-    const res = i === 0 ? heroRes : baseRes;
-    warmBodyTexture(planet.id, planet.noiseScale, planet.landThreshold, planet.visualClass, res.width, res.height);
-    update(`Cooking ${planet.id.toUpperCase()} textures`);
+  for (const planet of planets) {
+    warmBodyTexture(planet, textureDetail);
+    update(`Cooking ${planet.name.toUpperCase()} textures`);
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
     for (const moon of planet.moons) {
-      warmBodyTexture(moon.id, moon.noiseScale, moon.landThreshold, moon.visualClass, baseRes.width, baseRes.height);
+      warmBodyTexture(moon, 'standard');
       update(`Cooking ${moon.id.toUpperCase()} textures`);
       await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
     }
