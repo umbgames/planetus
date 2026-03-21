@@ -22,7 +22,10 @@ export function NavigationStrip({ solarSystem, currentPlanetId, active }: Naviga
   const { camera, clock } = useThree();
 
   const groupRef = useRef<THREE.Group>(null);
-  const offset = useMemo(() => new THREE.Vector3(0, 2, -8), []);
+
+  // 🔹 Tuned offset (distance matters a LOT)
+  const offsetDistance = 25;
+  const heightOffset = 2;
 
   const orbitMap = useMemo(
     () => (solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>()),
@@ -40,21 +43,29 @@ export function NavigationStrip({ solarSystem, currentPlanetId, active }: Naviga
   const frameCounter = useRef(0);
 
   useFrame(() => {
-    frameCounter.current += 1;
-
-    // 🔹 CAMERA FOLLOW (runs every frame)
+    // ✅ CAMERA FOLLOW (stable + horizontal lock)
     if (groupRef.current) {
-      const worldOffset = offset.clone().applyQuaternion(camera.quaternion);
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward);
 
-      const targetPosition = camera.position.clone().add(worldOffset);
+      // 🔹 lock vertical so UI doesn't float up/down
+      forward.y = 0;
+      forward.normalize();
 
-      // smooth follow (optional but nicer)
-      groupRef.current.position.lerp(targetPosition, 0.15);
+      const position = camera.position
+        .clone()
+        .add(forward.multiplyScalar(offsetDistance));
 
-      groupRef.current.quaternion.copy(camera.quaternion);
+      position.y += heightOffset;
+
+      groupRef.current.position.copy(position);
+
+      // face camera cleanly
+      groupRef.current.lookAt(camera.position);
     }
 
-    // 🔹 Marker updates (throttled)
+    // 🔹 Throttle marker updates
+    frameCounter.current += 1;
     if (frameCounter.current % 5 !== 0) return;
 
     if (!active || !solarSystem) {
@@ -203,8 +214,8 @@ export function NavigationStrip({ solarSystem, currentPlanetId, active }: Naviga
 
   return (
     <group ref={groupRef}>
-      <Html center distanceFactor={10} style={{ pointerEvents: 'none' }}>
-        <div className="w-[320px]">
+      <Html transform center distanceFactor={4} style={{ pointerEvents: 'none' }}>
+        <div className="w-[300px]">
           <div className="relative h-10">
             <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px bg-cyan-400/30" />
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full border border-cyan-300/70 shadow-[0_0_18px_rgba(34,211,238,0.18)]" />
