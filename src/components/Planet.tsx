@@ -116,8 +116,8 @@ const Clouds = memo(function Clouds({
     [seed, density]
   );
 
-  const cloudSegments = isMobile ? 28 : 44;
-  const hazeSegments = isMobile ? 20 : 30;
+  const cloudSegments = isMobile ? 18 : 28;
+  const hazeSegments = isMobile ? 14 : 20;
 
   useFrame((state) => {
     const t = serverTime || state.clock.elapsedTime;
@@ -172,6 +172,7 @@ interface PlanetProps {
   textureDetail?: 'standard' | 'enhanced';
   visualClass?: VisualClass;
   atmosphereColor?: string;
+  atmosphereOpacity?: number;
 }
 
 export const Planet = memo(function Planet({
@@ -186,8 +187,9 @@ export const Planet = memo(function Planet({
   cloudSpeed = 0.02,
   cloudRotationSpeed = 0.02,
   textureDetail = 'enhanced',
-  visualClass = 'lush',
+  visualClass = 'rocky',
   atmosphereColor = '#5e93ff',
+  atmosphereOpacity = 0.1,
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
   const detailMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
@@ -196,7 +198,7 @@ export const Planet = memo(function Planet({
   const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
   const [displacementMap, setDisplacementMap] = useState<THREE.CanvasTexture | null>(null);
   const [detailTexture, setDetailTexture] = useState<THREE.CanvasTexture | null>(null);
-  const [segments, setSegments] = useState(isMobile ? 64 : 128);
+  const [segments, setSegments] = useState(isMobile ? 32 : 64);
   const [geographyManager] = useState(() => new GeographyManager());
 
   useEffect(() => {
@@ -235,8 +237,8 @@ export const Planet = memo(function Planet({
     const dist = camera.position.distanceTo(worldPos);
 
     const nextSegments = isMobile
-      ? dist < radius * 14 ? 128 : dist < radius * 34 ? 64 : 32
-      : dist < radius * 16 ? 256 : dist < radius * 38 ? 128 : 64;
+      ? dist < radius * 14 ? 48 : dist < radius * 34 ? 32 : 20
+      : dist < radius * 16 ? 96 : dist < radius * 38 ? 64 : 32;
 
     if (nextSegments !== segments) {
       setSegments(nextSegments);
@@ -252,15 +254,15 @@ export const Planet = memo(function Planet({
     }
   });
 
-  const atmosphereSegments = useMemo(() => (isMobile ? 24 : 32), [isMobile]);
+  const atmosphereSegments = useMemo(() => (isMobile ? 14 : 20), [isMobile]);
 
   const materialProps = useMemo(
     () => ({
       map: texture,
       displacementMap,
-      displacementScale: isMobile ? 0.4 : 0.62,
+      displacementScale: isMobile ? 0.22 : 0.34,
       bumpMap: displacementMap,
-      bumpScale: isMobile ? 0.1 : 0.17,
+      bumpScale: isMobile ? 0.05 : 0.08,
       roughness: 0.88,
       metalness: 0.04,
     }),
@@ -273,8 +275,8 @@ export const Planet = memo(function Planet({
     const tex = detailTexture.clone();
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(isMobile ? 8 : 12, isMobile ? 8 : 12);
-    tex.anisotropy = 8;
+    tex.repeat.set(isMobile ? 6 : 8, isMobile ? 6 : 8);
+    tex.anisotropy = 2;
     tex.needsUpdate = true;
     return tex;
   }, [detailTexture, isMobile]);
@@ -285,8 +287,8 @@ export const Planet = memo(function Planet({
     const tex = displacementMap.clone();
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(isMobile ? 8 : 12, isMobile ? 8 : 12);
-    tex.anisotropy = 8;
+    tex.repeat.set(isMobile ? 6 : 8, isMobile ? 6 : 8);
+    tex.anisotropy = 2;
     tex.needsUpdate = true;
     return tex;
   }, [displacementMap, isMobile]);
@@ -312,7 +314,7 @@ export const Planet = memo(function Planet({
             ref={detailMaterialRef}
             map={tiledTexture}
             bumpMap={tiledDisplacement}
-            bumpScale={isMobile ? 0.06 : 0.11}
+            bumpScale={isMobile ? 0.03 : 0.05}
             roughness={0.92}
             metalness={0.0}
             transparent
@@ -330,7 +332,7 @@ export const Planet = memo(function Planet({
         <meshBasicMaterial
           color={atmosphereColor}
           transparent
-          opacity={0.1}
+          opacity={atmosphereOpacity}
           side={THREE.BackSide}
           blending={THREE.AdditiveBlending}
           depthWrite={false}

@@ -213,7 +213,7 @@ export function Minimap3D({
     >
       <div className="relative w-full h-full rounded-2xl overflow-hidden border border-white/10 bg-black/35 backdrop-blur">
         <Canvas
-          dpr={isMobile ? 1 : 1.25}
+          dpr={1}
           gl={{ antialias: false, powerPreference: 'high-performance', alpha: true }}
           camera={{ position: [0, 46, 34], fov: 35, near: 0.1, far: 6000 }}
         >

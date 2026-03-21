@@ -67,7 +67,7 @@ function ShipPreviewModel({ type }: { type: ShipEntry['id'] }) {
 function ShipPreviewStage({ ship }: { ship: ShipEntry }) {
   return (
     <div className="relative h-[280px] w-full rounded-2xl overflow-hidden border border-white/10 bg-black/30">
-      <Canvas camera={{ position: [0, 1.2, 7], fov: 38 }} shadows dpr={[1, 1.5]} gl={{ antialias: true, powerPreference: 'high-performance' }}>
+      <Canvas camera={{ position: [0, 1.2, 7], fov: 38 }} shadows={false} dpr={[0.9, 1]} gl={{ antialias: false, powerPreference: 'high-performance' }}>
         <color attach="background" args={['#05070b']} />
         <ambientLight intensity={0.65} />
         <directionalLight position={[6, 8, 5]} intensity={1.6} castShadow />

@@ -26,8 +26,8 @@ import { SolarSystemView } from './components/SolarSystemView';
 import { getScaledPlanetRadius, getScaledStarRadius, buildOrbitMap, getBodyWorldPosition } from './services/orbitUtils';
 import { planetRotationRef } from './services/runtimeRefs';
 
-function getTextureDetailForQuality(quality: 'low' | 'medium' | 'high') {
-  return quality === 'high' ? 'enhanced' : 'standard';
+function getTextureDetailForQuality(_quality: 'low' | 'medium' | 'high') {
+  return 'standard';
 }
 
 
@@ -72,7 +72,7 @@ function GalaxyStarField({
   galaxySeed,
   currentSystemSeed,
   onSelectSystem,
-  quality = 'high',
+  quality = 'low',
 }: {
   galaxySeed: string;
   currentSystemSeed: string;
@@ -83,7 +83,7 @@ function GalaxyStarField({
   const hitMeshRef = useRef<THREE.InstancedMesh>(null);
 
   const starData = useMemo<GalaxyStarData[]>(() => {
-    const count = quality === 'low' ? 160 : quality === 'medium' ? 360 : 720;
+    const count = quality === 'low' ? 160 : quality === 'medium' ? 260 : 420;
     const random = createPRNG(hashCombine(galaxySeed, 'galaxy-stars', quality));
     const colors = ['#ffd27f', '#ffe7b8', '#cfe7ff', '#ffc8d2', '#fff4dd', '#9fd4ff', '#ffb38f'];
 
@@ -98,8 +98,8 @@ function GalaxyStarField({
       );
       const isCurrent = hashCombine(galaxySeed, 'system', i) === currentSystemSeed;
       const visibleScale =
-        (quality === 'low' ? 4.0 : quality === 'medium' ? 5.0 : 6.0) +
-        random() * (quality === 'low' ? 3.0 : quality === 'medium' ? 4.0 : 5.0);
+        (quality === 'low' ? 3.5 : quality === 'medium' ? 4.25 : 5.0) +
+        random() * (quality === 'low' ? 2.2 : quality === 'medium' ? 3.2 : 4.0);
 
       return {
         id: `galaxy_star_${i}`,
@@ -332,7 +332,7 @@ export default function App() {
     const firstPlanet = planets[0];
 
     if (firstPlanet) {
-      geographyManager.setSeed(firstPlanet.seed, firstPlanet.noiseScale, firstPlanet.landThreshold);
+      geographyManager.setSeed(firstPlanet.seed, firstPlanet.noiseScale, firstPlanet.landThreshold, getTextureDetailForQuality(qualityPreset), firstPlanet.visualClass);
       setCurrentPlanetId(null);
     } else {
       setCurrentPlanetId(null);
@@ -756,29 +756,9 @@ export default function App() {
     return null;
   };
 
-  const starsCount = isMobile
-    ? qualityPreset === 'low'
-      ? 320
-      : qualityPreset === 'medium'
-        ? 720
-        : 1400
-    : qualityPreset === 'low'
-      ? 700
-      : qualityPreset === 'medium'
-        ? 1400
-        : 2600;
-  const dpr = isMobile
-    ? qualityPreset === 'low'
-      ? ([0.75, 1] as [number, number])
-      : qualityPreset === 'medium'
-        ? ([0.9, 1.1] as [number, number])
-        : ([1, 1.4] as [number, number])
-    : qualityPreset === 'low'
-      ? ([1, 1.15] as [number, number])
-      : qualityPreset === 'medium'
-        ? ([1, 1.4] as [number, number])
-        : ([1, 1.85] as [number, number]);
-  const enableEnvironment = !isShipMode && ((!isMobile && qualityPreset !== 'low') || qualityPreset === 'high');
+  const starsCount = isMobile ? 180 : 420;
+  const dpr = isMobile ? ([0.75, 0.9] as [number, number]) : ([0.85, 1] as [number, number]);
+  const enableEnvironment = false;
   const bodyCount = solarSystem?.bodies.filter((b) => b.type === 'planet').length ?? 0;
   const activePlanetName = currentPlanetId ? currentPlanetId.replace('planet_', 'PLANET-') : 'SOL';
 
@@ -801,11 +781,11 @@ export default function App() {
       </AnimatePresence>
 
       <Canvas
-        shadows={!isMobile && qualityPreset !== 'low'}
+        shadows={false}
         camera={{ position: [0, 0, 25], fov: 45, near: 0.0001, far: 1000000 }}
         dpr={dpr}
-        performance={{ min: 0.5 }}
-        gl={{ antialias: qualityPreset !== 'low', powerPreference: 'high-performance' }}
+        performance={{ min: 0.7 }}
+        gl={{ antialias: false, powerPreference: 'high-performance' }}
       >
         <ambientLight intensity={isShipMode ? 0.26 : 0.2} />
 
@@ -816,7 +796,7 @@ export default function App() {
           factor={4}
           saturation={0}
           fade
-          speed={qualityPreset === 'low' ? 0.25 : 0.75}
+          speed={0.2}
         />
         <GalaxyStarField
           galaxySeed="umb-games-galaxy"

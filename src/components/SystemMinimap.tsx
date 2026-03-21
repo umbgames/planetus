@@ -147,7 +147,7 @@ export function SystemMinimap({ solarSystem, currentPlanetId, selfAbsolutePositi
         </div>
         <div className="relative h-[190px] md:h-[220px]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(34,211,238,0.08),transparent_65%)]" />
-          <Canvas camera={{ position: [0, 0, 18], fov: 46 }} dpr={[1, 1.5]} gl={{ antialias: true, alpha: true }}>
+          <Canvas camera={{ position: [0, 0, 18], fov: 46 }} dpr={[0.9, 1]} gl={{ antialias: false, alpha: true }}>
             <MinimapScene
               solarSystem={solarSystem}
               selfAbsolutePosition={selfAbsolutePosition}

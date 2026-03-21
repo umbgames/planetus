@@ -24,7 +24,7 @@ interface CachedGeographyData {
 }
 
 type TextureDetail = 'standard' | 'enhanced';
-type BiomeName = 'tundra' | 'snow_forest' | 'grassland' | 'forest' | 'desert' | 'jungle';
+type BiomeName = 'rocky' | 'tundra' | 'snow_forest' | 'grassland' | 'forest' | 'dry_arid' | 'desert' | 'red';
 
 const geometryCache = new Map<string, CachedGeographyData>();
 
@@ -48,7 +48,8 @@ export class GeographyManager {
   private humidityNoise3D: (x: number, y: number, z: number) => number;
   private seed = 'default';
   private textureDetail: TextureDetail = 'enhanced';
-  private visualClass: VisualClass = 'lush';
+  private visualClass: VisualClass = 'rocky';
+  private textureResolution: { width: number; height: number } | null = null;
 
   canvas: HTMLCanvasElement | null = null;
   ctx: CanvasRenderingContext2D | null = null;
@@ -72,9 +73,10 @@ export class GeographyManager {
     seed = this.seed,
     noiseScale = this.noiseScale,
     landThreshold = this.landThreshold,
-    textureDetail = this.textureDetail
+    textureDetail = this.textureDetail,
+    visualClass = this.visualClass
   ) {
-    return `${seed}|${noiseScale}|${landThreshold}|${textureDetail}|${this.visualClass}`;
+    return `${seed}|${noiseScale}|${landThreshold}|${textureDetail}|${visualClass}`;
   }
 
   private configureTexture(tex: THREE.CanvasTexture, repeat = false) {
@@ -117,7 +119,7 @@ export class GeographyManager {
     noiseScale: number = 1.5,
     landThreshold: number = 0.2,
     textureDetail: TextureDetail = 'enhanced',
-    visualClass: VisualClass = 'lush'
+    visualClass: VisualClass = 'rocky'
   ) {
     if (
       this.seed !== seed ||
@@ -148,12 +150,16 @@ export class GeographyManager {
     noiseScale: number,
     landThreshold: number,
     textureDetail: TextureDetail = 'enhanced',
-    visualClass: VisualClass = 'lush'
+    visualClass: VisualClass = 'rocky'
   ) {
     const manager = new GeographyManager();
     manager.setSeed(seed, noiseScale, landThreshold, textureDetail, visualClass);
     void manager.initializeTopicRegions();
     return manager;
+  }
+
+  setTextureResolution(width: number, height: number) {
+    this.textureResolution = { width, height };
   }
 
   getTerrain(x: number, y: number, z: number) {
@@ -335,55 +341,52 @@ export class GeographyManager {
 
   private getTemperatureAtPoint(x: number, y: number, z: number) {
     const latitude = 1 - Math.abs(y);
-    const thermalNoise = this.noise3D(x * 2.2, y * 2.2, z * 2.2) * 0.18;
-    const seedBias = seededRange(hashCombine(this.seed, 'tempBias'), -0.18, 0.18);
-    const classBias = { volcanic: 0.28, desert: 0.18, arid_rocky: 0.12, lush: 0.02, oceanic: -0.03, barren_gray: -0.06, icy: -0.3, gas_giant: 0.04 }[this.visualClass] ?? 0;
-    return THREE.MathUtils.clamp(latitude + thermalNoise + seedBias + classBias, 0, 1);
+    const thermalNoise = this.noise3D(x * 2.2, y * 2.2, z * 2.2) * 0.16;
+    const profileBias = this.visualClass === 'desert' ? 0.18 : this.visualClass === 'red' ? 0.22 : this.visualClass === 'dry_arid' ? 0.08 : this.visualClass === 'rocky' ? -0.04 : 0;
+    const seedBias = seededRange(hashCombine(this.seed, 'tempBias'), -0.12, 0.12);
+    return THREE.MathUtils.clamp(latitude + thermalNoise + seedBias + profileBias, 0, 1);
   }
 
   private getHumidityAtPoint(x: number, y: number, z: number) {
     const humidity = this.humidityNoise3D(x * 2.8, y * 2.8, z * 2.8) * 0.5 + 0.5;
     const extra = this.humidityNoise3D(x * 6.2, y * 6.2, z * 6.2) * 0.12;
-    const seedBias = seededRange(hashCombine(this.seed, 'humidityBias'), -0.18, 0.18);
-    const classBias = { volcanic: -0.28, desert: -0.22, arid_rocky: -0.16, lush: 0.12, oceanic: 0.22, barren_gray: -0.18, icy: -0.12, gas_giant: 0.02 }[this.visualClass] ?? 0;
-    return THREE.MathUtils.clamp(humidity + extra + seedBias + classBias, 0, 1);
+    const profileBias = this.visualClass === 'desert' ? -0.48 : this.visualClass === 'dry_arid' ? -0.28 : this.visualClass === 'rocky' ? -0.24 : this.visualClass === 'red' ? -0.22 : 0;
+    const seedBias = seededRange(hashCombine(this.seed, 'humidityBias'), -0.15, 0.15);
+    return THREE.MathUtils.clamp(humidity + extra + seedBias + profileBias, 0, 1);
   }
 
   getBiomeAtPoint(x: number, y: number, z: number): BiomeName {
     const temperature = this.getTemperatureAtPoint(x, y, z);
     const humidity = this.getHumidityAtPoint(x, y, z);
+    const elevation = this.getElevation(x, y, z);
 
-    const tempBand = temperature < 0.33 ? 'cold' : temperature < 0.66 ? 'temperate' : 'hot';
-    const humidityBand = humidity < 0.5 ? 'dry' : 'wet';
+    if (this.visualClass === 'rocky') {
+      return elevation > 0.16 || humidity < 0.36 ? 'rocky' : 'dry_arid';
+    }
+
+    if (this.visualClass === 'red') {
+      return temperature > 0.58 ? 'red' : 'dry_arid';
+    }
+
+    if (this.visualClass === 'desert') {
+      return humidity < 0.38 ? 'desert' : 'dry_arid';
+    }
+
+    const tempBand = temperature < 0.28 ? 'cold' : temperature < 0.6 ? 'temperate' : 'hot';
+    const humidityBand = humidity < 0.4 ? 'dry' : 'wet';
 
     if (tempBand === 'cold' && humidityBand === 'dry') return 'tundra';
     if (tempBand === 'cold' && humidityBand === 'wet') return 'snow_forest';
-    if (tempBand === 'temperate' && humidityBand === 'dry') return 'grassland';
-    if (tempBand === 'temperate' && humidityBand === 'wet') return 'forest';
+    if (tempBand === 'temperate' && humidityBand === 'dry') return 'dry_arid';
+    if (tempBand === 'temperate' && humidityBand === 'wet') return 'grassland';
     if (tempBand === 'hot' && humidityBand === 'dry') return 'desert';
-    return 'jungle';
+    return 'forest';
   }
 
   private getBiomePalette() {
-    let hueShift = seededRange(hashCombine(this.seed, 'biomeHueShift'), -0.06, 0.06);
-    let lightShift = seededRange(hashCombine(this.seed, 'biomeLightShift'), -0.08, 0.08);
-    let satShift = seededRange(hashCombine(this.seed, 'biomeSatShift'), -0.1, 0.1);
-
-    const classAdjustments: Record<VisualClass, { hue: number; sat: number; light: number }> = {
-      lush: { hue: 0.0, sat: 0.08, light: 0.0 },
-      oceanic: { hue: 0.04, sat: 0.06, light: -0.02 },
-      desert: { hue: -0.03, sat: 0.05, light: 0.08 },
-      arid_rocky: { hue: -0.025, sat: -0.08, light: 0.02 },
-      barren_gray: { hue: 0.0, sat: -0.22, light: 0.02 },
-      icy: { hue: 0.08, sat: -0.08, light: 0.12 },
-      volcanic: { hue: -0.06, sat: 0.14, light: -0.08 },
-      gas_giant: { hue: -0.01, sat: -0.02, light: 0.03 },
-    };
-
-    const adjustment = classAdjustments[this.visualClass];
-    hueShift += adjustment.hue;
-    satShift += adjustment.sat;
-    lightShift += adjustment.light;
+    const hueShift = seededRange(hashCombine(this.seed, 'biomeHueShift'), -0.04, 0.04);
+    const lightShift = seededRange(hashCombine(this.seed, 'biomeLightShift'), -0.06, 0.06);
+    const satShift = seededRange(hashCombine(this.seed, 'biomeSatShift'), -0.08, 0.08);
 
     const mk = (h: number, s: number, l: number) =>
       new THREE.Color().setHSL(
@@ -392,42 +395,78 @@ export class GeographyManager {
         THREE.MathUtils.clamp(l + lightShift, 0, 1)
       );
 
-    const palettes: Record<VisualClass, any> = {
-      lush: {
-        tundra: mk(0.14, 0.22, 0.66), snow_forest: mk(0.54, 0.26, 0.77), grassland: mk(0.26, 0.42, 0.48), forest: mk(0.32, 0.5, 0.34), desert: mk(0.11, 0.55, 0.58), jungle: mk(0.36, 0.62, 0.3), waterDeep: mk(0.58, 0.55, 0.18), waterShallow: mk(0.54, 0.48, 0.32), shoreline: mk(0.13, 0.45, 0.68), mountain: mk(0.08, 0.12, 0.62), snowCap: mk(0.56, 0.12, 0.9),
+    const paletteByClass: Record<VisualClass, Record<string, THREE.Color>> = {
+      rocky: {
+        rocky: mk(0.08, 0.1, 0.42),
+        tundra: mk(0.12, 0.12, 0.64),
+        snow_forest: mk(0.56, 0.16, 0.78),
+        grassland: mk(0.2, 0.24, 0.42),
+        forest: mk(0.24, 0.18, 0.28),
+        dry_arid: mk(0.09, 0.14, 0.44),
+        desert: mk(0.1, 0.18, 0.56),
+        red: mk(0.03, 0.42, 0.42),
+        waterDeep: mk(0.58, 0.18, 0.16),
+        waterShallow: mk(0.54, 0.16, 0.24),
+        shoreline: mk(0.1, 0.1, 0.58),
+        mountain: mk(0.08, 0.08, 0.58),
+        snowCap: mk(0.56, 0.08, 0.9),
       },
-      oceanic: {
-        tundra: mk(0.16, 0.22, 0.68), snow_forest: mk(0.56, 0.22, 0.8), grassland: mk(0.28, 0.34, 0.42), forest: mk(0.34, 0.42, 0.32), desert: mk(0.13, 0.4, 0.62), jungle: mk(0.4, 0.58, 0.28), waterDeep: mk(0.6, 0.64, 0.16), waterShallow: mk(0.56, 0.56, 0.34), shoreline: mk(0.14, 0.34, 0.74), mountain: mk(0.1, 0.08, 0.58), snowCap: mk(0.58, 0.1, 0.92),
+      dry_arid: {
+        rocky: mk(0.08, 0.16, 0.4),
+        tundra: mk(0.12, 0.2, 0.68),
+        snow_forest: mk(0.54, 0.22, 0.78),
+        grassland: mk(0.23, 0.36, 0.42),
+        forest: mk(0.27, 0.38, 0.3),
+        dry_arid: mk(0.095, 0.36, 0.5),
+        desert: mk(0.11, 0.5, 0.6),
+        red: mk(0.03, 0.48, 0.44),
+        waterDeep: mk(0.57, 0.38, 0.19),
+        waterShallow: mk(0.54, 0.34, 0.31),
+        shoreline: mk(0.12, 0.34, 0.66),
+        mountain: mk(0.08, 0.1, 0.58),
+        snowCap: mk(0.56, 0.1, 0.9),
       },
       desert: {
-        tundra: mk(0.12, 0.14, 0.66), snow_forest: mk(0.12, 0.18, 0.72), grassland: mk(0.11, 0.38, 0.54), forest: mk(0.09, 0.28, 0.4), desert: mk(0.09, 0.62, 0.6), jungle: mk(0.12, 0.44, 0.36), waterDeep: mk(0.56, 0.46, 0.18), waterShallow: mk(0.52, 0.38, 0.28), shoreline: mk(0.11, 0.58, 0.72), mountain: mk(0.08, 0.14, 0.56), snowCap: mk(0.14, 0.08, 0.84),
+        rocky: mk(0.08, 0.2, 0.4),
+        tundra: mk(0.12, 0.18, 0.68),
+        snow_forest: mk(0.54, 0.18, 0.78),
+        grassland: mk(0.17, 0.28, 0.46),
+        forest: mk(0.18, 0.28, 0.34),
+        dry_arid: mk(0.1, 0.45, 0.52),
+        desert: mk(0.115, 0.64, 0.62),
+        red: mk(0.04, 0.52, 0.48),
+        waterDeep: mk(0.56, 0.28, 0.18),
+        waterShallow: mk(0.53, 0.24, 0.28),
+        shoreline: mk(0.12, 0.46, 0.7),
+        mountain: mk(0.08, 0.14, 0.58),
+        snowCap: mk(0.56, 0.08, 0.88),
       },
-      arid_rocky: {
-        tundra: mk(0.1, 0.08, 0.58), snow_forest: mk(0.11, 0.1, 0.62), grassland: mk(0.09, 0.24, 0.46), forest: mk(0.08, 0.18, 0.34), desert: mk(0.08, 0.44, 0.52), jungle: mk(0.1, 0.18, 0.28), waterDeep: mk(0.56, 0.28, 0.15), waterShallow: mk(0.52, 0.22, 0.24), shoreline: mk(0.1, 0.32, 0.62), mountain: mk(0.07, 0.08, 0.48), snowCap: mk(0.12, 0.04, 0.82),
-      },
-      barren_gray: {
-        tundra: mk(0.0, 0.02, 0.62), snow_forest: mk(0.0, 0.03, 0.66), grassland: mk(0.0, 0.04, 0.44), forest: mk(0.0, 0.03, 0.32), desert: mk(0.0, 0.04, 0.52), jungle: mk(0.0, 0.03, 0.28), waterDeep: mk(0.58, 0.12, 0.14), waterShallow: mk(0.56, 0.08, 0.24), shoreline: mk(0.08, 0.08, 0.66), mountain: mk(0.0, 0.02, 0.54), snowCap: mk(0.0, 0.01, 0.84),
-      },
-      icy: {
-        tundra: mk(0.54, 0.14, 0.78), snow_forest: mk(0.56, 0.16, 0.84), grassland: mk(0.5, 0.18, 0.56), forest: mk(0.48, 0.16, 0.42), desert: mk(0.5, 0.2, 0.68), jungle: mk(0.46, 0.22, 0.36), waterDeep: mk(0.6, 0.46, 0.16), waterShallow: mk(0.58, 0.34, 0.34), shoreline: mk(0.56, 0.24, 0.78), mountain: mk(0.5, 0.1, 0.68), snowCap: mk(0.58, 0.08, 0.96),
-      },
-      volcanic: {
-        tundra: mk(0.03, 0.16, 0.38), snow_forest: mk(0.02, 0.18, 0.42), grassland: mk(0.03, 0.34, 0.3), forest: mk(0.02, 0.28, 0.22), desert: mk(0.04, 0.62, 0.42), jungle: mk(0.01, 0.34, 0.18), waterDeep: mk(0.0, 0.24, 0.08), waterShallow: mk(0.02, 0.22, 0.12), shoreline: mk(0.07, 0.42, 0.54), mountain: mk(0.02, 0.12, 0.34), snowCap: mk(0.06, 0.04, 0.72),
-      },
-      gas_giant: {
-        tundra: mk(0.11, 0.22, 0.72), snow_forest: mk(0.12, 0.18, 0.8), grassland: mk(0.09, 0.24, 0.62), forest: mk(0.08, 0.22, 0.5), desert: mk(0.1, 0.42, 0.66), jungle: mk(0.12, 0.32, 0.46), waterDeep: mk(0.12, 0.18, 0.22), waterShallow: mk(0.1, 0.16, 0.34), shoreline: mk(0.1, 0.28, 0.74), mountain: mk(0.09, 0.08, 0.64), snowCap: mk(0.1, 0.06, 0.9),
+      red: {
+        rocky: mk(0.04, 0.32, 0.34),
+        tundra: mk(0.04, 0.16, 0.58),
+        snow_forest: mk(0.55, 0.12, 0.78),
+        grassland: mk(0.05, 0.38, 0.4),
+        forest: mk(0.03, 0.44, 0.28),
+        dry_arid: mk(0.03, 0.52, 0.42),
+        desert: mk(0.04, 0.58, 0.52),
+        red: mk(0.02, 0.68, 0.42),
+        waterDeep: mk(0.56, 0.22, 0.14),
+        waterShallow: mk(0.53, 0.2, 0.22),
+        shoreline: mk(0.08, 0.4, 0.6),
+        mountain: mk(0.04, 0.12, 0.52),
+        snowCap: mk(0.56, 0.08, 0.86),
       },
     };
 
-    return palettes[this.visualClass];
+    return paletteByClass[this.visualClass];
   }
 
   generateTexture() {
-    const width = this.textureDetail === 'enhanced' ? 2048 : 1024;
-    const height = this.textureDetail === 'enhanced' ? 1024 : 512;
+    const width = this.textureResolution?.width ?? (this.textureDetail === 'enhanced' ? 1536 : 768);
+    const height = this.textureResolution?.height ?? (this.textureDetail === 'enhanced' ? 768 : 384);
 
-    const detailWidth = this.textureDetail === 'enhanced' ? 1024 : 512;
-    const detailHeight = this.textureDetail === 'enhanced' ? 1024 : 512;
+    const detailWidth = Math.max(256, Math.floor(width / 2));
+    const detailHeight = Math.max(256, Math.floor(height / 2));
 
     if (!this.canvas) {
       this.canvas = document.createElement('canvas');
@@ -495,6 +534,8 @@ export class GeographyManager {
         const terrain = this.getTerrain(px, py, pz);
         const elevation = this.getElevation(px, py, pz);
 
+        const dryWorld = this.visualClass === 'rocky' || this.visualClass === 'dry_arid' || this.visualClass === 'desert' || this.visualClass === 'red';
+
         if (terrain <= this.landThreshold) {
           const coastFactor = THREE.MathUtils.clamp(
             (terrain - this.landThreshold + 0.14) / 0.14,
@@ -505,8 +546,8 @@ export class GeographyManager {
           const waveLarge = this.noise3D(px * 10, py * 10, pz * 10) * 0.04;
           const waveFine = this.noise3D(px * 28, py * 28, pz * 28) * 0.025;
 
-          const color = palette.waterDeep.clone().lerp(palette.waterShallow, coastFactor);
-          color.offsetHSL(0, 0, waveLarge + waveFine);
+          const color = (dryWorld ? palette.rocky.clone().lerp(palette.desert, coastFactor * 0.6 + 0.15) : palette.waterDeep.clone().lerp(palette.waterShallow, coastFactor));
+          color.offsetHSL(0, dryWorld ? -0.02 : 0, dryWorld ? waveFine * 0.35 : waveLarge + waveFine);
 
           data[idx] = Math.round(color.r * 255);
           data[idx + 1] = Math.round(color.g * 255);
@@ -533,10 +574,11 @@ export class GeographyManager {
         const humidity = this.getHumidityAtPoint(px, py, pz);
         const temperature = this.getTemperatureAtPoint(px, py, pz);
 
-        const detailLarge = this.noise3D(px * 18, py * 18, pz * 18) * 0.05;
-        const detailMid = this.noise3D(px * 40, py * 40, pz * 40) * 0.05;
-        const detailFine = this.noise3D(px * 90, py * 90, pz * 90) * 0.03;
-        const detailMicro = this.noise3D(px * 160, py * 160, pz * 160) * 0.018;
+        const biomeFrequencyBoost = this.visualClass === 'rocky' ? 1.35 : this.visualClass === 'red' ? 1.15 : 1.0;
+        const detailLarge = this.noise3D(px * 18 * biomeFrequencyBoost, py * 18 * biomeFrequencyBoost, pz * 18 * biomeFrequencyBoost) * 0.05;
+        const detailMid = this.noise3D(px * 40 * biomeFrequencyBoost, py * 40 * biomeFrequencyBoost, pz * 40 * biomeFrequencyBoost) * 0.05;
+        const detailFine = this.noise3D(px * 90 * biomeFrequencyBoost, py * 90 * biomeFrequencyBoost, pz * 90 * biomeFrequencyBoost) * 0.03;
+        const detailMicro = this.noise3D(px * 160 * biomeFrequencyBoost, py * 160 * biomeFrequencyBoost, pz * 160 * biomeFrequencyBoost) * 0.018;
 
         if (elevation > 0.46) {
           base.lerp(
@@ -609,10 +651,10 @@ export class GeographyManager {
         const humidity = this.humidityNoise3D(nx * 9, ny * 9, nz * 9) * 0.5 + 0.5;
         const mask = THREE.MathUtils.clamp(terrainA * 0.5 + 0.5, 0, 1);
 
-        const dryColor = new THREE.Color(0.43, 0.39, 0.28);
-        const lushColor = new THREE.Color(0.22, 0.34, 0.18);
-        const rockColor = new THREE.Color(0.5, 0.48, 0.46);
-        const sandColor = new THREE.Color(0.62, 0.56, 0.4);
+        const dryColor = this.visualClass === 'red' ? new THREE.Color(0.44, 0.2, 0.16) : this.visualClass === 'desert' ? new THREE.Color(0.58, 0.5, 0.3) : new THREE.Color(0.43, 0.39, 0.28);
+        const lushColor = this.visualClass === 'rocky' ? new THREE.Color(0.28, 0.3, 0.24) : new THREE.Color(0.22, 0.34, 0.18);
+        const rockColor = this.visualClass === 'red' ? new THREE.Color(0.5, 0.28, 0.22) : new THREE.Color(0.5, 0.48, 0.46);
+        const sandColor = this.visualClass === 'red' ? new THREE.Color(0.58, 0.32, 0.24) : new THREE.Color(0.62, 0.56, 0.4);
 
         const base = dryColor.clone().lerp(lushColor, humidity * 0.75);
         base.lerp(sandColor, THREE.MathUtils.clamp((terrainB * -0.5) + 0.25, 0, 0.35));

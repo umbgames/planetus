@@ -12,9 +12,10 @@ import {
 } from '../services/orbitUtils';
 import { createPRNG } from '../utils/random';
 import { useShipStore } from '../services/shipStore';
+import { getMoonWorldPosition } from '../services/orbitUtils';
 import { planetRotationRef } from '../services/runtimeRefs';
 
-const getTextureDetailForQuality = (quality: 'low' | 'medium' | 'high') => (quality === 'high' ? 'enhanced' : 'standard');
+const getTextureDetailForQuality = (_quality: 'low' | 'medium' | 'high') => 'standard' as const;
 
 interface SolarSystemViewProps {
   data: SolarSystemData;
@@ -40,14 +41,14 @@ const RingMesh = memo(function RingMesh({ innerRadius, outerRadius, color, opaci
   return (
     <group rotation={[Math.PI / 2.55, 0, 0.25]}>
       <mesh>
-        <ringGeometry args={[innerRadius, outerRadius, 96]} />
+        <ringGeometry args={[innerRadius, outerRadius, 56]} />
         <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
       </mesh>
     </group>
   );
 });
 
-const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, quality = 'medium', setCurrentPlanetId }: { moon: MoonData; parentPlanet: PlanetData; isMobile: boolean; quality?: 'low' | 'medium' | 'high'; setCurrentPlanetId: (id: string | null) => void; }) {
+const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, quality = 'low', setCurrentPlanetId }: { moon: MoonData; parentPlanet: PlanetData; isMobile: boolean; quality?: 'low' | 'medium' | 'high'; setCurrentPlanetId: (id: string | null) => void; }) {
   const groupRef = useRef<THREE.Group>(null);
   const spinRef = useRef<THREE.Group>(null);
   const { setLockedTarget } = useShipStore();
@@ -60,7 +61,7 @@ const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, 
     const z = Math.sin(angle) * moon.orbitDistance;
     const y = x * Math.sin(moon.orbitTiltZ) + z * Math.sin(moon.orbitTiltX);
     groupRef.current.position.set(x, y, z);
-    if (spinRef.current) spinRef.current.rotation.y += 0.024 * delta;
+    if (spinRef.current) spinRef.current.rotation.y += moon.spinSpeed * delta;
   });
 
   return (
@@ -81,13 +82,11 @@ const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, 
           seed={moon.seed}
           noiseScale={moon.noiseScale}
           landThreshold={moon.landThreshold}
-          showClouds={moon.hasClouds}
-          cloudDensity={0.28}
-          cloudSpeed={0.015}
-          cloudRotationSpeed={0.012}
+          showClouds={false}
           textureDetail={getTextureDetailForQuality(quality)}
           visualClass={moon.visualClass}
-          atmosphereColor={moon.atmosphereColor}
+          atmosphereColor="#a9b6c5"
+          atmosphereOpacity={0.025}
         />
       </group>
     </group>
@@ -97,11 +96,11 @@ const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, 
 const OrbitingPlanet = memo(function OrbitingPlanet({
   planet,
   isMobile,
+  currentPlanetId,
   setCurrentPlanetId,
   scaledOrbitDistance,
-  quality = 'medium',
+  quality = 'low',
   enableLOD = false,
-  currentPlanetId,
 }: OrbitingPlanetProps) {
   const groupRef = useRef<THREE.Group>(null);
   const spinRef = useRef<THREE.Group>(null);
@@ -121,8 +120,8 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
     groupRef.current.position.set(x, y, z);
 
     if (spinRef.current) {
-      spinRef.current.rotation.y += 0.018 * delta;
-      if (planet.id === currentPlanetId) {
+      spinRef.current.rotation.y += planet.spinSpeed * delta;
+      if (currentPlanetId === planet.id) {
         planetRotationRef.current = spinRef.current.rotation.y;
       }
     }
@@ -133,7 +132,8 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
       if (!isActive) setIsActive(true);
       return;
     }
-    const activationDistance = Math.max(220, scaledRadius * 40 * VISUAL_SCALE.PLANET_LOD_DISTANCE_MULTIPLIER);
+
+    const activationDistance = Math.max(180, scaledRadius * 28 * VISUAL_SCALE.PLANET_LOD_DISTANCE_MULTIPLIER);
     if (dist < activationDistance && !isActive) setIsActive(true);
     else if (dist >= activationDistance && isActive) setIsActive(false);
   });
@@ -173,9 +173,19 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
               textureDetail={getTextureDetailForQuality(quality)}
               visualClass={planet.visualClass}
               atmosphereColor={planet.atmosphereColor}
+              atmosphereOpacity={planet.atmosphereOpacity}
             />
 
-            {planet.moons.map((moon) => <OrbitingMoon key={moon.id} moon={moon} parentPlanet={planet} isMobile={isMobile} quality={quality} setCurrentPlanetId={setCurrentPlanetId} />)}
+            {planet.moons.map((moon) => (
+              <OrbitingMoon
+                key={moon.id}
+                moon={moon}
+                parentPlanet={planet}
+                isMobile={isMobile}
+                quality={quality}
+                setCurrentPlanetId={setCurrentPlanetId}
+              />
+            ))}
           </>
         )}
       </group>
@@ -186,19 +196,19 @@ const OrbitingPlanet = memo(function OrbitingPlanet({
 function OrbitRing({ radius, color = '#1e3a8a' }: { radius: number; color?: string }) {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]}>
-      <ringGeometry args={[radius - 0.22, radius + 0.22, 128]} />
-      <meshBasicMaterial color={color} transparent opacity={0.14} side={THREE.DoubleSide} depthWrite={false} />
+      <ringGeometry args={[radius - 0.18, radius + 0.18, 64]} />
+      <meshBasicMaterial color={color} transparent opacity={0.1} side={THREE.DoubleSide} depthWrite={false} />
     </mesh>
   );
 }
 
-function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'medium' }: { belt: AsteroidBeltData; scaledOrbitDistance: number; scaledWidth: number; quality?: 'low' | 'medium' | 'high'; }) {
+function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'low' }: { belt: AsteroidBeltData; scaledOrbitDistance: number; scaledWidth: number; quality?: 'low' | 'medium' | 'high'; }) {
   const groupRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.InstancedMesh>(null);
 
   const asteroidCount = useMemo(() => {
-    const ratio = quality === 'low' ? 0.28 : quality === 'medium' ? 0.5 : 0.8;
-    return Math.max(40, Math.floor(belt.count * ratio));
+    const ratio = quality === 'low' ? 0.18 : quality === 'medium' ? 0.35 : 0.55;
+    return Math.max(28, Math.floor(belt.count * ratio));
   }, [belt.count, quality]);
 
   const asteroids = useMemo(() => {
@@ -209,8 +219,8 @@ function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'mediu
       const distance = scaledOrbitDistance + (random() - 0.5) * scaledWidth;
       const x = Math.cos(angle) * distance;
       const z = Math.sin(angle) * distance;
-      const y = (random() - 0.5) * scaledWidth * 0.2;
-      const scale = random() * 0.5 + 0.1;
+      const y = (random() - 0.5) * scaledWidth * 0.16;
+      const scale = random() * 0.45 + 0.08;
       items.push({
         position: new THREE.Vector3(x, y, z),
         scale,
@@ -242,13 +252,13 @@ function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'mediu
     <group ref={groupRef}>
       <instancedMesh ref={meshRef} args={[undefined, undefined, asteroidCount]}>
         <dodecahedronGeometry args={[1, 0]} />
-        <meshStandardMaterial color="#888888" roughness={0.9} />
+        <meshStandardMaterial color="#888888" roughness={0.95} />
       </instancedMesh>
     </group>
   );
 }
 
-export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPlanetId, showOrbitRings = true, quality = 'medium', enableLOD = false }: SolarSystemViewProps) {
+export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPlanetId, showOrbitRings = true, quality = 'low', enableLOD = false }: SolarSystemViewProps) {
   const groupRef = useRef<THREE.Group>(null);
   const orbitMap = useMemo(() => buildOrbitMap(data.bodies), [data.bodies]);
   const scaledStarRadius = useMemo(() => getScaledStarRadius(data.starRadius), [data.starRadius]);
@@ -267,8 +277,8 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
         groupRef.current.position.set(-x, -y, -z);
       }
     } else {
-      planetRotationRef.current = 0;
       groupRef.current.position.set(0, 0, 0);
+      planetRotationRef.current = 0;
     }
   });
 
