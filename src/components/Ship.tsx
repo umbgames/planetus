@@ -398,7 +398,6 @@ export function Ship({
 
       position.current.add(shift);
       camera.position.add(shift);
-      lastPlanetSpinRef.current = planetRotationRef.current;
 
       prevPlanetId.current = currentPlanetId;
     }
@@ -468,23 +467,11 @@ export function Ship({
     }
 
     if (!isLocked && !isLaunching && !isMobile) return;
-
-    const currentPlanetSpin = planetRotationRef.current;
-    const spinDelta = currentPlanetSpin - lastPlanetSpinRef.current;
-    lastPlanetSpinRef.current = currentPlanetSpin;
+    lastPlanetSpinRef.current = planetRotationRef.current;
 
     const distForAtmosphere = position.current.length();
     const R = planetRadius;
     const altitude = distForAtmosphere - R;
-
-    if (currentPlanetId && Math.abs(spinDelta) > 0.000001 && altitude < Math.max(10, planetRadius * 0.6)) {
-      position.current.applyAxisAngle(new THREE.Vector3(0, 1, 0), spinDelta);
-      velocity.current.applyAxisAngle(new THREE.Vector3(0, 1, 0), spinDelta);
-      shipQuaternionRef.current.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), spinDelta));
-      lookQuaternionRef.current.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), spinDelta));
-      if (shipRef.current) shipRef.current.quaternion.copy(shipQuaternionRef.current);
-      rotation.current.setFromQuaternion(shipQuaternionRef.current, 'YXZ');
-    }
 
     let tiltFactor = 0;
     if (altitude < 4) tiltFactor = 1 - altitude / 4;

@@ -28,10 +28,13 @@ export const Minimap: React.FC<MinimapProps> = ({ solarSystem, currentPlanetId, 
         let color = "#ffffff";
         if (b.type === 'planet') {
           switch (b.visualClass) {
-            case 'rocky': color = "#9ca3af"; break;
-            case 'dry_arid': color = "#c08457"; break;
+            case 'lush': color = "#10b981"; break;
+            case 'oceanic': color = "#3b82f6"; break;
             case 'desert': color = "#fbbf24"; break;
-            case 'red': color = "#ef4444"; break;
+            case 'arid_rocky': color = "#d97706"; break;
+            case 'barren_gray': color = "#9ca3af"; break;
+            case 'icy': color = "#60a5fa"; break;
+            case 'volcanic': color = "#ef4444"; break;
           }
         } else {
           color = "#4b5563";
@@ -39,7 +42,7 @@ export const Minimap: React.FC<MinimapProps> = ({ solarSystem, currentPlanetId, 
 
         return {
           id: b.id,
-          name: b.type === 'planet' ? b.id.replace('planet_', 'PLANET-') : 'Asteroid Belt',
+          name: b.type === 'planet' ? b.name : 'Asteroid Belt',
           color,
           orbitDistance: b.orbitDistance,
           orbitSpeed: b.orbitSpeed,
