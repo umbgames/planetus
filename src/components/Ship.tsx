@@ -806,34 +806,143 @@ export function Ship({
         <pointLight position={[0, 0.28, -0.4]} intensity={1.4} distance={1.8} color="#8fd3ff" />
         <pointLight position={[0, 0.05, 1.2]} intensity={1.1} distance={1.4} color="#6ee7ff" />
         <group ref={shipModelRef} position={[0, -0.002, -0.005]} scale={0.01}>
-          <mesh position={[0, 0, 0]}>
-            <boxGeometry args={[0.6, 0.4, 2.5]} />
-            <meshStandardMaterial color="#707784" metalness={0.78} roughness={0.2} emissive="#1b2434" emissiveIntensity={0.32} />
-          </mesh>
-          <mesh position={[0, 0, -1.5]} rotation={[-Math.PI / 2, 0, 0]}>
-            <coneGeometry args={[0.3, 1, 4]} />
-            <meshStandardMaterial color="#626c79" metalness={0.72} roughness={0.24} emissive="#111827" emissiveIntensity={0.24} />
-          </mesh>
-          <mesh position={[0, 0.3, -0.5]}>
-            <boxGeometry args={[0.4, 0.3, 1]} />
-            <meshStandardMaterial color="#8be9ff" emissive="#57d9ff" emissiveIntensity={0.8} metalness={0.85} roughness={0.05} transparent opacity={0.92} />
-          </mesh>
-          <mesh position={[0, 0, 0.2]}>
-            <boxGeometry args={[3.5, 0.05, 1]} />
-            <meshStandardMaterial color="#5c6472" metalness={0.75} roughness={0.24} emissive="#111827" emissiveIntensity={0.18} />
-          </mesh>
-          <mesh position={[-0.2, 0.4, 1]}>
-            <boxGeometry args={[0.05, 0.8, 0.5]} />
-            <meshStandardMaterial color="#ff7a7a" emissive="#ff4d4d" emissiveIntensity={0.45} metalness={0.4} roughness={0.35} />
-          </mesh>
-          <mesh position={[0.2, 0.4, 1]}>
-            <boxGeometry args={[0.05, 0.8, 0.5]} />
-            <meshStandardMaterial color="#ff7a7a" emissive="#ff4d4d" emissiveIntensity={0.45} metalness={0.4} roughness={0.35} />
-          </mesh>
-          <mesh position={[0, 0, 1.26]}>
-            <boxGeometry args={[0.4, 0.2, 0.05]} />
-            <meshStandardMaterial color="#b8f6ff" emissive="#72e8ff" emissiveIntensity={4.5} />
-          </mesh>
+          <group rotation={[0.1, Math.PI, 0]} position={[0, -0.08, 0]}>
+            <mesh castShadow>
+              <boxGeometry args={[0.38, 0.28, 2.25]} />
+              <meshStandardMaterial color="#1f232b" metalness={0.72} roughness={0.21} emissive="#0e141d" emissiveIntensity={0.18} />
+            </mesh>
+
+            <mesh position={[0, 0.145, 0]} castShadow>
+              <boxGeometry args={[0.34, 0.012, 2.0]} />
+              <meshStandardMaterial color="#2a313d" metalness={0.58} roughness={0.28} />
+            </mesh>
+
+            <mesh position={[0.02, 0.01, 0.2]} castShadow>
+              <boxGeometry args={[2.35, 0.05, 0.58]} />
+              <meshStandardMaterial color="#11151c" roughness={0.16} metalness={0.96} emissive="#0b1017" emissiveIntensity={0.15} />
+            </mesh>
+
+            <mesh position={[-0.03, -0.02, -0.55]} castShadow rotation={[0, 0.04, 0]}>
+              <boxGeometry args={[1.24, 0.05, 0.42]} />
+              <meshStandardMaterial color="#12161e" roughness={0.17} metalness={0.95} emissive="#0a0f16" emissiveIntensity={0.12} />
+            </mesh>
+
+            <mesh position={[0.08, 0.2, -0.22]} rotation={[0.08, 0, 0]} castShadow>
+              <boxGeometry args={[0.22, 0.14, 0.72]} />
+              <meshStandardMaterial
+                color="#04070c"
+                metalness={1}
+                roughness={0.06}
+                emissive="#0b2340"
+                emissiveIntensity={0.7}
+              />
+            </mesh>
+
+            <mesh position={[-0.48, 0.06, 0.4]} rotation={[0, 0.18, 0]} castShadow>
+              <boxGeometry args={[0.14, 0.12, 0.58]} />
+              <meshStandardMaterial color="#202734" metalness={0.52} roughness={0.34} />
+            </mesh>
+
+            <mesh position={[0.42, -0.03, -0.4]} rotation={[0, -0.14, 0]} castShadow>
+              <boxGeometry args={[0.1, 0.08, 0.42]} />
+              <meshStandardMaterial color="#272d39" metalness={0.48} roughness={0.36} />
+            </mesh>
+
+            <mesh position={[-0.72, 0.0, 0.3]} castShadow rotation={[0, 0.15, 0]}>
+              <boxGeometry args={[0.42, 0.08, 0.18]} />
+              <meshStandardMaterial color="#1d2330" metalness={0.56} roughness={0.28} />
+            </mesh>
+
+            <mesh position={[0.75, 0.0, 0.12]} castShadow rotation={[0, -0.12, 0]}>
+              <boxGeometry args={[0.36, 0.08, 0.16]} />
+              <meshStandardMaterial color="#1d2330" metalness={0.56} roughness={0.28} />
+            </mesh>
+
+            <mesh position={[-0.09, 0.16, 0.78]} castShadow>
+              <boxGeometry args={[0.05, 0.04, 0.12]} />
+              <meshStandardMaterial color="#2d3441" metalness={0.6} roughness={0.3} />
+            </mesh>
+            <mesh position={[0.09, 0.15, 0.92]} castShadow>
+              <boxGeometry args={[0.05, 0.04, 0.12]} />
+              <meshStandardMaterial color="#2d3441" metalness={0.6} roughness={0.3} />
+            </mesh>
+            <mesh position={[-0.08, -0.11, 0.65]} castShadow>
+              <boxGeometry args={[0.05, 0.04, 0.12]} />
+              <meshStandardMaterial color="#2d3441" metalness={0.6} roughness={0.3} />
+            </mesh>
+            <mesh position={[0.1, -0.12, 0.76]} castShadow>
+              <boxGeometry args={[0.05, 0.04, 0.12]} />
+              <meshStandardMaterial color="#2d3441" metalness={0.6} roughness={0.3} />
+            </mesh>
+            <mesh position={[0.02, 0.12, -0.9]} castShadow>
+              <boxGeometry args={[0.05, 0.04, 0.12]} />
+              <meshStandardMaterial color="#2d3441" metalness={0.6} roughness={0.3} />
+            </mesh>
+
+            <mesh position={[0, 0.145, 0.65]}>
+              <boxGeometry args={[0.22, 0.014, 0.03]} />
+              <meshStandardMaterial color="#4b576d" metalness={0.55} roughness={0.24} />
+            </mesh>
+            <mesh position={[0, 0.145, 0.05]}>
+              <boxGeometry args={[0.18, 0.014, 0.03]} />
+              <meshStandardMaterial color="#4b576d" metalness={0.55} roughness={0.24} />
+            </mesh>
+
+            <mesh position={[-0.12, 0.13, 0.45]}>
+              <boxGeometry args={[0.02, 0.02, 0.42]} />
+              <meshStandardMaterial color="#00d7ff" emissive="#00d7ff" emissiveIntensity={3.6} toneMapped={false} />
+            </mesh>
+            <mesh position={[0.12, 0.13, 0.4]}>
+              <boxGeometry args={[0.02, 0.02, 0.35]} />
+              <meshStandardMaterial color="#5be0ff" emissive="#5be0ff" emissiveIntensity={3.2} toneMapped={false} />
+            </mesh>
+
+            <mesh position={[0, 0, 1.02]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+              <cylinderGeometry args={[0.09, 0.16, 0.18, 20, 1, true]} />
+              <meshStandardMaterial color="#0f131a" metalness={0.95} roughness={0.18} side={THREE.DoubleSide} />
+            </mesh>
+
+            <mesh position={[0, 0, 1.15]} rotation={[Math.PI / 2, 0, 0]}>
+              <coneGeometry args={[0.15, 0.8, 20, 1, true]} />
+              <meshStandardMaterial
+                color="#00f0ff"
+                emissive="#00f0ff"
+                emissiveIntensity={2.2}
+                transparent
+                opacity={0.65}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+                toneMapped={false}
+              />
+            </mesh>
+
+            <mesh position={[0, 0, 1.23]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.2, 0.06, 1.7, 18, 1, true]} />
+              <meshStandardMaterial
+                color="#5beeff"
+                emissive="#5beeff"
+                emissiveIntensity={1.4}
+                transparent
+                opacity={0.22}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+                toneMapped={false}
+              />
+            </mesh>
+
+            <mesh scale={[1.2, 0.72, 1.62]}>
+              <sphereGeometry args={[1.42, 24, 24]} />
+              <meshStandardMaterial
+                color="#49d7ff"
+                emissive="#49d7ff"
+                emissiveIntensity={0.15}
+                transparent
+                opacity={0.06}
+                depthWrite={false}
+                wireframe
+              />
+            </mesh>
+          </group>
 
           <Trail width={0.08} length={isMobile ? 2 : 4} color={new THREE.Color('#00ffff')} attenuation={(t) => t * t}>
             <mesh position={[0, 0, 1.3]}>
