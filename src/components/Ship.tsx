@@ -840,7 +840,7 @@ export function Ship({
         <pointLight position={[0, 0.28, -0.4]} intensity={1.4} distance={1.8} color="#8fd3ff" />
         <pointLight position={[0, 0.05, 1.2]} intensity={1.1} distance={1.4} color="#6ee7ff" />
         <group ref={shipModelRef} position={[0, -0.002, -0.005]} scale={0.01}>
-          <group rotation={[0.1, Math.PI, 0]} position={[0, -0.08, 0]}>
+          <group rotation={[0.1, 0, 0]} position={[0, -0.08, 0]}>
             <mesh castShadow>
               <boxGeometry args={[0.38, 0.28, 2.25]} />
               <meshStandardMaterial color="#1f232b" metalness={0.72} roughness={0.21} emissive="#0e141d" emissiveIntensity={0.18} />
