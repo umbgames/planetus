@@ -718,7 +718,9 @@ export function Ship({
         shieldTargetEmissive,
         isBoostingActive ? 0.16 : 0.1
       );
-      shieldMaterialRef.current.visible = shieldMaterialRef.current.opacity > 0.002;
+      if (shieldMeshRef.current) {
+        shieldMeshRef.current.visible = shieldMaterialRef.current.opacity > 0.002;
+      }
     }
 
     const input = new THREE.Vector3();
@@ -959,7 +961,7 @@ export function Ship({
               />
             </mesh>
 
-            <mesh scale={[1.2, 0.72, 1.62]} visible={false}>
+            <mesh ref={shieldMeshRef} scale={[1.2, 0.72, 1.62]} visible={false}>
               <sphereGeometry args={[1.42, 24, 24]} />
               <meshStandardMaterial
                 ref={shieldMaterialRef}
