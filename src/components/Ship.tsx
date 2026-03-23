@@ -92,6 +92,9 @@ export function Ship({
   const shipQuaternionRef = useRef(new THREE.Quaternion());
   const lookQuaternionRef = useRef(new THREE.Quaternion());
   const boostCameraOffsetRef = useRef(0.15);
+  const boostLockoutRef = useRef(false);
+  const shieldMeshRef = useRef<THREE.Mesh>(null);
+  const shieldMaterialRef = useRef<THREE.MeshStandardMaterial>(null);
 
   const lastFired = useRef(0);
   const lastMissile = useRef(0);
