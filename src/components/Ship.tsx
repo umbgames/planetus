@@ -645,7 +645,15 @@ export function Ship({
     setExplosions(prev => prev.filter(e => now - e.createdAt < 500));
     setMuzzleFlashes(prev => prev.filter(m => now - m.createdAt < 100));
 
-    const isBoostingActive = (keys['ShiftLeft'] || isBoosting) && boostEnergy.current > 0;
+    const wantsBoost = keys['ShiftLeft'] || isBoosting;
+    const boostRestartThreshold = 35;
+
+    if (!wantsBoost && boostEnergy.current >= boostRestartThreshold) {
+      boostLockoutRef.current = false;
+    }
+
+    const canBoost = !boostLockoutRef.current && boostEnergy.current > 0;
+    const isBoostingActive = wantsBoost && canBoost;
 
     const baseSpeed = 0.6;
     const baseAccel = 0.8 * delta;
@@ -655,6 +663,10 @@ export function Ship({
 
     if (isBoostingActive) {
       boostEnergy.current = Math.max(0, boostEnergy.current - 20 * delta);
+      if (boostEnergy.current <= 0) {
+        boostLockoutRef.current = true;
+        setIsBoosting(false);
+      }
     } else {
       boostEnergy.current = Math.min(100, boostEnergy.current + 10 * delta);
     }
@@ -690,6 +702,23 @@ export function Ship({
         new THREE.Vector3(0, 0.04, boostCameraOffsetRef.current),
         0.2
       );
+    }
+
+    if (shieldMaterialRef.current) {
+      const shieldTargetOpacity = isBoostingActive ? 0.085 : 0;
+      const shieldTargetEmissive = isBoostingActive ? 0.35 : 0;
+
+      shieldMaterialRef.current.opacity = THREE.MathUtils.lerp(
+        shieldMaterialRef.current.opacity,
+        shieldTargetOpacity,
+        isBoostingActive ? 0.18 : 0.12
+      );
+      shieldMaterialRef.current.emissiveIntensity = THREE.MathUtils.lerp(
+        shieldMaterialRef.current.emissiveIntensity,
+        shieldTargetEmissive,
+        isBoostingActive ? 0.16 : 0.1
+      );
+      shieldMaterialRef.current.visible = shieldMaterialRef.current.opacity > 0.002;
     }
 
     const input = new THREE.Vector3();
@@ -930,14 +959,15 @@ export function Ship({
               />
             </mesh>
 
-            <mesh scale={[1.2, 0.72, 1.62]}>
+            <mesh scale={[1.2, 0.72, 1.62]} visible={false}>
               <sphereGeometry args={[1.42, 24, 24]} />
               <meshStandardMaterial
+                ref={shieldMaterialRef}
                 color="#49d7ff"
                 emissive="#49d7ff"
-                emissiveIntensity={0.15}
+                emissiveIntensity={0}
                 transparent
-                opacity={0.06}
+                opacity={0}
                 depthWrite={false}
                 wireframe
               />
