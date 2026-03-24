@@ -73,3 +73,22 @@ export function getPlanetName(systemSeed: string, planetId: string, planetIdsInS
   const map = getOrCreatePlanetNames(systemSeed, planetIdsInSystem);
   return map[planetId] ?? 'Nova';
 }
+
+
+export function getIndexedPlanetNames(planets: { id: string; radius: number; moons?: { id: string }[] }[]) {
+  const labels: PlanetNameMap = {};
+  const ordered = [...planets].sort((a, b) => {
+    const aMoonless = (a.moons?.length || 0) === 0 ? 0 : 1;
+    const bMoonless = (b.moons?.length || 0) === 0 ? 0 : 1;
+    if (aMoonless !== bMoonless) return aMoonless - bMoonless;
+    if (a.radius !== b.radius) return a.radius - b.radius;
+    return a.id.localeCompare(b.id);
+  });
+  const names = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven'];
+
+  for (let index = 0; index < ordered.length; index++) {
+    labels[ordered[index].id] = `Planet ${names[index] ?? index}`;
+  }
+
+  return labels;
+}

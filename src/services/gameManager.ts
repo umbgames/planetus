@@ -818,6 +818,48 @@ class GameManager {
     });
   }
 
+
+
+  async upgradeShip() {
+    if (!auth.currentUser || !this.userData?.shipConfig) throw new Error("Not logged in.");
+
+    const current = this.userData.shipConfig;
+    const currentLevel = Array.isArray(current.addons)
+      ? current.addons.filter((addon) => /^upgrade_mk_\d+$/.test(addon)).length
+      : 0;
+    const maxLevel = 5;
+
+    if (currentLevel >= maxLevel) {
+      throw new Error("Ship is already fully upgraded.");
+    }
+
+    const nextLevel = currentLevel + 1;
+    const commonCost = Math.round(600 * Math.pow(1.7, currentLevel));
+    const rareCost = Math.round(140 * Math.pow(1.6, currentLevel));
+
+    if (this.userData.commonResources < commonCost || this.userData.rareResources < rareCost) {
+      throw new Error("Insufficient resources.");
+    }
+
+    const updatedConfig: ShipConfig = {
+      ...current,
+      health: Math.round(current.health * 1.16),
+      maxHealth: Math.round(current.maxHealth * 1.16),
+      speed: Number((current.speed * 1.08).toFixed(3)),
+      agility: Number((current.agility * 1.08).toFixed(3)),
+      damage: Math.round(current.damage * 1.14),
+      addons: [...(current.addons || []).filter((addon) => !/^upgrade_mk_\d+$/.test(addon)), `upgrade_mk_${nextLevel}`]
+    };
+
+    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+      commonResources: this.userData.commonResources - commonCost,
+      rareResources: this.userData.rareResources - rareCost,
+      shipConfig: updatedConfig,
+      'playerSave.maxHealth': updatedConfig.maxHealth,
+      'playerSave.health': updatedConfig.maxHealth
+    });
+  }
+
   async buySpaceStation(planetId: string) {
     if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
     const price = { common: 25000, rare: 10000 };

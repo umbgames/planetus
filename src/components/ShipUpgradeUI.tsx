@@ -1106,6 +1106,9 @@ export const ShipUpgradeUI: React.FC<ShipUpgradeUIProps> = ({ userData, onClose 
     (userData?.rareResources || 0) >= activeAsset.price.rare;
 
   const isCurrentShip = activeAsset.category === 'ship' && currentShipType === activeAsset.id;
+  const currentUpgradeLevel = (userData?.shipConfig?.addons || []).filter((addon) => /^upgrade_mk_\d+$/.test(addon)).length;
+  const upgradePrice = { common: Math.round(600 * Math.pow(1.7, currentUpgradeLevel)), rare: Math.round(140 * Math.pow(1.6, currentUpgradeLevel)) };
+  const canUpgrade = isCurrentShip && currentUpgradeLevel < 5 && (userData?.commonResources || 0) >= upgradePrice.common && (userData?.rareResources || 0) >= upgradePrice.rare;
 
   const handleAcquire = async () => {
     setLoading(activeAsset.id);
@@ -1117,6 +1120,17 @@ export const ShipUpgradeUI: React.FC<ShipUpgradeUIProps> = ({ userData, onClose 
       } else {
         await gameManager.buyShip(activeAsset.id);
       }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleUpgrade = async () => {
+    setLoading(`${activeAsset.id}-upgrade`);
+    try {
+      await gameManager.upgradeShip();
     } catch (error) {
       console.error(error);
     } finally {
@@ -1235,8 +1249,13 @@ export const ShipUpgradeUI: React.FC<ShipUpgradeUIProps> = ({ userData, onClose 
             </p>
 
             {isCurrentShip && (
-              <div className="mt-4 inline-flex bg-cyan-950/50 border border-cyan-500/30 px-3 py-2 text-[10px] uppercase tracking-[0.26em] text-cyan-400">
-                Active Deployment
+              <div className="mt-4 flex flex-wrap gap-2">
+                <div className="inline-flex bg-cyan-950/50 border border-cyan-500/30 px-3 py-2 text-[10px] uppercase tracking-[0.26em] text-cyan-400">
+                  Active Deployment
+                </div>
+                <div className="inline-flex bg-slate-900/80 border border-slate-700 px-3 py-2 text-[10px] uppercase tracking-[0.26em] text-slate-300">
+                  Upgrade Level {currentUpgradeLevel}
+                </div>
               </div>
             )}
 
@@ -1280,6 +1299,25 @@ export const ShipUpgradeUI: React.FC<ShipUpgradeUIProps> = ({ userData, onClose 
                 'Acquire Ship'
               )}
             </button>
+
+            {isCurrentShip && (
+              <>
+                <button
+                  onClick={handleUpgrade}
+                  disabled={loading !== null || !canUpgrade}
+                  className="mt-4 flex w-full items-center justify-center gap-2 border border-slate-700 bg-slate-900 px-5 py-4 text-sm font-semibold text-slate-100 transition hover:border-cyan-500/50 hover:text-cyan-300 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/60 disabled:text-slate-600"
+                >
+                  {loading === `${activeAsset.id}-upgrade` ? (
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-400/30 border-t-slate-100" />
+                  ) : (
+                    <>
+                      <Sparkles size={16} />
+                      {currentUpgradeLevel >= 5 ? 'Ship Fully Upgraded' : `Upgrade Ship · ${upgradePrice.common} Credits · ${upgradePrice.rare} Rare`}
+                    </>
+                  )}
+                </button>
+              </>
+            )}
 
             <div className="mt-10 space-y-4">
               <div className="text-[10px] uppercase tracking-[0.32em] text-slate-500">System Notes</div>

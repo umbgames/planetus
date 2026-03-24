@@ -108,6 +108,10 @@ export function Ship({
   const { setShipPosition, setVelocity, setAltitude, setBoostEnergy, setCameraQuaternion } = useShipStore();
   const frameCount = useRef(0);
   const orbitMap = useMemo(() => solarSystem ? buildOrbitMap(solarSystem.bodies) : new Map<string, number>(), [solarSystem]);
+  const normalizedShipType = normalizeShipType(userData?.shipConfig?.type);
+  const shipSpeedStat = Math.max(0.75, userData?.shipConfig?.speed || 1);
+  const shipAgilityStat = Math.max(0.75, userData?.shipConfig?.agility || 1);
+  const shipDamageStat = Math.max(10, userData?.shipConfig?.damage || 10);
 
   useEffect(() => {
     if (lastRespawnNonce.current === respawnNonce) return;
@@ -288,7 +292,8 @@ export function Ship({
   ) => {
     const maxDistance = type === 'mg' ? 140 : 220;
     const hitRadiusBase = type === 'mg' ? 1.0 : 1.4;
-    const damageBase = type === 'mg' ? 5 : 50;
+    const damageScalar = shipDamageStat / 10;
+    const damageBase = (type === 'mg' ? 5 : 50) * damageScalar;
     const damageSatellite = type === 'mg' ? 12 : 55;
     const damageResourceExplosion = type === 'mg' ? 0.5 : 1.0;
     const explosionSize = type === 'mg' ? 1 : 3;
@@ -659,10 +664,10 @@ export function Ship({
     const canBoost = !boostLockoutRef.current && boostEnergy.current > 0;
     const isBoostingActive = wantsBoost && canBoost;
 
-    const baseSpeed = 0.6;
-    const baseAccel = 0.8 * delta;
-    const boostBaseSpeed = 2.5;
-    const boostBaseAccel = 2.5 * delta;
+    const baseSpeed = 0.6 * shipSpeedStat;
+    const baseAccel = 0.8 * shipSpeedStat * delta;
+    const boostBaseSpeed = 2.5 * shipSpeedStat;
+    const boostBaseAccel = 2.5 * shipSpeedStat * delta;
     const friction = 0.96;
 
     if (isBoostingActive) {
@@ -757,8 +762,8 @@ export function Ship({
     const baseMatrix = new THREE.Matrix4().makeBasis(right, up, forward.negate());
     const baseQuat = new THREE.Quaternion().setFromRotationMatrix(baseMatrix);
 
-    const yawQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotation.current.y);
-    const pitchQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), rotation.current.x);
+    const yawQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotation.current.y * shipAgilityStat);
+    const pitchQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), rotation.current.x * shipAgilityStat);
     const lookQuaternion = baseQuat.clone().multiply(yawQuat).multiply(pitchQuat);
     lookQuaternionRef.current.copy(lookQuaternion);
 
@@ -841,7 +846,7 @@ export function Ship({
         <pointLight position={[0, 0.28, -0.4]} intensity={1.4} distance={1.8} color="#8fd3ff" />
         <pointLight position={[0, 0.05, 1.2]} intensity={1.1} distance={1.4} color="#6ee7ff" />
         <group ref={shipModelRef} position={[0, -0.002, -0.005]} scale={0.01}>
-          <SharedShipModel type={normalizeShipType(userData?.shipConfig?.type)} />
+          <SharedShipModel type={normalizedShipType} />
 
           <mesh ref={shieldMeshRef} scale={[1.2, 0.72, 1.62]} visible={false}>
             <sphereGeometry args={[1.42, 24, 24]} />

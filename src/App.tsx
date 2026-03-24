@@ -26,6 +26,7 @@ import { createPRNG, hashCombine } from './utils/random';
 import { SolarSystemView } from './components/SolarSystemView';
 import { getScaledPlanetRadius, getScaledStarRadius, buildOrbitMap, getBodyWorldPosition } from './services/orbitUtils';
 import { planetRotationRef } from './services/runtimeRefs';
+import { getIndexedPlanetNames } from './services/planetNames';
 
 function getTextureDetailForQuality(_quality: 'low' | 'medium' | 'high'): 'standard' | 'enhanced' {
   return 'standard';
@@ -440,6 +441,11 @@ export default function App() {
     window.localStorage.setItem('planetus.graphicsQuality', qualityPreset);
   }, [qualityPreset]);
 
+  const planetNameMap = useMemo(() => {
+    if (!solarSystem) return {};
+    return getIndexedPlanetNames(solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet'));
+  }, [solarSystem]);
+
   const currentPlanetRadius = useMemo(() => {
     if (!solarSystem) return PLANET_RADIUS;
     if (!currentPlanetId) return getScaledStarRadius(solarSystem.starRadius);
@@ -465,7 +471,7 @@ export default function App() {
 
     const warmTextures = async () => {
       const textureJobs = planets.flatMap((planet) => ([
-        { seed: planet.seed, noiseScale: planet.noiseScale, landThreshold: planet.landThreshold, visualClass: planet.visualClass, label: planet.id.replace('planet_', 'PLANET-') },
+        { seed: planet.seed, noiseScale: planet.noiseScale, landThreshold: planet.landThreshold, visualClass: planet.visualClass, label: planetNameMap[planet.id] || planet.id.replace('planet_', 'PLANET-') },
         ...planet.moons.map((moon) => ({ seed: moon.seed, noiseScale: moon.noiseScale, landThreshold: moon.landThreshold, visualClass: moon.visualClass, label: moon.id.replace(/_/g, ' ').toUpperCase() })),
       ]));
 
@@ -511,7 +517,7 @@ export default function App() {
         geographyManager.setSeed(planet.seed, planet.noiseScale, planet.landThreshold, getTextureDetailForQuality(qualityPreset), planet.visualClass);
         geographyManager.initializeTopicRegions();
 
-        const planetName = planet.id.replace('planet_', 'PLANET-');
+        const planetName = planetNameMap[planet.id] || planet.id.replace('planet_', 'PLANET-');
         const descriptions = [
           'Entering Orbital Sector',
           'Atmospheric Entry Confirmed',
@@ -910,7 +916,7 @@ export default function App() {
         : ([1, 1.85] as [number, number]);
   const enableEnvironment = !isShipMode && ((!isMobile && qualityPreset !== 'low') || qualityPreset === 'high');
   const bodyCount = solarSystem?.bodies.filter((b) => b.type === 'planet').length ?? 0;
-  const activePlanetName = currentPlanetId ? currentPlanetId.replace('planet_', 'PLANET-') : 'SOL';
+  const activePlanetName = currentPlanetId ? (planetNameMap[currentPlanetId] || currentPlanetId.replace('planet_', 'PLANET-')) : 'SOL';
 
   return (
     <motion.div
