@@ -1,7 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { Billboard, Text } from '@react-three/drei';
+import { useFrame } from '@react-three/fiber';
 import { SpaceStation } from '../services/gameManager';
 import * as THREE from 'three';
+import { SharedMegaShipModel } from './SharedShipModels';
 
 interface SpaceStationsProps {
   stations: SpaceStation[];
@@ -10,27 +12,26 @@ interface SpaceStationsProps {
 }
 
 function SpaceStationMesh({ station, onPilot }: { station: SpaceStation, onPilot?: (station: SpaceStation) => void }) {
-  return (
-    <group position={[station.position.x, station.position.y, station.position.z]} scale={0.01}>
-      {/* Station Core */}
-      <mesh>
-        <cylinderGeometry args={[2, 2, 8, 8]} />
-        <meshStandardMaterial color="#3b82f6" metalness={0.8} roughness={0.2} />
-      </mesh>
-      
-      {/* Solar Panels */}
-      <mesh rotation={[0, 0, Math.PI / 2]}>
-        <boxGeometry args={[1, 15, 0.1]} />
-        <meshStandardMaterial color="#1e40af" metalness={0.9} roughness={0.1} />
-      </mesh>
-      
-      {/* Ring */}
-      <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[6, 0.5, 16, 32]} />
-        <meshStandardMaterial color="#60a5fa" metalness={0.8} roughness={0.2} />
-      </mesh>
+  const groupRef = useRef<THREE.Group>(null);
 
-      {/* Label & Interaction */}
+  useFrame((state) => {
+    if (!groupRef.current) return;
+    const t = state.clock.getElapsedTime();
+    const orbitRadius = Math.max(station.orbitRadius || 180, 180);
+    const orbitSpeed = station.orbitSpeed || 0.00022;
+    const angle = (station.initialAngle || 0) + t * orbitSpeed * 60;
+    const verticalBob = Math.sin(t * 0.18 + (station.initialAngle || 0)) * 8;
+    const x = Math.cos(angle) * orbitRadius;
+    const z = Math.sin(angle) * orbitRadius;
+    const y = 48 + verticalBob;
+    groupRef.current.position.set(x, y, z);
+    groupRef.current.rotation.y = -angle + Math.PI;
+  });
+
+  return (
+    <group ref={groupRef} scale={0.028}>
+      <SharedMegaShipModel />
+
       <Billboard position={[0, 8, 0]} onClick={(e) => {
         e.stopPropagation();
         onPilot?.(station);
@@ -52,7 +53,7 @@ function SpaceStationMesh({ station, onPilot }: { station: SpaceStation, onPilot
           anchorX="center"
           anchorY="middle"
         >
-          Click to Pilot
+          Deep Space Command
         </Text>
       </Billboard>
     </group>

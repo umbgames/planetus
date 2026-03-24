@@ -73,7 +73,7 @@ export interface BaseData {
 }
 
 export interface ShipConfig {
-  type: 'scout' | 'fighter' | 'interceptor' | 'bomber';
+  type: 'scout' | 'phantom' | 'lancer' | 'destroyer' | 'fighter' | 'interceptor' | 'bomber';
   health: number;
   maxHealth: number;
   speed: number;
@@ -785,29 +785,36 @@ class GameManager {
   async buyShip(type: ShipConfig['type']) {
     if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
     
-    const prices = {
+    const prices: Record<string, { common: number; rare: number }> = {
       scout: { common: 0, rare: 0 },
-      fighter: { common: 2000, rare: 500 },
-      interceptor: { common: 5000, rare: 1500 },
-      bomber: { common: 10000, rare: 3000 }
+      phantom: { common: 2600, rare: 650 },
+      lancer: { common: 6200, rare: 1800 },
+      destroyer: { common: 11800, rare: 3600 },
+      fighter: { common: 2600, rare: 650 },
+      interceptor: { common: 6200, rare: 1800 },
+      bomber: { common: 11800, rare: 3600 }
     };
     
-    const price = prices[type];
+    const normalizedType = type === 'fighter' ? 'phantom' : type === 'interceptor' ? 'lancer' : type === 'bomber' ? 'destroyer' : type;
+    const price = prices[normalizedType];
     if (this.userData.commonResources < price.common || this.userData.rareResources < price.rare) {
       throw new Error("Insufficient resources.");
     }
     
-    const configs: { [key: string]: ShipConfig } = {
-      scout: { type: 'scout', health: 100, maxHealth: 100, speed: 1, agility: 1, damage: 10, addons: [] },
-      fighter: { type: 'fighter', health: 250, maxHealth: 250, speed: 1.2, agility: 0.8, damage: 25, addons: [] },
-      interceptor: { type: 'interceptor', health: 150, maxHealth: 150, speed: 2.0, agility: 1.5, damage: 15, addons: [] },
-      bomber: { type: 'bomber', health: 500, maxHealth: 500, speed: 0.7, agility: 0.4, damage: 60, addons: [] }
+    const configs: Record<string, ShipConfig> = {
+      scout: { type: 'scout', health: 100, maxHealth: 100, speed: 1.0, agility: 1.0, damage: 10, addons: [] },
+      phantom: { type: 'phantom', health: 220, maxHealth: 220, speed: 0.9, agility: 0.86, damage: 24, addons: [] },
+      lancer: { type: 'lancer', health: 190, maxHealth: 190, speed: 0.96, agility: 0.8, damage: 34, addons: [] },
+      destroyer: { type: 'destroyer', health: 580, maxHealth: 580, speed: 0.46, agility: 0.34, damage: 72, addons: [] },
+      fighter: { type: 'phantom', health: 220, maxHealth: 220, speed: 0.9, agility: 0.86, damage: 24, addons: [] },
+      interceptor: { type: 'lancer', health: 190, maxHealth: 190, speed: 0.96, agility: 0.8, damage: 34, addons: [] },
+      bomber: { type: 'destroyer', health: 580, maxHealth: 580, speed: 0.46, agility: 0.34, damage: 72, addons: [] }
     };
     
     await updateDoc(doc(db, 'users', auth.currentUser.uid), {
       commonResources: this.userData.commonResources - price.common,
       rareResources: this.userData.rareResources - price.rare,
-      shipConfig: configs[type]
+      shipConfig: configs[normalizedType]
     });
   }
 
@@ -829,8 +836,8 @@ class GameManager {
       clanId: this.userData.clanId,
       planetId,
       position: { x: 0, y: 0, z: 0 },
-      orbitRadius: 100,
-      orbitSpeed: 0.001,
+      orbitRadius: 180,
+      orbitSpeed: 0.00022,
       initialAngle: Math.random() * Math.PI * 2,
       health: 5000,
       maxHealth: 5000,

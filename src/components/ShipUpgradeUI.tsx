@@ -20,6 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { gameManager, UserData } from '../services/gameManager';
+import { SharedMegaShipModel, SharedShipModel, normalizeShipType } from './SharedShipModels';
 
 interface ShipUpgradeUIProps {
   userData: UserData | null;
@@ -972,7 +973,7 @@ function ShipShowcase({ ship }: { ship: ShipEntry }) {
 
         <Float speed={1.4} rotationIntensity={0.16} floatIntensity={0.3}>
           <group position={[0, 0.04, 0]}>
-            <ShipModel type={ship.id} />
+            {ship.category === 'station' ? <SharedMegaShipModel /> : <SharedShipModel type={ship.id} />}
           </group>
         </Float>
 
@@ -1098,7 +1099,7 @@ export const ShipUpgradeUI: React.FC<ShipUpgradeUIProps> = ({ userData, onClose 
   );
 
   const activeAsset = assets[activeIndex];
-  const currentShipType = userData?.shipConfig?.type || 'scout';
+  const currentShipType = normalizeShipType(userData?.shipConfig?.type);
 
   const canAfford =
     (userData?.commonResources || 0) >= activeAsset.price.common &&
