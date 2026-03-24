@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Rocket, X, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Crosshair, Target, Zap, Flame } from 'lucide-react';
+import { Rocket, X, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Target, Zap, Flame } from 'lucide-react';
 import { useShipStore } from '../services/shipStore';
 import { UserData } from '../services/gameManager';
 import { SolarSystemData } from '../services/solarSystem';
@@ -363,19 +363,33 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             </div>
           </div>
 
-          {/* Crosshair */}
+          {/* Targeting Reticle */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <Crosshair className="text-white/50" size={32} strokeWidth={1} />
-            {lockedTarget && (
-              <div className="absolute flex flex-col items-center gap-2 mt-20">
-                <div className="text-cyan-400 text-[10px] font-bold tracking-widest uppercase animate-pulse">
-                  Target Locked
-                </div>
-                <div className="text-white text-xs font-mono">
-                  {(lockedTarget.id || lockedTarget.name || '').toUpperCase()}
-                </div>
-              </div>
-            )}
+            <div className="relative h-16 w-16">
+              <div className="absolute left-1/2 top-1/2 h-3 w-px -translate-x-1/2 -translate-y-1/2 bg-white/70" />
+              <div className="absolute left-1/2 top-1/2 h-px w-3 -translate-x-1/2 -translate-y-1/2 bg-white/70" />
+              <div className="absolute left-0 top-0 h-4 w-4 border-l border-t border-white/45" />
+              <div className="absolute right-0 top-0 h-4 w-4 border-r border-t border-white/45" />
+              <div className="absolute bottom-0 left-0 h-4 w-4 border-b border-l border-white/45" />
+              <div className="absolute bottom-0 right-0 h-4 w-4 border-b border-r border-white/45" />
+              {lockedTarget && (
+                <>
+                  <div className="absolute inset-0 animate-pulse rounded-full border border-cyan-400/35" />
+                  <div className="absolute left-1/2 top-[calc(100%+20px)] min-w-52 -translate-x-1/2 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-center backdrop-blur-md">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.32em] text-cyan-400">
+                      Target Locked
+                    </div>
+                    <div className="mt-1 text-xs font-mono text-white">
+                      {(lockedTarget.id || lockedTarget.name || '').toUpperCase()}
+                    </div>
+                    <div className="mt-2 flex items-center justify-center gap-4 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+                      <span>{targetDistance !== null ? `${targetDistance.toFixed(0)} m` : 'NO RANGE'}</span>
+                      {lockedTarget.health !== undefined && <span>{lockedTarget.health}% integrity</span>}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

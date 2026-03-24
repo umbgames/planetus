@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Stars, Environment } from '@react-three/drei';
+import { EffectComposer, Bloom, Vignette, ToneMapping } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { Sun } from './components/Sun';
 import { BaseManager } from './components/BaseManager';
@@ -30,6 +31,38 @@ function getTextureDetailForQuality(_quality: 'low' | 'medium' | 'high'): 'stand
   return 'standard';
 }
 
+
+function SceneGrade({ isShipMode, qualityPreset }: { isShipMode: boolean; qualityPreset: 'low' | 'medium' | 'high' }) {
+  const { gl, scene } = useThree();
+
+  useEffect(() => {
+    gl.outputColorSpace = THREE.SRGBColorSpace;
+    gl.toneMapping = THREE.ACESFilmicToneMapping;
+    gl.toneMappingExposure = isShipMode ? 1.14 : qualityPreset === 'high' ? 1.22 : 1.16;
+    scene.background = new THREE.Color(isShipMode ? '#02040a' : '#04060d');
+    scene.fog = null;
+
+    return () => {
+      scene.fog = null;
+    };
+  }, [gl, isShipMode, qualityPreset, scene]);
+
+  if (qualityPreset === 'low') return null;
+
+  return (
+    <EffectComposer multisampling={0} disableNormalPass>
+      <Bloom
+        intensity={isShipMode ? 0.9 : 1.05}
+        mipmapBlur
+        luminanceThreshold={0.58}
+        luminanceSmoothing={0.2}
+        radius={0.72}
+      />
+      <ToneMapping adaptive={false} resolution={256} middleGrey={0.72} maxLuminance={16} averageLuminance={0.9} adaptationRate={1} />
+      <Vignette eskil={false} offset={0.14} darkness={qualityPreset === 'high' ? 0.42 : 0.34} />
+    </EffectComposer>
+  );
+}
 
 function RotatingSystem({ children }: { children: React.ReactNode }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -815,7 +848,9 @@ export default function App() {
         performance={{ min: 0.5 }}
         gl={{ antialias: false, powerPreference: 'high-performance' }}
       >
-        <ambientLight intensity={isShipMode ? 0.26 : 0.2} />
+        <color attach="background" args={[isShipMode ? '#02040a' : '#04060d']} />
+        <ambientLight intensity={isShipMode ? 0.22 : 0.16} />
+        <hemisphereLight args={['#9fd6ff', '#1a0f08', isShipMode ? 0.34 : 0.46]} />
 
         <Stars
           radius={1000000}
@@ -900,7 +935,8 @@ export default function App() {
           />
         )}
 
-        {enableEnvironment && <Environment preset="city" />}
+        <SceneGrade isShipMode={isShipMode} qualityPreset={qualityPreset} />
+        {enableEnvironment && <Environment preset="sunset" />}
       </Canvas>
 
       {isShipMode && (

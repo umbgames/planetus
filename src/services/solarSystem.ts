@@ -75,6 +75,15 @@ export interface SolarSystemData {
 const STAR_COLORS = ['#fff4de', '#ffe8b5', '#ffd6a5', '#cfe8ff', '#bcd5ff', '#ffd1dc'];
 const RING_COLORS = ['#d8c3a5', '#c4b5a0', '#bfa88a', '#d9d1c7', '#c7c2b8'];
 
+function createRingData(bodySeed: string, radius: number): RingData {
+  return {
+    innerRadius: radius * seededRange(hashCombine(bodySeed, 'ringInner'), 1.45, 1.72),
+    outerRadius: radius * seededRange(hashCombine(bodySeed, 'ringOuter'), 1.95, 2.75),
+    color: RING_COLORS[Math.floor(seededRange(hashCombine(bodySeed, 'ringColor'), 0, RING_COLORS.length - 0.001))],
+    opacity: seededRange(hashCombine(bodySeed, 'ringOpacity'), 0.2, 0.38),
+  };
+}
+
 export function generateSolarSystem(worldSeed: string): SolarSystemData {
   const prng = createPRNG(worldSeed);
   const numBodies = Math.floor(prng() * 8) + 6;
@@ -113,7 +122,7 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
       ? seededRange(hashCombine(bodySeed, 'giantMultiplier'), 1.5, 3.2 + giantBias * 2.2)
       : seededRange(hashCombine(bodySeed, 'standardMultiplier'), 0.95, 1.45 + giantBias * 0.45);
     const radius = baseRadius * giantMultiplier;
-    const hasRing = radius >= 18.5 && radialRatio > 0.3 && bodyPrng() > 0.55;
+    const isRingCandidate = radius >= 18.5 && radialRatio > 0.25;
     const moonCountBase = radius > 16
       ? Math.floor(seededRange(hashCombine(bodySeed, 'moons'), 1, 3))
       : radius > 10
@@ -176,16 +185,22 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
       cloudRotationSpeed: 0,
       visualClass,
       moons,
-      ring: hasRing
-        ? {
-            innerRadius: radius * seededRange(hashCombine(bodySeed, 'ringInner'), 1.35, 1.7),
-            outerRadius: radius * seededRange(hashCombine(bodySeed, 'ringOuter'), 1.8, 2.6),
-            color: RING_COLORS[Math.floor(seededRange(hashCombine(bodySeed, 'ringColor'), 0, RING_COLORS.length - 0.001))],
-            opacity: seededRange(hashCombine(bodySeed, 'ringOpacity'), 0.18, 0.42),
-          }
-        : null,
+      ring: isRingCandidate ? createRingData(bodySeed, radius) : null,
     });
   }
+
+
+  const planets = bodies.filter((body): body is PlanetData => body.type === 'planet');
+  const ringCandidates = planets.filter((planet) => planet.ring && planet.radius >= 18.5);
+  const chosenRingPlanet = (ringCandidates.length > 0
+    ? ringCandidates.sort((a, b) => b.radius - a.radius)[0]
+    : planets.sort((a, b) => b.radius - a.radius)[0]) ?? null;
+
+  planets.forEach((planet) => {
+    planet.ring = chosenRingPlanet && planet.id === chosenRingPlanet.id
+      ? createRingData(planet.seed, planet.radius)
+      : null;
+  });
 
   return {
     seed: worldSeed,
@@ -194,3 +209,4 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
     bodies,
   };
 }
+
