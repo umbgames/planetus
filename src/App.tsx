@@ -385,7 +385,12 @@ export default function App() {
   const [shipRespawnNonce, setShipRespawnNonce] = useState(0);
   const [solarSystem, setSolarSystem] = useState<SolarSystemData | null>(null);
   const [welcomeMessage, setWelcomeMessage] = useState<{ name: string; desc: string } | null>(null);
-  const qualityPreset: 'low' | 'medium' | 'high' = 'low';
+  const [qualityPreset, setQualityPreset] = useState<'low' | 'medium' | 'high'>(() => {
+    if (typeof window === 'undefined') return 'medium';
+    const saved = window.localStorage.getItem('planetus.graphicsQuality');
+    if (saved === 'low' || saved === 'medium' || saved === 'high') return saved;
+    return window.innerWidth < 768 ? 'medium' : 'high';
+  });
   const [showOrbitRings, setShowOrbitRings] = useState(true);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState<{ active: boolean; progress: number; label: string }>({
@@ -428,6 +433,12 @@ export default function App() {
       setSystemTransition(null);
     }, 220);
   }, []);
+
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('planetus.graphicsQuality', qualityPreset);
+  }, [qualityPreset]);
 
   const currentPlanetRadius = useMemo(() => {
     if (!solarSystem) return PLANET_RADIUS;
@@ -1157,8 +1168,36 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="mt-3 text-[11px] text-zinc-400 leading-relaxed">
-                Performance is now locked to LOW for everyone. Orbit rings remain optional for navigation, but graphics quality switching has been removed.
+              <div className="mt-3 space-y-2">
+                <div className="text-sm text-white font-medium">Graphics Level</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { key: 'medium', label: 'Mid', detail: 'Balanced visuals' },
+                    { key: 'high', label: 'High', detail: 'Best visuals' },
+                  ] as const).map((option) => {
+                    const active = qualityPreset === option.key;
+                    return (
+                      <button
+                        key={option.key}
+                        onClick={() => setQualityPreset(option.key)}
+                        className={`rounded-xl border px-3 py-3 text-left transition-all ${
+                          active
+                            ? 'border-cyan-400 bg-cyan-500/15 shadow-[0_0_0_1px_rgba(34,211,238,0.35)]'
+                            : 'border-zinc-700 bg-zinc-800/70 hover:bg-zinc-800'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-semibold text-white">{option.label}</div>
+                          {active && <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-300">Active</div>}
+                        </div>
+                        <div className="mt-1 text-[11px] text-zinc-400">{option.detail}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="text-[11px] text-zinc-400 leading-relaxed">
+                  Mid keeps post-processing lighter. High enables the full visual pass with stronger nebula depth, bloom, and scene grading.
+                </div>
               </div>
             </motion.div>
           )}
