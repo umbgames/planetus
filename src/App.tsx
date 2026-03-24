@@ -32,14 +32,92 @@ function getTextureDetailForQuality(_quality: 'low' | 'medium' | 'high'): 'stand
 }
 
 
+function NebulaBackdrop({ qualityPreset }: { qualityPreset: 'low' | 'medium' | 'high' }) {
+  const groupRef = useRef<THREE.Group>(null);
+  const texture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const glow = ctx.createRadialGradient(256, 256, 18, 256, 256, 220);
+    glow.addColorStop(0, 'rgba(255,244,220,0.95)');
+    glow.addColorStop(0.18, 'rgba(255,170,120,0.42)');
+    glow.addColorStop(0.45, 'rgba(255,110,70,0.16)');
+    glow.addColorStop(0.72, 'rgba(110,170,255,0.08)');
+    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const streak = ctx.createLinearGradient(48, 248, 464, 280);
+    streak.addColorStop(0, 'rgba(255,140,90,0)');
+    streak.addColorStop(0.28, 'rgba(255,158,108,0.18)');
+    streak.addColorStop(0.5, 'rgba(255,212,180,0.34)');
+    streak.addColorStop(0.72, 'rgba(255,158,108,0.16)');
+    streak.addColorStop(1, 'rgba(255,140,90,0)');
+    ctx.fillStyle = streak;
+    ctx.fillRect(40, 210, 432, 92);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+    return tex;
+  }, []);
+
+  const hazePlanes = useMemo(() => {
+    const count = qualityPreset === 'low' ? 1 : qualityPreset === 'medium' ? 2 : 3;
+    return Array.from({ length: count }, (_, i) => ({
+      position: new THREE.Vector3(-3400 + i * 850, 720 - i * 220, -4700 - i * 280),
+      rotation: new THREE.Euler(0.05 + i * 0.03, -0.16 + i * 0.08, -0.08 + i * 0.05),
+      scale: 3200 + i * 750,
+      opacity: qualityPreset === 'high' ? 0.28 - i * 0.05 : 0.2 - i * 0.035,
+    }));
+  }, [qualityPreset]);
+
+  useFrame((state) => {
+    if (!groupRef.current) return;
+    groupRef.current.rotation.y = Math.sin(state.clock.getElapsedTime() * 0.01) * 0.03;
+  });
+
+  if (!texture) return null;
+
+  return (
+    <group ref={groupRef}>
+      {hazePlanes.map((plane, index) => (
+        <mesh
+          key={`nebula-plane-${index}`}
+          position={plane.position}
+          rotation={plane.rotation}
+          scale={plane.scale}
+          frustumCulled={false}
+        >
+          <planeGeometry args={[1, 0.56, 1, 1]} />
+          <meshBasicMaterial
+            map={texture}
+            transparent
+            opacity={plane.opacity}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+
 function SceneGrade({ isShipMode, qualityPreset }: { isShipMode: boolean; qualityPreset: 'low' | 'medium' | 'high' }) {
   const { gl, scene } = useThree();
 
   useEffect(() => {
     gl.outputColorSpace = THREE.SRGBColorSpace;
     gl.toneMapping = THREE.ACESFilmicToneMapping;
-    gl.toneMappingExposure = isShipMode ? 1.14 : qualityPreset === 'high' ? 1.22 : 1.16;
-    scene.background = new THREE.Color(isShipMode ? '#02040a' : '#04060d');
+    gl.toneMappingExposure = isShipMode ? 1.12 : qualityPreset === 'high' ? 1.2 : 1.14;
+    scene.background = new THREE.Color(isShipMode ? '#02040a' : '#03050b');
     scene.fog = null;
 
     return () => {
@@ -52,14 +130,14 @@ function SceneGrade({ isShipMode, qualityPreset }: { isShipMode: boolean; qualit
   return (
     <EffectComposer multisampling={0} disableNormalPass>
       <Bloom
-        intensity={isShipMode ? 0.9 : 1.05}
+        intensity={isShipMode ? 0.72 : qualityPreset === 'high' ? 0.92 : 0.8}
         mipmapBlur
-        luminanceThreshold={0.58}
-        luminanceSmoothing={0.2}
-        radius={0.72}
+        luminanceThreshold={0.64}
+        luminanceSmoothing={0.24}
+        radius={0.7}
       />
-      <ToneMapping adaptive={false} resolution={256} middleGrey={0.72} maxLuminance={16} averageLuminance={0.9} adaptationRate={1} />
-      <Vignette eskil={false} offset={0.14} darkness={qualityPreset === 'high' ? 0.42 : 0.34} />
+      <ToneMapping adaptive={false} resolution={256} middleGrey={0.68} maxLuminance={14} averageLuminance={0.88} adaptationRate={1} />
+      <Vignette eskil={false} offset={0.16} darkness={qualityPreset === 'high' ? 0.5 : 0.4} />
     </EffectComposer>
   );
 }
@@ -849,8 +927,9 @@ export default function App() {
         gl={{ antialias: false, powerPreference: 'high-performance' }}
       >
         <color attach="background" args={[isShipMode ? '#02040a' : '#04060d']} />
-        <ambientLight intensity={isShipMode ? 0.22 : 0.16} />
-        <hemisphereLight args={['#9fd6ff', '#1a0f08', isShipMode ? 0.34 : 0.46]} />
+        <ambientLight intensity={isShipMode ? 0.18 : 0.12} />
+        <hemisphereLight args={['#89c5ff', '#130b08', isShipMode ? 0.26 : 0.38]} />
+        {qualityPreset !== 'low' && <NebulaBackdrop qualityPreset={qualityPreset} />}
 
         <Stars
           radius={1000000}

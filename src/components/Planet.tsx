@@ -5,6 +5,76 @@ import { BaseManager } from './BaseManager';
 import { ResourceManager } from './ResourceManager';
 import { GeographyManager } from '../services/geography';
 
+
+const ATMOSPHERE_PALETTE: Record<'rocky' | 'dry_arid' | 'desert' | 'red', { inner: string; outer: string }> = {
+  rocky: { inner: '#7ab8ff', outer: '#4b8dff' },
+  dry_arid: { inner: '#8ec5ff', outer: '#66a7ff' },
+  desert: { inner: '#ffbf7d', outer: '#ff8f5d' },
+  red: { inner: '#ff8a7a', outer: '#ff5f62' },
+};
+
+function FresnelAtmosphereShell({
+  radius,
+  color,
+  opacity,
+  power,
+  width,
+  segments,
+}: {
+  radius: number;
+  color: string;
+  opacity: number;
+  power: number;
+  width: number;
+  segments: number;
+}) {
+  const uniforms = useMemo(
+    () => ({
+      glowColor: { value: new THREE.Color(color) },
+      opacity: { value: opacity },
+      power: { value: power },
+    }),
+    [color, opacity, power]
+  );
+
+  return (
+    <mesh frustumCulled>
+      <sphereGeometry args={[radius * width, segments, segments]} />
+      <shaderMaterial
+        transparent
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+        side={THREE.BackSide}
+        uniforms={uniforms}
+        vertexShader={`
+          varying vec3 vNormalW;
+          varying vec3 vWorldPos;
+          void main() {
+            vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+            vWorldPos = worldPosition.xyz;
+            vNormalW = normalize(mat3(modelMatrix) * normal);
+            gl_Position = projectionMatrix * viewMatrix * worldPosition;
+          }
+        `}
+        fragmentShader={`
+          uniform vec3 glowColor;
+          uniform float opacity;
+          uniform float power;
+          varying vec3 vNormalW;
+          varying vec3 vWorldPos;
+          void main() {
+            vec3 viewDir = normalize(cameraPosition - vWorldPos);
+            float fresnel = pow(1.0 - max(dot(normalize(vNormalW), viewDir), 0.0), power);
+            float alpha = fresnel * opacity;
+            gl_FragColor = vec4(glowColor * fresnel, alpha);
+          }
+        `}
+        toneMapped={false}
+      />
+    </mesh>
+  );
+}
+
 interface PlanetProps {
   radius: number;
   isMobile?: boolean;
@@ -35,8 +105,8 @@ export const Planet = memo(function Planet({
   visualClass = 'rocky',
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
-  const atmosphereInnerRef = useRef<THREE.Mesh>(null);
-  const atmosphereOuterRef = useRef<THREE.Mesh>(null);
+  const atmosphereInnerRef = useRef<THREE.Group>(null);
+  const atmosphereOuterRef = useRef<THREE.Group>(null);
   const cloudLayer1Ref = useRef<THREE.Mesh>(null);
   const cloudLayer2Ref = useRef<THREE.Mesh>(null);
   const cloudLayer3Ref = useRef<THREE.Mesh>(null);
@@ -49,6 +119,7 @@ export const Planet = memo(function Planet({
   const segments = useMemo(() => (isMobile ? 72 : 160), [isMobile]);
   const atmosphereSegments = useMemo(() => (isMobile ? 40 : 72), [isMobile]);
   const cloudSegments = useMemo(() => (isMobile ? 40 : 80), [isMobile]);
+  const atmosphereColors = useMemo(() => ATMOSPHERE_PALETTE[visualClass], [visualClass]);
 
   const cloudTextureSize = isMobile ? 512 : 1024;
 
@@ -269,25 +340,34 @@ export const Planet = memo(function Planet({
         />
       </mesh>
 
-      <mesh ref={atmosphereInnerRef} frustumCulled>
-        <sphereGeometry args={[radius * 1.028, atmosphereSegments, atmosphereSegments]} />
-        <meshBasicMaterial
-          color="#7eb6ff"
-          transparent
-          opacity={0.12}
-          side={THREE.BackSide}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          toneMapped={false}
+      <group ref={atmosphereInnerRef}>
+        <FresnelAtmosphereShell
+          radius={radius}
+          color={atmosphereColors.inner}
+          opacity={0.38}
+          power={2.9}
+          width={1.04}
+          segments={atmosphereSegments}
         />
-      </mesh>
+      </group>
 
-      <mesh ref={atmosphereOuterRef} frustumCulled>
-        <sphereGeometry args={[radius * 1.07, atmosphereSegments, atmosphereSegments]} />
+      <group ref={atmosphereOuterRef}>
+        <FresnelAtmosphereShell
+          radius={radius}
+          color={atmosphereColors.outer}
+          opacity={0.22}
+          power={3.8}
+          width={1.09}
+          segments={atmosphereSegments}
+        />
+      </group>
+
+      <mesh frustumCulled>
+        <sphereGeometry args={[radius * 1.014, atmosphereSegments, atmosphereSegments]} />
         <meshBasicMaterial
-          color="#6ea6ff"
+          color={atmosphereColors.inner}
           transparent
-          opacity={0.06}
+          opacity={0.035}
           side={THREE.BackSide}
           blending={THREE.AdditiveBlending}
           depthWrite={false}

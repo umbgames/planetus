@@ -34,11 +34,66 @@ interface OrbitingPlanetProps {
 }
 
 const RingMesh = memo(function RingMesh({ innerRadius, outerRadius, color, opacity }: { innerRadius: number; outerRadius: number; color: string; opacity: number }) {
+  const ringTexture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const gradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+    gradient.addColorStop(0, 'rgba(255,255,255,0)');
+    gradient.addColorStop(0.12, 'rgba(255,240,220,0.16)');
+    gradient.addColorStop(0.24, 'rgba(255,250,245,0.46)');
+    gradient.addColorStop(0.38, 'rgba(216,195,165,0.9)');
+    gradient.addColorStop(0.54, 'rgba(120,98,80,0.68)');
+    gradient.addColorStop(0.72, 'rgba(230,215,198,0.72)');
+    gradient.addColorStop(0.88, 'rgba(255,248,240,0.18)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    for (let i = 0; i < 180; i++) {
+      const x = Math.random() * canvas.width;
+      const width = 4 + Math.random() * 28;
+      const alpha = 0.02 + Math.random() * 0.08;
+      ctx.fillStyle = `rgba(255,245,230,${alpha})`;
+      ctx.fillRect(x, 0, width, canvas.height);
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+    return tex;
+  }, []);
+
   return (
     <group rotation={[Math.PI / 2.55, 0, 0.25]}>
       <mesh>
-        <ringGeometry args={[innerRadius, outerRadius, 96]} />
-        <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
+        <ringGeometry args={[innerRadius, outerRadius, 128]} />
+        <meshBasicMaterial
+          color={color}
+          map={ringTexture}
+          transparent
+          opacity={opacity}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+      <mesh rotation={[0.01, 0, 0]}>
+        <ringGeometry args={[innerRadius * 1.01, outerRadius * 0.992, 128]} />
+        <meshBasicMaterial
+          color="#fff4dd"
+          transparent
+          opacity={opacity * 0.22}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
       </mesh>
     </group>
   );

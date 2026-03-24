@@ -52,6 +52,93 @@ const WeaponCooldown = ({
   );
 };
 
+const TargetReticle = ({
+  locked,
+  label,
+  distance,
+  health,
+}: {
+  locked: boolean;
+  label?: string;
+  distance: number | null;
+  health?: number;
+}) => {
+  const accent = locked ? '#ffb347' : '#7dd3fc';
+
+  const bracket = (style: React.CSSProperties) => (
+    <div
+      style={{
+        position: 'absolute',
+        width: 28,
+        height: 28,
+        borderColor: accent,
+        borderStyle: 'solid',
+        opacity: locked ? 0.95 : 0.65,
+        ...style,
+      }}
+    />
+  );
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <div
+        style={{
+          position: 'relative',
+          width: locked ? 132 : 92,
+          height: locked ? 132 : 92,
+          transform: locked ? 'scale(1.02)' : 'scale(1)',
+          transition: 'all 180ms ease',
+        }}
+      >
+        {bracket({ top: 0, left: 0, borderTopWidth: 2, borderLeftWidth: 2 })}
+        {bracket({ top: 0, right: 0, borderTopWidth: 2, borderRightWidth: 2 })}
+        {bracket({ bottom: 0, left: 0, borderBottomWidth: 2, borderLeftWidth: 2 })}
+        {bracket({ bottom: 0, right: 0, borderBottomWidth: 2, borderRightWidth: 2 })}
+
+        <div
+          style={{
+            position: 'absolute',
+            inset: locked ? 22 : 26,
+            border: `1px solid ${locked ? 'rgba(255,179,71,0.32)' : 'rgba(125,211,252,0.2)'}`,
+            borderRadius: '9999px',
+            opacity: locked ? 0.55 : 0.35,
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            width: 18,
+            height: 18,
+            transform: 'translate(-50%, -50%)',
+            border: `1px solid ${locked ? 'rgba(255,244,221,0.85)' : 'rgba(255,255,255,0.5)'}`,
+            borderRadius: '9999px',
+          }}
+        />
+        <div style={{ position: 'absolute', left: '50%', top: 8, width: 1, height: 14, background: 'rgba(255,255,255,0.5)', transform: 'translateX(-50%)' }} />
+        <div style={{ position: 'absolute', left: '50%', bottom: 8, width: 1, height: 14, background: 'rgba(255,255,255,0.5)', transform: 'translateX(-50%)' }} />
+        <div style={{ position: 'absolute', top: '50%', left: 8, width: 14, height: 1, background: 'rgba(255,255,255,0.5)', transform: 'translateY(-50%)' }} />
+        <div style={{ position: 'absolute', top: '50%', right: 8, width: 14, height: 1, background: 'rgba(255,255,255,0.5)', transform: 'translateY(-50%)' }} />
+
+        <div className="absolute left-1/2 top-full mt-5 -translate-x-1/2 flex flex-col items-center gap-1">
+          <div
+            className={`text-[10px] font-bold tracking-[0.28em] uppercase ${locked ? 'text-amber-300' : 'text-cyan-300'}`}
+            style={{ textShadow: '0 0 12px rgba(255,179,71,0.35)' }}
+          >
+            {locked ? 'Target Locked' : 'Tracking'}
+          </div>
+          {label && <div className="text-white text-[11px] font-mono tracking-wider">{label}</div>}
+          <div className="flex items-center gap-3 text-[10px] text-white/75 font-mono">
+            <span>{distance !== null ? `${distance.toFixed(0)}m` : '—'}</span>
+            {typeof health === 'number' && <span>{health}% INT</span>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export function ShipUI({ onExit, userData }: ShipUIProps) {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -792,20 +879,12 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             </button>
           </div>
 
-          {/* Crosshair */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <Crosshair className="text-white/50" size={28} strokeWidth={1} />
-            {lockedTarget && (
-              <div className="absolute flex flex-col items-center gap-2 mt-16">
-                <div className="text-cyan-400 text-[10px] font-bold tracking-widest uppercase animate-pulse">
-                  Target Locked
-                </div>
-                <div className="text-white text-[11px] font-mono max-w-[160px] text-center break-words">
-                  {(lockedTarget.id || lockedTarget.name || '').toUpperCase()}
-                </div>
-              </div>
-            )}
-          </div>
+          <TargetReticle
+            locked={Boolean(lockedTarget)}
+            label={lockedTarget ? (lockedTarget.id || lockedTarget.name || '').toUpperCase() : undefined}
+            distance={targetDistance}
+            health={lockedTarget?.health}
+          />
         </>
       )}
     </div>
