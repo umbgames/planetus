@@ -461,11 +461,11 @@ export function Ship({
 
           const targetMatrix = new THREE.Matrix4().lookAt(position.current, relativeTarget, new THREE.Vector3(0, 1, 0));
           const targetQuat = new THREE.Quaternion().setFromRotationMatrix(targetMatrix);
-          shipRef.current?.quaternion.slerp(targetQuat, 0.1);
+          shipRef.current?.quaternion.slerp(targetQuat, 1 - Math.exp(-5 * delta));
           rotation.current.setFromQuaternion(shipRef.current!.quaternion);
 
           const perspectiveCamera = camera as THREE.PerspectiveCamera;
-          perspectiveCamera.fov = THREE.MathUtils.lerp(perspectiveCamera.fov, 78, 0.1);
+          perspectiveCamera.fov = THREE.MathUtils.lerp(perspectiveCamera.fov, 78, 1 - Math.exp(-5 * delta));
           perspectiveCamera.updateProjectionMatrix();
         }
 
@@ -510,7 +510,7 @@ export function Ship({
 
       position.current.addScaledVector(velocity.current, delta);
       velocity.current.multiplyScalar(0.95);
-      setMouse(m => ({ x: m.x, y: THREE.MathUtils.lerp(m.y, 0, 0.05) }));
+      setMouse(m => ({ x: m.x, y: THREE.MathUtils.lerp(m.y, 0, 1 - Math.exp(-2 * delta)) }));
     }
 
     if (keys['KeyO']) {
@@ -694,7 +694,7 @@ export function Ship({
 
     if (cameraRef.current) {
       const targetFov = isBoostingActive ? 68 : 50;
-      cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFov, 0.14);
+      cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFov, 1 - Math.exp(-8 * delta));
       cameraRef.current.far = 9000;
       cameraRef.current.updateProjectionMatrix();
 
@@ -702,14 +702,14 @@ export function Ship({
       boostCameraOffsetRef.current = THREE.MathUtils.lerp(
         boostCameraOffsetRef.current,
         targetCameraZ,
-        isBoostingActive ? 0.2 : 0.16
+        1 - Math.exp(-(isBoostingActive ? 10 : 8) * delta)
       );
 
       boostCameraOffsetRef.current = THREE.MathUtils.clamp(boostCameraOffsetRef.current, 0.15, 0.24);
 
       cameraRef.current.position.lerp(
         new THREE.Vector3(0, 0.04, boostCameraOffsetRef.current),
-        0.2
+        1 - Math.exp(-12 * delta)
       );
     }
 
@@ -720,12 +720,12 @@ export function Ship({
       shieldMaterialRef.current.opacity = THREE.MathUtils.lerp(
         shieldMaterialRef.current.opacity,
         shieldTargetOpacity,
-        isBoostingActive ? 0.18 : 0.12
+        1 - Math.exp(-(isBoostingActive ? 10 : 6) * delta)
       );
       shieldMaterialRef.current.emissiveIntensity = THREE.MathUtils.lerp(
         shieldMaterialRef.current.emissiveIntensity,
         shieldTargetEmissive,
-        isBoostingActive ? 0.16 : 0.1
+        1 - Math.exp(-(isBoostingActive ? 8 : 5) * delta)
       );
       if (shieldMeshRef.current) {
         shieldMeshRef.current.visible = shieldMaterialRef.current.opacity > 0.002;
@@ -772,7 +772,7 @@ export function Ship({
 
     // Idle free-look: camera follows look direction, ship keeps its current orientation
     if (!isEffectivelyIdle) {
-      shipQuaternionRef.current.slerp(lookQuaternion, 0.14);
+      shipQuaternionRef.current.slerp(lookQuaternion, 1 - Math.exp(-10 * delta));
     }
 
     const moveVector = input.clone().applyQuaternion(lookQuaternion);
@@ -809,21 +809,26 @@ export function Ship({
     }
 
     if (cameraRigRef.current) {
-      const cameraFollowLerp = isBoostingActive ? 0.24 : 0.16;
-      cameraRigRef.current.position.lerp(position.current, cameraFollowLerp);
-      cameraRigRef.current.quaternion.slerp(lookQuaternionRef.current, 0.22);
+      // strictly track position to prevent extreme camera lag at high velocities
+      cameraRigRef.current.position.copy(position.current);
+      cameraRigRef.current.quaternion.slerp(lookQuaternionRef.current, 1 - Math.exp(-15 * delta));
       setCameraQuaternion(cameraRigRef.current.quaternion);
     }
 
     if (shipModelRef.current) {
-      const targetRoll = THREE.MathUtils.clamp(yawDelta * 40, -Math.PI / 2.5, Math.PI / 2.5);
-      shipModelRef.current.rotation.z = THREE.MathUtils.lerp(shipModelRef.current.rotation.z, targetRoll, 0.1);
+      // decouple roll response from unpredictable mouse position jumps using yaw velocity
+      const yawVelocity = yawDelta / Math.max(0.0001, delta);
+      const targetRoll = THREE.MathUtils.clamp(yawVelocity * 0.5, -Math.PI / 2.5, Math.PI / 2.5);
+      const rollAlpha = 1 - Math.exp(-8 * delta);
+
+      shipModelRef.current.rotation.z += (targetRoll - shipModelRef.current.rotation.z) * rollAlpha;
       shipModelRef.current.rotation.y = 0;
 
       const targetPitch = input.z * 0.2;
-      shipModelRef.current.rotation.x = THREE.MathUtils.lerp(shipModelRef.current.rotation.x, targetPitch, 0.1);
+      shipModelRef.current.rotation.x += (targetPitch - shipModelRef.current.rotation.x) * rollAlpha;
 
-      recoilZ.current = THREE.MathUtils.lerp(recoilZ.current, 0, 0.15);
+      const recoilAlpha = 1 - Math.exp(-12 * delta);
+      recoilZ.current += (0 - recoilZ.current) * recoilAlpha;
       shipModelRef.current.position.z = -0.005 + Math.max(0, recoilZ.current);
     }
   });
@@ -845,6 +850,29 @@ export function Ship({
       <group ref={shipRef}>
         <pointLight position={[0, 0.28, -0.4]} intensity={1.4} distance={1.8} color="#8fd3ff" />
         <pointLight position={[0, 0.05, 1.2]} intensity={1.1} distance={1.4} color="#6ee7ff" />
+        
+        {/* Engine Trails */}
+        <Trail
+          width={0.05}
+          length={25}
+          color={new THREE.Color('#6ee7ff')}
+          attenuation={(t) => t * t}
+          decay={1}
+          local={false}
+        >
+          <mesh visible={false} position={[-0.04, 0.02, 0.1]} />
+        </Trail>
+        <Trail
+          width={0.05}
+          length={25}
+          color={new THREE.Color('#6ee7ff')}
+          attenuation={(t) => t * t}
+          decay={1}
+          local={false}
+        >
+          <mesh visible={false} position={[0.04, 0.02, 0.1]} />
+        </Trail>
+
         <group ref={shipModelRef} position={[0, -0.002, -0.005]} scale={0.01}>
           <SharedShipModel type={normalizedShipType} />
 
