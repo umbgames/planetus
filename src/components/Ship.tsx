@@ -851,26 +851,16 @@ export function Ship({
         <pointLight position={[0, 0.28, -0.4]} intensity={1.4} distance={1.8} color="#8fd3ff" />
         <pointLight position={[0, 0.05, 1.2]} intensity={1.1} distance={1.4} color="#6ee7ff" />
         
-        {/* Engine Trails */}
+        {/* Centered Single Engine Trail */}
         <Trail
-          width={0.05}
+          width={0.012}
           length={25}
           color={new THREE.Color('#6ee7ff')}
           attenuation={(t) => t * t}
           decay={1}
           local={false}
         >
-          <mesh visible={false} position={[-0.04, 0.02, 0.1]} />
-        </Trail>
-        <Trail
-          width={0.05}
-          length={25}
-          color={new THREE.Color('#6ee7ff')}
-          attenuation={(t) => t * t}
-          decay={1}
-          local={false}
-        >
-          <mesh visible={false} position={[0.04, 0.02, 0.1]} />
+          <mesh visible={false} position={[0, -0.002, 0.012]} />
         </Trail>
 
         <group ref={shipModelRef} position={[0, -0.002, -0.005]} scale={0.01}>
