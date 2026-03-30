@@ -853,7 +853,7 @@ export function Ship({
         
         {/* Centered Single Engine Trail */}
         <Trail
-          width={0.012}
+          width={0.025}
           length={25}
           color={new THREE.Color('#6ee7ff')}
           attenuation={(t) => t * t}
