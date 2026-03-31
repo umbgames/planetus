@@ -136,6 +136,7 @@ const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, 
           showClouds={false}
           textureDetail={getTextureDetailForQuality(quality)}
           visualClass={moon.visualClass}
+          isMoon={true}
         />
       </group>
     </group>

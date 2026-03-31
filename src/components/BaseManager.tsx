@@ -20,7 +20,7 @@ const CUBE_DEPTH = 0.06
 
 const baseGeometry = new THREE.BoxGeometry(1,1,1)
 
-function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:boolean, geographyManager: GeographyManager }) {
+function Base({ data, isMobile, geographyManager, planetRadius }: { data: BaseData, isMobile:boolean, geographyManager: GeographyManager, planetRadius: number }) {
 
   const groupRef = useRef<THREE.Group>(null)
   const highDetailRef = useRef<THREE.Group>(null)
@@ -72,18 +72,22 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
       data.position.z
     )
 
-    basePos.current.copy(pos)
-
     const normal = pos.clone().normalize()
+    const displacementScale = planetRadius * (isMobile ? 0.12 : 0.19) * 1.08;
+    const height = geographyManager.getHeightAtPoint(pos.x, pos.y, pos.z, planetRadius, displacementScale);
+    
+    const adjustedPos = normal.clone().multiplyScalar(height);
 
-    groupRef.current.position.copy(pos)
+    basePos.current.copy(adjustedPos)
+
+    groupRef.current.position.copy(adjustedPos)
 
     groupRef.current.quaternion.setFromUnitVectors(
       new THREE.Vector3(0,1,0),
       normal
     )
 
-  },[data.position])
+  },[data.position, planetRadius, isMobile, geographyManager])
 
   useFrame((state)=>{
 
@@ -494,7 +498,7 @@ export function BaseManager({ planetRadius, isMobile=false, geographyManager, pl
   return(
     <group>
       {bases.filter(b => b.bodyId === (planetId || 'alpha_centauri')).map(base=>(
-        <Base key={base.id} data={base} isMobile={isMobile} geographyManager={geographyManager} />
+        <Base key={base.id} data={base} isMobile={isMobile} geographyManager={geographyManager} planetRadius={planetRadius} />
       ))}
     </group>
   )

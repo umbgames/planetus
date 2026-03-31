@@ -50,7 +50,7 @@ function RareResource({ scale, isMobile }: { scale: number, isMobile: boolean })
   );
 }
 
-function Resource({ data, isMobile }: { data: ResourceNode, isMobile: boolean }) {
+function Resource({ data, isMobile, geographyManager, planetRadius }: { data: ResourceNode, isMobile: boolean, geographyManager: GeographyManager, planetRadius: number }) {
   const groupRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.Group>(null);
   const { camera } = useThree();
@@ -64,10 +64,15 @@ function Resource({ data, isMobile }: { data: ResourceNode, isMobile: boolean })
       const pos = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
       const normal = pos.clone().normalize();
       
-      groupRef.current.position.copy(pos);
+      const displacementScale = planetRadius * (isMobile ? 0.12 : 0.19) * 1.08;
+      const height = geographyManager.getHeightAtPoint(pos.x, pos.y, pos.z, planetRadius, displacementScale);
+      
+      const adjustedPos = normal.clone().multiplyScalar(height);
+      
+      groupRef.current.position.copy(adjustedPos);
       groupRef.current.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
     }
-  }, [data.position]);
+  }, [data.position, planetRadius, isMobile, geographyManager]);
 
   useFrame((state) => {
     if (!groupRef.current || !meshRef.current) return;
@@ -136,7 +141,7 @@ export function ResourceManager({ planetRadius, isMobile = false, geographyManag
   return (
     <group>
       {resources.map(res => (
-        <Resource key={res.id} data={res} isMobile={isMobile} />
+        <Resource key={res.id} data={res} isMobile={isMobile} geographyManager={geographyManager} planetRadius={planetRadius} />
       ))}
     </group>
   );

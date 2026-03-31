@@ -184,12 +184,12 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
         orbitTiltX: seededRange(hashCombine(moonSeed, 'tiltX'), -0.28, 0.28),
         orbitTiltZ: seededRange(hashCombine(moonSeed, 'tiltZ'), -0.28, 0.28),
         initialAngle: moonPrng() * Math.PI * 2,
-        noiseScale: seededRange(hashCombine(moonSeed, 'noiseScale'), 0.9, 2.6),
-        landThreshold: seededRange(hashCombine(moonSeed, 'landThreshold'), 0.03, 0.33),
+        noiseScale: 0.1,
+        landThreshold: 0,
         paletteSeed: seededRange(hashCombine(moonSeed, 'paletteSeed'), 0, 1),
-        hasClouds: moonPrng() > 0.7,
-        cloudColor: moonPrng() > 0.5 ? '#e0f7fa' : '#ffffff',
-        visualClass: moonPrng() > 0.8 ? 'ice' : (moonPrng() > 0.6 ? 'red' : 'rocky'),
+        hasClouds: false,
+        cloudColor: '#ffffff',
+        visualClass: moonPrng() > 0.66 ? 'ice' : (moonPrng() > 0.33 ? 'red' : 'rocky'),
       };
     });
 

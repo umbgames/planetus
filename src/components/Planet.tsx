@@ -103,6 +103,7 @@ interface PlanetProps {
   textureDetail?: 'standard' | 'enhanced';
   visualClass?: VisualClass;
   cloudColor?: string;
+  isMoon?: boolean;
 }
 
 export const Planet = memo(function Planet({
@@ -120,6 +121,7 @@ export const Planet = memo(function Planet({
   textureDetail = 'standard',
   visualClass = 'rocky',
   cloudColor = '#ffffff',
+  isMoon = false,
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
   const atmosphereInnerRef = useRef<THREE.Group>(null);
@@ -297,15 +299,17 @@ export const Planet = memo(function Planet({
   }, [cloudTexture1, cloudTexture2, cloudTexture3]);
 
   const displacementScale = useMemo(() => {
+    if (isMoon) return radius * 0.005;
     const base = isMobile ? 0.12 : 0.19;
     const detailBoost = textureDetail === 'enhanced' ? 1.08 : 1;
     return radius * base * detailBoost;
-  }, [isMobile, textureDetail, radius]);
+  }, [isMobile, textureDetail, radius, isMoon]);
 
   const bumpScale = useMemo(() => {
+    if (isMoon) return radius * 0.002;
     const base = isMobile ? 0.012 : 0.018;
     return radius * base;
-  }, [isMobile, radius]);
+  }, [isMobile, radius, isMoon]);
 
   const baseCloudRotation = useMemo(() => serverTime * 0.00006, [serverTime]);
 

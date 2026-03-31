@@ -3,7 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { Text, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
 import { SolarSystemData, PlanetData } from '../services/solarSystem';
-import { buildOrbitMap, getPlanetWorldPosition } from '../services/orbitUtils';
+import { buildOrbitMap, getPlanetWorldPosition, getScaledPlanetRadius } from '../services/orbitUtils';
 
 interface SatelliteProps {
   satellites: any[];
@@ -59,7 +59,7 @@ const fragmentShader = `
   }
 `;
 
-function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
+function SingleSatellite({ tag, onClick, currentPlanetRadius }: { tag: any, onClick?: () => void, currentPlanetRadius: number }) {
   const orbitRef = useRef<THREE.Group>(null);
   const satRef = useRef<THREE.Group>(null);
   const trailMaterialRef = useRef<THREE.ShaderMaterial>(null);
@@ -96,6 +96,9 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
 
   const scale = Math.max(0.4, Math.min(1.2, tag.bases / 10));
   
+  // Scale orbit radius by current planet's true radius (base PLANET_RADIUS is 10)
+  const actualOrbitRadius = (tag.orbitRadius / 10) * currentPlanetRadius * 1.5;
+  
   // Orient the satellite based on its direction of travel
   const satRotationY = tag.speed > 0 ? Math.PI : 0;
 
@@ -103,7 +106,7 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
     <group rotation={[tag.tiltX, tag.tiltY, tag.tiltZ]}>
       {/* Shader-based Trail */}
       <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[tag.orbitRadius, 0.03, 8, 128]} />
+        <torusGeometry args={[actualOrbitRadius, 0.03, 8, 128]} />
         <shaderMaterial 
           ref={trailMaterialRef}
           vertexShader={vertexShader}
@@ -117,7 +120,7 @@ function SingleSatellite({ tag, onClick }: { tag: any, onClick?: () => void }) {
       </mesh>
 
       <group ref={orbitRef}>
-        <group position={[tag.orbitRadius, 0, 0]}>
+        <group position={[actualOrbitRadius, 0, 0]}>
           <group 
             ref={satRef} 
             rotation={[0, satRotationY, 0]}
@@ -186,6 +189,15 @@ export function Satellite({ satellites, onSatelliteClick, solarSystem, currentPl
   const mainPlanetPos = useMemo(() => new THREE.Vector3(), []);
   const currentPlanetPos = useMemo(() => new THREE.Vector3(), []);
 
+  const currentPlanetRadius = useMemo(() => {
+    if (!solarSystem || !currentPlanetId) return 10;
+    const planet = solarSystem.bodies.find(b => b.id === currentPlanetId && b.type === 'planet');
+    if (planet && planet.type === 'planet') {
+      return getScaledPlanetRadius((planet as PlanetData).radius);
+    }
+    return 10;
+  }, [solarSystem, currentPlanetId]);
+
   useFrame((state) => {
     if (groupRef.current && solarSystem) {
       const mainPlanet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet');
@@ -214,6 +226,7 @@ export function Satellite({ satellites, onSatelliteClick, solarSystem, currentPl
         <SingleSatellite 
           key={tag.name} 
           tag={tag} 
+          currentPlanetRadius={currentPlanetRadius}
           onClick={() => onSatelliteClick?.(tag)} 
         />
       ))}
