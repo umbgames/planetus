@@ -177,7 +177,7 @@ const OrbitingPlanet = memo(function OrbitingPlanet({ planet, isMobile, currentP
       if (!isActive) setIsActive(true);
       return;
     }
-    const activationDistance = Math.max(220, scaledRadius * 40 * VISUAL_SCALE.PLANET_LOD_DISTANCE_MULTIPLIER);
+    const activationDistance = Math.max(220, scaledRadius * 40 * VISUAL_SCALE.PLANET_LOD_DISTANCE_MULTIPLIER * 100);
     if (dist < activationDistance && !isActive) setIsActive(true);
     else if (dist >= activationDistance && isActive) setIsActive(false);
   });

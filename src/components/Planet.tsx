@@ -376,7 +376,7 @@ export const Planet = memo(function Planet({
           color={atmosphereColors.inner}
           opacity={0.38}
           power={2.9}
-          width={1.04}
+          width={1.25}
           segments={atmosphereSegments}
         />
       </group>
@@ -387,13 +387,13 @@ export const Planet = memo(function Planet({
           color={atmosphereColors.outer}
           opacity={0.22}
           power={3.8}
-          width={1.09}
+          width={1.40}
           segments={atmosphereSegments}
         />
       </group>
 
       <mesh frustumCulled>
-        <sphereGeometry args={[radius * 1.014, atmosphereSegments, atmosphereSegments]} />
+        <sphereGeometry args={[radius * 1.24, atmosphereSegments, atmosphereSegments]} />
         <meshLambertMaterial
           color={atmosphereColors.inner}
           transparent
@@ -408,7 +408,7 @@ export const Planet = memo(function Planet({
       {showClouds && cloudTexture1 && cloudTexture2 && cloudTexture3 && (
         <>
           <mesh ref={cloudLayer1Ref} frustumCulled>
-            <sphereGeometry args={[radius * 1.018, cloudSegments, cloudSegments]} />
+            <sphereGeometry args={[radius * 1.21, cloudSegments, cloudSegments]} />
             <meshStandardMaterial
               map={cloudTexture1}
               color={cloudColor}
@@ -423,7 +423,7 @@ export const Planet = memo(function Planet({
           </mesh>
 
           <mesh ref={cloudLayer2Ref} frustumCulled>
-            <sphereGeometry args={[radius * 1.029, cloudSegments, cloudSegments]} />
+            <sphereGeometry args={[radius * 1.26, cloudSegments, cloudSegments]} />
             <meshStandardMaterial
               map={cloudTexture2}
               color={cloudColor}
@@ -438,7 +438,7 @@ export const Planet = memo(function Planet({
           </mesh>
 
           <mesh ref={cloudLayer3Ref} frustumCulled>
-            <sphereGeometry args={[radius * 1.042, cloudSegments, cloudSegments]} />
+            <sphereGeometry args={[radius * 1.30, cloudSegments, cloudSegments]} />
             <meshStandardMaterial
               map={cloudTexture3}
               color={cloudColor}
