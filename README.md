@@ -385,7 +385,7 @@ Planet:Us is open source and contributions are welcome! Here's how to get involv
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
 
-Copyright © 2026 [UMB Games](https://github.com/umbgames)
+Copyright © 2026 [UMB GAMES AND TECHNOLOGY LTD](https://github.com/umbgames)
 
 ---
 
