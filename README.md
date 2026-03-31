@@ -381,6 +381,18 @@ Planet:Us is open source and contributions are welcome! Here's how to get involv
 
 ---
 
+## Who This Project Is For
+
+This project is useful if you want to:
+
+* Build a **browser-based multiplayer 3D game** with no native client
+* Learn **React Three Fiber** in a real, large-scale application
+* Understand **real-time multiplayer architecture** using Firebase
+* Explore **procedural generation systems** in TypeScript
+* Study how a full game loop (economy, combat, UI, rendering) fits together in one codebase
+
+---
+
 ## License
 
 This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
