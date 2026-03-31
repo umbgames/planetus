@@ -884,6 +884,7 @@ export default function App() {
 
           let foundBase = null;
           for (const base of bases) {
+            if (!base.position) continue;
             const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
             if (localPos.distanceTo(basePos) < 0.5) {
               foundBase = base;

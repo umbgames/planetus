@@ -318,6 +318,7 @@ export function Ship({
     };
 
     for (const base of bases) {
+      if (!base.position) continue;
       const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
       const hit = testPointOnRay(basePos, hitRadiusBase);
       if (hit && hit.along < bestDist) {
@@ -528,6 +529,7 @@ export function Ship({
       const shipForward = new THREE.Vector3(0, 0, -1).applyQuaternion(shipQuaternionRef.current);
 
       bases.forEach(base => {
+        if (!base.position) return;
         const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
         const toBase = basePos.clone().sub(position.current);
         const dist = toBase.length();

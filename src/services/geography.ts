@@ -292,8 +292,8 @@ export class GeographyManager {
   }
 
   generateTexture() {
-    const width = this.textureResolution?.width ?? 2048;
-    const height = this.textureResolution?.height ?? 1024;
+    const width = this.textureResolution?.width ?? 1536;
+    const height = this.textureResolution?.height ?? 768;
     const detailWidth = 32;
     const detailHeight = 32;
 

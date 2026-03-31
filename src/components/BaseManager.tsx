@@ -64,7 +64,7 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
 
   useEffect(()=>{
 
-    if(!groupRef.current) return
+    if(!groupRef.current || !data.position) return
 
     const pos = new THREE.Vector3(
       data.position.x,

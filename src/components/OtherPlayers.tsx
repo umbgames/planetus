@@ -31,12 +31,12 @@ function OtherPlayerShip({
   const shipRef = useRef<THREE.Group>(null);
 
   const playerPos = useMemo(() => {
-    if (!player.playerSave) return new THREE.Vector3(0, 0, 0);
+    if (!player.playerSave?.position) return new THREE.Vector3(0, 0, 0);
     return new THREE.Vector3(player.playerSave.position.x, player.playerSave.position.y, player.playerSave.position.z);
   }, [player.playerSave]);
 
   const playerRot = useMemo(() => {
-    if (!player.playerSave) return new THREE.Euler(0, 0, 0);
+    if (!player.playerSave?.rotation) return new THREE.Euler(0, 0, 0);
     return new THREE.Euler(player.playerSave.rotation.x, player.playerSave.rotation.y, player.playerSave.rotation.z);
   }, [player.playerSave]);
 
