@@ -706,8 +706,9 @@ export default function App() {
       try {
         const isGasGiant = solarSystem.bodies.some(b => b.id === currentPlanetId && b.type === 'planet' && b.visualClass === 'gas_giant');
         const type = isGasGiant ? 'orbital' : 'surface';
+        const zone = isGasGiant ? 'high' : currentZone!;
         
-        await gameManager.createBase(shipPosition, currentZone, currentPlanetId, type);
+        await gameManager.createBase(shipPosition, zone, currentPlanetId, type);
         showToast(`${type.charAt(0).toUpperCase() + type.slice(1)} Base constructed successfully!`);
       } catch (e: any) {
         showToast(e.message);
@@ -857,22 +858,28 @@ export default function App() {
       const worldPos = new THREE.Vector3();
       camera.getWorldPosition(worldPos);
       const dist = worldPos.length();
-      const altitude = dist - PLANET_RADIUS;
+      const altitude = dist - currentPlanetRadius;
 
       if (!isShipMode) {
-        setCanSpawnShip(altitude < 4 && altitude > 0.5);
+        setCanSpawnShip(altitude < 4 && Math.abs(altitude) > 0.5);
       } else {
-        if (altitude < 0.5) {
+        const isGasGiant = solarSystem?.bodies.some(b => b.id === currentPlanetId && b.type === 'planet' && b.visualClass === 'gas_giant');
+        
+        if (altitude < 0.5 || (isGasGiant && altitude < 8)) {
           const localPos = worldPos
             .clone()
             .applyAxisAngle(new THREE.Vector3(0, 1, 0), -planetRotationRef.current);
           setShipPosition(localPos.clone());
 
-          const region = geographyManager.getRegionForPoint(localPos.x, localPos.y, localPos.z);
-          if (region) {
-            setCurrentZone(region.resourceZone);
+          if (isGasGiant) {
+            setCurrentZone('orbital' as any); // Render orbital base placement anywhere in gas giant boundary
           } else {
-            setCurrentZone(null);
+            const region = geographyManager.getRegionForPoint(localPos.x, localPos.y, localPos.z);
+            if (region) {
+              setCurrentZone(region.resourceZone);
+            } else {
+              setCurrentZone(null);
+            }
           }
 
           let foundBase = null;

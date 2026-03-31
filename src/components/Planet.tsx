@@ -71,8 +71,15 @@ function FresnelAtmosphereShell({
           void main() {
             vec3 viewDir = normalize(cameraPosition - vWorldPos);
             float fresnel = pow(1.0 - max(dot(normalize(vNormalW), viewDir), 0.0), power);
-            float alpha = fresnel * opacity;
-            gl_FragColor = vec4(glowColor * fresnel, alpha);
+            
+            // Sun-facing factor: star is at origin, so light direction = -normalize(worldPos)
+            vec3 sunDir = normalize(-vWorldPos);
+            float sunFacing = dot(normalize(vNormalW), sunDir);
+            // Smooth transition from lit to dark side
+            float sunFactor = smoothstep(-0.15, 0.45, sunFacing);
+            
+            float alpha = fresnel * opacity * sunFactor;
+            gl_FragColor = vec4(glowColor * fresnel * sunFactor, alpha);
           }
         `}
         toneMapped={false}
@@ -290,7 +297,7 @@ export const Planet = memo(function Planet({
   }, [cloudTexture1, cloudTexture2, cloudTexture3]);
 
   const displacementScale = useMemo(() => {
-    const base = isMobile ? 0.06 : 0.095;
+    const base = isMobile ? 0.12 : 0.19;
     const detailBoost = textureDetail === 'enhanced' ? 1.08 : 1;
     return radius * base * detailBoost;
   }, [isMobile, textureDetail, radius]);
@@ -383,11 +390,11 @@ export const Planet = memo(function Planet({
 
       <mesh frustumCulled>
         <sphereGeometry args={[radius * 1.014, atmosphereSegments, atmosphereSegments]} />
-        <meshBasicMaterial
+        <meshLambertMaterial
           color={atmosphereColors.inner}
           transparent
-          opacity={0.035}
-          side={THREE.BackSide}
+          opacity={0.35}
+          side={THREE.FrontSide}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
           toneMapped={false}
@@ -402,8 +409,7 @@ export const Planet = memo(function Planet({
               map={cloudTexture1}
               color={cloudColor}
               transparent
-              opacity={0.26}
-              alphaMap={cloudTexture1}
+              opacity={0.85}
               roughness={0.95}
               metalness={0}
               depthWrite={false}
@@ -418,8 +424,7 @@ export const Planet = memo(function Planet({
               map={cloudTexture2}
               color={cloudColor}
               transparent
-              opacity={0.18}
-              alphaMap={cloudTexture2}
+              opacity={0.65}
               roughness={0.9}
               metalness={0}
               depthWrite={false}
@@ -434,8 +439,7 @@ export const Planet = memo(function Planet({
               map={cloudTexture3}
               color={cloudColor}
               transparent
-              opacity={0.12}
-              alphaMap={cloudTexture3}
+              opacity={0.55}
               roughness={0.92}
               metalness={0}
               depthWrite={false}

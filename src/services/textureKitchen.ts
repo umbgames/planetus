@@ -29,8 +29,8 @@ export async function prewarmTextureKitchen(
     onProgress?.({ completed, total, label });
   };
 
-  const baseRes = isMobile ? { width: 768, height: 384 } : { width: 1536, height: 768 };
-  const heroRes = isMobile ? { width: 1024, height: 512 } : { width: 2048, height: 1024 };
+  const baseRes = isMobile ? { width: 1024, height: 512 } : { width: 2048, height: 1024 };
+  const heroRes = isMobile ? { width: 1536, height: 768 } : { width: 2048, height: 1024 };
 
   for (let i = 0; i < planets.length; i += 1) {
     const planet = planets[i];

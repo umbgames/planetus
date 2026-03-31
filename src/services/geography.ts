@@ -292,8 +292,8 @@ export class GeographyManager {
   }
 
   generateTexture() {
-    const width = this.textureResolution?.width ?? 1024;
-    const height = this.textureResolution?.height ?? 512;
+    const width = this.textureResolution?.width ?? 2048;
+    const height = this.textureResolution?.height ?? 1024;
     const detailWidth = 32;
     const detailHeight = 32;
 
@@ -312,9 +312,26 @@ export class GeographyManager {
 
     if (this.visualClass === 'gas_giant') {
       const baseHue = hashToUnitFloat(hashCombine(this.seed, 'gasH'));
-      const color1 = new THREE.Color().setHSL(baseHue, 0.6, 0.5);
-      const color2 = new THREE.Color().setHSL((baseHue + 0.05) % 1, 0.8, 0.4);
-      const color3 = new THREE.Color().setHSL((baseHue - 0.08 + 1) % 1, 0.4, 0.7);
+      const baseSat = 0.55 + hashToUnitFloat(hashCombine(this.seed, 'gasS')) * 0.35;
+      // 5 band colors for dramatic contrast
+      const color1 = new THREE.Color().setHSL(baseHue, baseSat, 0.52);
+      const color2 = new THREE.Color().setHSL((baseHue + 0.04) % 1, baseSat + 0.15, 0.32);
+      const color3 = new THREE.Color().setHSL((baseHue - 0.06 + 1) % 1, baseSat * 0.6, 0.72);
+      const color4 = new THREE.Color().setHSL((baseHue + 0.12) % 1, baseSat + 0.1, 0.25);
+      const color5 = new THREE.Color().setHSL((baseHue - 0.03 + 1) % 1, baseSat * 0.9, 0.58);
+      const stormHue = (baseHue + 0.02) % 1;
+      const stormColor = new THREE.Color().setHSL(stormHue, 0.85, 0.65);
+
+      // Pre-calculate storm center positions (Great Red Spot like features)
+      const stormCount = 2 + Math.floor(hashToUnitFloat(hashCombine(this.seed, 'stormN')) * 3);
+      const storms: { lat: number; lon: number; size: number }[] = [];
+      for (let s = 0; s < stormCount; s++) {
+        storms.push({
+          lat: (hashToUnitFloat(hashCombine(this.seed, `stormLat${s}`)) - 0.5) * 1.2,
+          lon: hashToUnitFloat(hashCombine(this.seed, `stormLon${s}`)) * Math.PI * 2,
+          size: 0.06 + hashToUnitFloat(hashCombine(this.seed, `stormSz${s}`)) * 0.14,
+        });
+      }
 
       for (let y = 0; y < height; y++) {
         const v = y / height;
@@ -327,25 +344,68 @@ export class GeographyManager {
           const pz = Math.sin(phi) * Math.sin(theta);
           
           const idx = (y * width + x) * 4;
-          
-          // Banded noise function
-          const bandNoise = this.noise3D(px * 1.5, py * 8, pz * 1.5) * 0.5 + 0.5;
-          const swirlNoise = this.noise3D(px * 4, py * 4, pz * 4);
-          const mix = (Math.sin(py * 20 + swirlNoise * 3) * 0.5 + 0.5 + bandNoise) / 2;
-          
+
+          // Multi-octave turbulence for realistic chaotic flow
+          const turb1 = this.noise3D(px * 2, py * 14, pz * 2);
+          const turb2 = this.noise3D(px * 4.5, py * 9, pz * 4.5) * 0.5;
+          const turb3 = this.noise3D(px * 9, py * 5, pz * 9) * 0.25;
+          const turbulence = turb1 + turb2 + turb3;
+
+          // Banded structure: many tight bands distorted by turbulence  
+          const bandFreq = 28 + hashToUnitFloat(hashCombine(this.seed, 'bandF')) * 12;
+          const distortedLat = py * bandFreq + turbulence * 4.5;
+          const bandValue = Math.sin(distortedLat) * 0.5 + 0.5;
+
+          // Swirl distortion for jet streams
+          const swirlX = this.noise3D(px * 6, py * 3, pz * 6) * 0.4;
+          const swirlZ = this.noise3D(px * 5, py * 3.5, pz * 5) * 0.4;
+          const jetStream = this.noise3D((px + swirlX) * 3, py * 18, (pz + swirlZ) * 3) * 0.5 + 0.5;
+
+          // Combine band pattern with jet streams
+          const mix = bandValue * 0.6 + jetStream * 0.4;
+
+          // 5-color banding with smooth transitions
           const base = color1.clone();
-          if (mix < 0.4) base.lerp(color2, 1 - mix / 0.4);
-          else if (mix > 0.6) base.lerp(color3, (mix - 0.6) / 0.4);
-          
-          // Add giant storms
-          const stormNoise = this.noise3D(px * 12, py * 12, pz * 12);
-          if (stormNoise > 0.75) {
-            base.lerp(new THREE.Color(0xffffff), (stormNoise - 0.75) * 4);
+          if (mix < 0.2) {
+            base.lerpColors(color4, color2, mix / 0.2);
+          } else if (mix < 0.4) {
+            base.lerpColors(color2, color1, (mix - 0.2) / 0.2);
+          } else if (mix < 0.6) {
+            base.lerpColors(color1, color5, (mix - 0.4) / 0.2);
+          } else if (mix < 0.8) {
+            base.lerpColors(color5, color3, (mix - 0.6) / 0.2);
+          } else {
+            base.lerpColors(color3, color4, (mix - 0.8) / 0.2);
           }
 
-          data[idx] = Math.round(base.r * 255);
-          data[idx + 1] = Math.round(base.g * 255);
-          data[idx + 2] = Math.round(base.b * 255);
+          // Fine detail turbulence for micro-texture
+          const microDetail = this.noise3D(px * 22, py * 22, pz * 22) * 0.06;
+          base.r = THREE.MathUtils.clamp(base.r + microDetail, 0, 1);
+          base.g = THREE.MathUtils.clamp(base.g + microDetail * 0.8, 0, 1);
+          base.b = THREE.MathUtils.clamp(base.b + microDetail * 0.6, 0, 1);
+
+          // Great storms (oval vortices)
+          for (const storm of storms) {
+            const dlat = py - storm.lat;
+            const dlon = Math.atan2(pz, px) - storm.lon;
+            const stormDist = Math.sqrt(dlat * dlat * 4 + dlon * dlon) / storm.size;
+            if (stormDist < 1.0) {
+              const stormIntensity = Math.pow(1 - stormDist, 2.5);
+              // Spiral arms around storm
+              const spiralAngle = Math.atan2(dlat, dlon) + stormDist * 6;
+              const spiralPattern = Math.sin(spiralAngle * 3) * 0.5 + 0.5;
+              const sColor = stormColor.clone().lerp(new THREE.Color(0xffeedd), spiralPattern * 0.4);
+              base.lerp(sColor, stormIntensity * 0.85);
+            }
+          }
+
+          // Subtle edge darkening for depth
+          const latDarken = 1.0 - Math.pow(Math.abs(py), 3) * 0.25;
+          base.multiplyScalar(latDarken);
+
+          data[idx] = Math.max(0, Math.min(255, Math.round(base.r * 255)));
+          data[idx + 1] = Math.max(0, Math.min(255, Math.round(base.g * 255)));
+          data[idx + 2] = Math.max(0, Math.min(255, Math.round(base.b * 255)));
           data[idx + 3] = 255;
 
           // Gas giants are smooth, no displacement
@@ -367,20 +427,33 @@ export class GeographyManager {
           const elevation = this.getElevation(px, py, pz);
           const bandNoise = this.noise3D(px * 8, py * 8, pz * 8) * 0.035;
           const latitudeShade = 1 - Math.abs(py) * 0.12;
+          // High-frequency surface grain for close-up detail
+          const surfaceGrain = this.noise3D(px * 32, py * 32, pz * 32) * 0.025;
 
           if (terrain <= this.landThreshold) {
             const lowland = palette.lowland.clone();
-            lowland.multiplyScalar(0.92 + bandNoise + latitudeShade * 0.04);
+            // Richer lowland detail
+            const lowlandDetail = this.noise3D(px * 12, py * 12, pz * 12) * 0.08;
+            lowland.multiplyScalar(0.92 + bandNoise + latitudeShade * 0.04 + lowlandDetail);
             
-            // Lava glowing effect
+            // Lava glowing effect with veins
             if (this.visualClass === 'volcanic') {
-              lowland.lerp(new THREE.Color('#ff2a00'), this.noise3D(px * 15, py * 15, pz * 15) * 0.5 + 0.5);
-              lowland.multiplyScalar(1.2); 
+              const lavaFlow = this.noise3D(px * 15, py * 15, pz * 15) * 0.5 + 0.5;
+              const lavaVeins = Math.pow(Math.abs(this.noise3D(px * 25, py * 25, pz * 25)), 0.5);
+              lowland.lerp(new THREE.Color('#ff2a00'), lavaFlow * 0.7);
+              lowland.lerp(new THREE.Color('#ffaa00'), lavaVeins * 0.35);
+              lowland.multiplyScalar(1.3);
+            }
+            
+            // Ocean depth variation for lush planets
+            if (this.visualClass === 'lush_green') {
+              const depthVar = this.noise3D(px * 6, py * 6, pz * 6) * 0.15;
+              lowland.multiplyScalar(0.85 + depthVar);
             }
 
-            data[idx] = Math.round(lowland.r * 255);
-            data[idx + 1] = Math.round(lowland.g * 255);
-            data[idx + 2] = Math.round(lowland.b * 255);
+            data[idx] = Math.max(0, Math.min(255, Math.round(lowland.r * 255)));
+            data[idx + 1] = Math.max(0, Math.min(255, Math.round(lowland.g * 255)));
+            data[idx + 2] = Math.max(0, Math.min(255, Math.round(lowland.b * 255)));
             data[idx + 3] = 255;
             dispData[idx] = 0; dispData[idx + 1] = 0; dispData[idx + 2] = 0; dispData[idx + 3] = 255;
             continue;
@@ -389,14 +462,15 @@ export class GeographyManager {
           const base = palette[this.getBiomeAtPoint(px, py, pz)].clone();
           if (elevation > 0.34) base.lerp(palette.ridge, THREE.MathUtils.clamp((elevation - 0.34) * 1.8, 0, 0.85));
           if (Math.abs(py) > 0.86) base.lerp(palette.polar, THREE.MathUtils.clamp((Math.abs(py) - 0.86) * 4.5, 0, 0.8));
-          base.multiplyScalar(0.88 + bandNoise + latitudeShade + elevation * 0.12);
+          base.multiplyScalar(0.88 + bandNoise + surfaceGrain + latitudeShade + elevation * 0.15);
 
           data[idx] = Math.max(0, Math.min(255, Math.round(base.r * 255)));
           data[idx + 1] = Math.max(0, Math.min(255, Math.round(base.g * 255)));
           data[idx + 2] = Math.max(0, Math.min(255, Math.round(base.b * 255)));
           data[idx + 3] = 255;
 
-          const dispValue = Math.min(255, Math.floor(elevation * 200));
+          // Higher displacement for deeper terrain
+          const dispValue = Math.min(255, Math.floor(elevation * 320));
           dispData[idx] = dispValue; dispData[idx + 1] = dispValue; dispData[idx + 2] = dispValue; dispData[idx + 3] = 255;
         }
       }

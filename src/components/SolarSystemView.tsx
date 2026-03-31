@@ -160,7 +160,7 @@ const OrbitingPlanet = memo(function OrbitingPlanet({ planet, isMobile, currentP
     groupRef.current.position.set(x, y, z);
 
     if (spinRef.current) {
-      const effectiveSpinSpeed = currentPlanetId === planet.id ? 0.00045 : 0.018;
+      const effectiveSpinSpeed = currentPlanetId === planet.id ? 0.0002 : 0.005;
       spinRef.current.rotation.y += effectiveSpinSpeed * delta;
       if (currentPlanetId === planet.id) planetRotationRef.current = spinRef.current.rotation.y;
     }
@@ -206,12 +206,12 @@ const OrbitingPlanet = memo(function OrbitingPlanet({ planet, isMobile, currentP
             )}
 
             <Planet
+              id={planet.id}
               radius={scaledRadius}
               isMobile={isMobile}
               seed={planet.seed}
               noiseScale={planet.noiseScale}
               landThreshold={planet.landThreshold}
-              showClouds={false}
               textureDetail={getTextureDetailForQuality(quality)}
               visualClass={planet.visualClass}
             />
