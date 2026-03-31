@@ -19,7 +19,7 @@ interface CachedGeographyData {
 }
 
 type TextureDetail = 'standard' | 'enhanced';
-type BiomeName = 'rocky' | 'dry_arid' | 'desert' | 'red';
+export type BiomeName = 'rocky' | 'dry_arid' | 'desert' | 'red' | 'volcanic' | 'lush_green' | 'ice' | 'gas_giant';
 
 const geometryCache = new Map<string, CachedGeographyData>();
 
@@ -257,6 +257,11 @@ export class GeographyManager {
     const humidity = this.getHumidityAtPoint(x, y, z);
     const elevation = this.getElevation(x, y, z);
 
+    if (this.visualClass === 'gas_giant') return 'gas_giant';
+    if (this.visualClass === 'volcanic') return temperature > 0.35 ? 'volcanic' : 'rocky';
+    if (this.visualClass === 'lush_green') return humidity > 0.4 ? 'lush_green' : (temperature < 0.25 ? 'ice' : 'rocky');
+    if (this.visualClass === 'ice') return temperature < 0.4 ? 'ice' : 'rocky';
+
     if (this.visualClass === 'red') return temperature > 0.42 ? 'red' : 'dry_arid';
     if (this.visualClass === 'desert') return humidity < 0.58 ? 'desert' : 'dry_arid';
     if (this.visualClass === 'dry_arid') return elevation > 0.28 ? 'rocky' : 'dry_arid';
@@ -273,7 +278,14 @@ export class GeographyManager {
       dry_arid: mk(0.11, 0.28, 0.5),
       desert: mk(0.12, 0.52, 0.6),
       red: mk(0.02, 0.55, 0.46),
-      lowland: mk(0.1, 0.2, 0.42),
+      volcanic: mk(0.05, 0.15, 0.25), // Dark ash/obsidian
+      lush_green: mk(0.3, 0.5, 0.35), // Forest green
+      ice: mk(0.55, 0.2, 0.85),       // Pale ice
+      gas_giant: mk(0.15, 0.8, 0.5),
+      lowland: this.visualClass === 'volcanic' ? mk(0.03, 0.9, 0.55) : // Bright lava
+               this.visualClass === 'lush_green' ? mk(0.58, 0.7, 0.4) : // Deep blue ocean
+               this.visualClass === 'ice' ? mk(0.55, 0.4, 0.6) :        // Frozen dark sea
+               mk(0.1, 0.2, 0.42),
       ridge: mk(0.08, 0.06, 0.68),
       polar: mk(0.56, 0.04, 0.84),
     };
@@ -298,44 +310,95 @@ export class GeographyManager {
     const detailData = this.detailImgData.data;
     const palette = this.getBiomePalette();
 
-    for (let y = 0; y < height; y++) {
-      const v = y / height;
-      const phi = v * Math.PI;
-      for (let x = 0; x < width; x++) {
-        const u = x / width;
-        const theta = u * Math.PI * 2;
-        const px = Math.sin(phi) * Math.cos(theta);
-        const py = Math.cos(phi);
-        const pz = Math.sin(phi) * Math.sin(theta);
-        const idx = (y * width + x) * 4;
-        const terrain = this.getTerrain(px, py, pz);
-        const elevation = this.getElevation(px, py, pz);
-        const bandNoise = this.noise3D(px * 8, py * 8, pz * 8) * 0.035;
-        const latitudeShade = 1 - Math.abs(py) * 0.12;
+    if (this.visualClass === 'gas_giant') {
+      const baseHue = hashToUnitFloat(hashCombine(this.seed, 'gasH'));
+      const color1 = new THREE.Color().setHSL(baseHue, 0.6, 0.5);
+      const color2 = new THREE.Color().setHSL((baseHue + 0.05) % 1, 0.8, 0.4);
+      const color3 = new THREE.Color().setHSL((baseHue - 0.08 + 1) % 1, 0.4, 0.7);
 
-        if (terrain <= this.landThreshold) {
-          const lowland = palette.lowland.clone();
-          lowland.multiplyScalar(0.92 + bandNoise + latitudeShade * 0.04);
-          data[idx] = Math.round(lowland.r * 255);
-          data[idx + 1] = Math.round(lowland.g * 255);
-          data[idx + 2] = Math.round(lowland.b * 255);
+      for (let y = 0; y < height; y++) {
+        const v = y / height;
+        const phi = v * Math.PI;
+        for (let x = 0; x < width; x++) {
+          const u = x / width;
+          const theta = u * Math.PI * 2;
+          const px = Math.sin(phi) * Math.cos(theta);
+          const py = Math.cos(phi);
+          const pz = Math.sin(phi) * Math.sin(theta);
+          
+          const idx = (y * width + x) * 4;
+          
+          // Banded noise function
+          const bandNoise = this.noise3D(px * 1.5, py * 8, pz * 1.5) * 0.5 + 0.5;
+          const swirlNoise = this.noise3D(px * 4, py * 4, pz * 4);
+          const mix = (Math.sin(py * 20 + swirlNoise * 3) * 0.5 + 0.5 + bandNoise) / 2;
+          
+          const base = color1.clone();
+          if (mix < 0.4) base.lerp(color2, 1 - mix / 0.4);
+          else if (mix > 0.6) base.lerp(color3, (mix - 0.6) / 0.4);
+          
+          // Add giant storms
+          const stormNoise = this.noise3D(px * 12, py * 12, pz * 12);
+          if (stormNoise > 0.75) {
+            base.lerp(new THREE.Color(0xffffff), (stormNoise - 0.75) * 4);
+          }
+
+          data[idx] = Math.round(base.r * 255);
+          data[idx + 1] = Math.round(base.g * 255);
+          data[idx + 2] = Math.round(base.b * 255);
           data[idx + 3] = 255;
-          dispData[idx] = 0; dispData[idx + 1] = 0; dispData[idx + 2] = 0; dispData[idx + 3] = 255;
-          continue;
+
+          // Gas giants are smooth, no displacement
+          dispData[idx] = 128; dispData[idx + 1] = 128; dispData[idx + 2] = 128; dispData[idx + 3] = 255;
         }
+      }
+    } else {
+      for (let y = 0; y < height; y++) {
+        const v = y / height;
+        const phi = v * Math.PI;
+        for (let x = 0; x < width; x++) {
+          const u = x / width;
+          const theta = u * Math.PI * 2;
+          const px = Math.sin(phi) * Math.cos(theta);
+          const py = Math.cos(phi);
+          const pz = Math.sin(phi) * Math.sin(theta);
+          const idx = (y * width + x) * 4;
+          const terrain = this.getTerrain(px, py, pz);
+          const elevation = this.getElevation(px, py, pz);
+          const bandNoise = this.noise3D(px * 8, py * 8, pz * 8) * 0.035;
+          const latitudeShade = 1 - Math.abs(py) * 0.12;
 
-        const base = palette[this.getBiomeAtPoint(px, py, pz)].clone();
-        if (elevation > 0.34) base.lerp(palette.ridge, THREE.MathUtils.clamp((elevation - 0.34) * 1.8, 0, 0.85));
-        if (Math.abs(py) > 0.86) base.lerp(palette.polar, THREE.MathUtils.clamp((Math.abs(py) - 0.86) * 4.5, 0, 0.8));
-        base.multiplyScalar(0.88 + bandNoise + latitudeShade + elevation * 0.12);
+          if (terrain <= this.landThreshold) {
+            const lowland = palette.lowland.clone();
+            lowland.multiplyScalar(0.92 + bandNoise + latitudeShade * 0.04);
+            
+            // Lava glowing effect
+            if (this.visualClass === 'volcanic') {
+              lowland.lerp(new THREE.Color('#ff2a00'), this.noise3D(px * 15, py * 15, pz * 15) * 0.5 + 0.5);
+              lowland.multiplyScalar(1.2); 
+            }
 
-        data[idx] = Math.max(0, Math.min(255, Math.round(base.r * 255)));
-        data[idx + 1] = Math.max(0, Math.min(255, Math.round(base.g * 255)));
-        data[idx + 2] = Math.max(0, Math.min(255, Math.round(base.b * 255)));
-        data[idx + 3] = 255;
+            data[idx] = Math.round(lowland.r * 255);
+            data[idx + 1] = Math.round(lowland.g * 255);
+            data[idx + 2] = Math.round(lowland.b * 255);
+            data[idx + 3] = 255;
+            dispData[idx] = 0; dispData[idx + 1] = 0; dispData[idx + 2] = 0; dispData[idx + 3] = 255;
+            continue;
+          }
 
-        const dispValue = Math.min(255, Math.floor(elevation * 200));
-        dispData[idx] = dispValue; dispData[idx + 1] = dispValue; dispData[idx + 2] = dispValue; dispData[idx + 3] = 255;
+          const base = palette[this.getBiomeAtPoint(px, py, pz)].clone();
+          if (elevation > 0.34) base.lerp(palette.ridge, THREE.MathUtils.clamp((elevation - 0.34) * 1.8, 0, 0.85));
+          if (Math.abs(py) > 0.86) base.lerp(palette.polar, THREE.MathUtils.clamp((Math.abs(py) - 0.86) * 4.5, 0, 0.8));
+          base.multiplyScalar(0.88 + bandNoise + latitudeShade + elevation * 0.12);
+
+          data[idx] = Math.max(0, Math.min(255, Math.round(base.r * 255)));
+          data[idx + 1] = Math.max(0, Math.min(255, Math.round(base.g * 255)));
+          data[idx + 2] = Math.max(0, Math.min(255, Math.round(base.b * 255)));
+          data[idx + 3] = 255;
+
+          const dispValue = Math.min(255, Math.floor(elevation * 200));
+          dispData[idx] = dispValue; dispData[idx + 1] = dispValue; dispData[idx + 2] = dispValue; dispData[idx + 3] = 255;
+        }
       }
     }
 

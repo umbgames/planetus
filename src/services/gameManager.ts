@@ -58,6 +58,8 @@ export interface BaseData {
   id: string;
   ownerId: string;
   clanId?: string | null;
+  bodyId: string;
+  type: 'surface' | 'orbital';
   position: { x: number; y: number; z: number };
   zone: 'high' | 'mid' | 'low';
   level: number;
@@ -549,6 +551,8 @@ class GameManager {
           id: baseId,
           ownerId: 'npc',
           clanId: null,
+          bodyId: 'alpha_centauri',
+          type: 'surface',
           position: { x: pos[0], y: pos[1], z: pos[2] },
           zone,
           level: 1,
@@ -570,25 +574,35 @@ class GameManager {
     }
   }
 
-  async createBase(position: THREE.Vector3, zone: 'high' | 'mid' | 'low') {
+  async createBase(position: THREE.Vector3, zone: 'high' | 'mid' | 'low', bodyId: string, type: 'surface' | 'orbital') {
     if (!auth.currentUser || !this.userData) throw new Error("Must be logged in to create a base");
-    if (this.bases.length >= 500) throw new Error("Planet is at maximum base capacity (500)");
+    
+    // Check global limit
+    if (this.bases.length >= 500) throw new Error("Server is at maximum base capacity (500)");
     
     // Check cost
-    const costCommon = 100;
-    const costRare = 10;
+    const costCommon = type === 'orbital' ? 500 : 100;
+    const costRare = type === 'orbital' ? 50 : 10;
     if (this.userData.commonResources < costCommon || this.userData.rareResources < costRare) {
-      throw new Error(`Not enough resources. Need ${costCommon} Common, ${costRare} Rare.`);
+      throw new Error(`Not enough resources. Need ${costCommon} Common, ${costRare} Rare for a ${type} base.`);
     }
 
-    // Snap position to terrain height
-    const radius = 10;
-    const displacementScale = 0.8;
-    const height = geographyManager.getHeightAtPoint(position.x, position.y, position.z, radius, displacementScale);
-    const snappedPosition = position.clone().normalize().multiplyScalar(height);
+    let snappedPosition = position.clone();
+
+    // Snap position to terrain height for surface bases
+    if (type === 'surface') {
+      const radius = 10;
+      const displacementScale = 0.8;
+      const height = geographyManager.getHeightAtPoint(position.x, position.y, position.z, radius, displacementScale);
+      snappedPosition = position.clone().normalize().multiplyScalar(height);
+    } else {
+      // Orbital bases just float at a normalized radius off the planet
+      snappedPosition = position.clone().normalize().multiplyScalar(14);
+    }
 
     // Check distance to other bases
     for (const base of this.bases) {
+      if (base.bodyId !== bodyId) continue;
       const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
       if (snappedPosition.distanceTo(basePos) < 1.5) {
         throw new Error("Too close to another base.");
@@ -600,6 +614,8 @@ class GameManager {
       id: baseId,
       ownerId: auth.currentUser.uid,
       clanId: this.userData.clanId ?? null,
+      bodyId,
+      type,
       position: { x: snappedPosition.x, y: snappedPosition.y, z: snappedPosition.z },
       zone,
       level: 1,

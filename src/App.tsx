@@ -702,10 +702,13 @@ export default function App() {
       return;
     }
 
-    if (shipPosition && currentZone) {
+    if (shipPosition && currentZone && currentPlanetId && solarSystem) {
       try {
-        await gameManager.createBase(shipPosition, currentZone);
-        showToast('Base constructed successfully!');
+        const isGasGiant = solarSystem.bodies.some(b => b.id === currentPlanetId && b.type === 'planet' && b.visualClass === 'gas_giant');
+        const type = isGasGiant ? 'orbital' : 'surface';
+        
+        await gameManager.createBase(shipPosition, currentZone, currentPlanetId, type);
+        showToast(`${type.charAt(0).toUpperCase() + type.slice(1)} Base constructed successfully!`);
       } catch (e: any) {
         showToast(e.message);
       }
@@ -1257,35 +1260,42 @@ export default function App() {
             exit={{ opacity: 0, y: 20 }}
             className="absolute bottom-10 left-1/2 transform -translate-x-1/2 z-40 pointer-events-auto flex gap-4"
           >
-            {!nearbyBase && currentZone && (
-              <div className="flex flex-col items-center gap-2">
-                <div className="bg-black/60 backdrop-blur px-3 py-1 rounded text-xs text-white border border-white/10">
-                  Zone:{' '}
-                  <span
-                    className={
-                      currentZone === 'high'
-                        ? 'text-red-400'
-                        : currentZone === 'mid'
-                          ? 'text-amber-400'
-                          : 'text-blue-400'
-                    }
-                  >
-                    {(currentZone || '').toUpperCase()}
-                  </span>
-                </div>
-                <button
-                  onClick={handleBuildBase}
-                  disabled={userData ? userData.commonResources < 100 || userData.rareResources < 10 : false}
-                  className="bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-blue-500/50 flex flex-col items-center gap-1 transition-all"
-                >
-                  <div className="flex items-center gap-2">
-                    <Shield size={20} />
-                    <span>Build Base</span>
+            {(() => {
+              const isGasGiant = solarSystem?.bodies.some(b => b.id === currentPlanetId && b.type === 'planet' && b.visualClass === 'gas_giant');
+              const baseCostCommon = isGasGiant ? 500 : 100;
+              const baseCostRare = isGasGiant ? 50 : 10;
+              const buildBtnLabel = isGasGiant ? 'Orbital Base' : 'Build Base';
+
+              return !nearbyBase && currentZone && (
+                <div className="flex flex-col items-center gap-2">
+                  <div className="bg-black/60 backdrop-blur px-3 py-1 rounded text-xs text-white border border-white/10">
+                    Zone:{' '}
+                    <span
+                      className={
+                        currentZone === 'high'
+                          ? 'text-red-400'
+                          : currentZone === 'mid'
+                            ? 'text-amber-400'
+                            : 'text-blue-400'
+                      }
+                    >
+                      {(currentZone || '').toUpperCase()}
+                    </span>
                   </div>
-                  <div className="text-[10px] font-mono opacity-80">100C / 10A</div>
-                </button>
-              </div>
-            )}
+                  <button
+                    onClick={handleBuildBase}
+                    disabled={userData ? userData.commonResources < baseCostCommon || userData.rareResources < baseCostRare : false}
+                    className={`${isGasGiant ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/50' : 'bg-blue-600 hover:bg-blue-500 shadow-blue-500/50'} disabled:bg-zinc-700 disabled:text-zinc-500 text-white font-bold py-3 px-6 rounded-full shadow-lg flex flex-col items-center gap-1 transition-all`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {isGasGiant ? <RadioTower size={20} /> : <Shield size={20} />}
+                      <span>{buildBtnLabel}</span>
+                    </div>
+                    <div className="text-[10px] font-mono opacity-80">{baseCostCommon}C / {baseCostRare}A</div>
+                  </button>
+                </div>
+              );
+            })()}
 
             {nearbyBase && userData && nearbyBase.ownerId === userData.uid && (
               <div className="flex flex-col gap-2">

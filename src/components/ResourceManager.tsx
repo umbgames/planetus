@@ -9,6 +9,7 @@ interface ResourceManagerProps {
   planetRadius: number;
   isMobile?: boolean;
   geographyManager: GeographyManager;
+  planetId?: string;
 }
 
 function CommonResource({ scale, isMobile }: { scale: number, isMobile: boolean }) {
@@ -114,13 +115,13 @@ function Resource({ data, isMobile }: { data: ResourceNode, isMobile: boolean })
   );
 }
 
-export function ResourceManager({ planetRadius, isMobile = false, geographyManager }: ResourceManagerProps) {
+export function ResourceManager({ planetRadius, isMobile = false, geographyManager, planetId }: ResourceManagerProps) {
   const [resources, setResources] = useState<ResourceNode[]>([]);
 
 
   useEffect(() => {
     const updateResources = (newResources: ResourceNode[]) => {
-      const activeResources = newResources.filter(r => r.active);
+      const activeResources = newResources.filter(r => r.active && r.planetId === (planetId || 'alpha_centauri'));
       setResources(activeResources);
     };
 

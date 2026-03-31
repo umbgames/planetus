@@ -6,11 +6,17 @@ import { ResourceManager } from './ResourceManager';
 import { GeographyManager } from '../services/geography';
 
 
-const ATMOSPHERE_PALETTE: Record<'rocky' | 'dry_arid' | 'desert' | 'red', { inner: string; outer: string }> = {
+type VisualClass = 'rocky' | 'dry_arid' | 'desert' | 'red' | 'volcanic' | 'lush_green' | 'ice' | 'gas_giant';
+
+const ATMOSPHERE_PALETTE: Record<VisualClass, { inner: string; outer: string }> = {
   rocky: { inner: '#7ab8ff', outer: '#4b8dff' },
   dry_arid: { inner: '#8ec5ff', outer: '#66a7ff' },
   desert: { inner: '#ffbf7d', outer: '#ff8f5d' },
   red: { inner: '#ff8a7a', outer: '#ff5f62' },
+  volcanic: { inner: '#ff7700', outer: '#cc3300' },
+  lush_green: { inner: '#5cd6ff', outer: '#3b9cff' },
+  ice: { inner: '#d0f8ff', outer: '#a3e8ff' },
+  gas_giant: { inner: '#ffffff', outer: '#cccccc' },
 };
 
 function FresnelAtmosphereShell({
@@ -76,6 +82,7 @@ function FresnelAtmosphereShell({
 }
 
 interface PlanetProps {
+  id?: string;
   radius: number;
   isMobile?: boolean;
   seed: string;
@@ -87,10 +94,12 @@ interface PlanetProps {
   cloudSpeed?: number;
   cloudRotationSpeed?: number;
   textureDetail?: 'standard' | 'enhanced';
-  visualClass?: 'rocky' | 'dry_arid' | 'desert' | 'red';
+  visualClass?: VisualClass;
+  cloudColor?: string;
 }
 
 export const Planet = memo(function Planet({
+  id,
   radius,
   isMobile = false,
   seed,
@@ -103,6 +112,7 @@ export const Planet = memo(function Planet({
   cloudRotationSpeed = 1,
   textureDetail = 'standard',
   visualClass = 'rocky',
+  cloudColor = '#ffffff',
 }: PlanetProps) {
   const planetRef = useRef<THREE.Mesh>(null);
   const atmosphereInnerRef = useRef<THREE.Group>(null);
@@ -119,7 +129,16 @@ export const Planet = memo(function Planet({
   const segments = useMemo(() => (isMobile ? 72 : 160), [isMobile]);
   const atmosphereSegments = useMemo(() => (isMobile ? 40 : 72), [isMobile]);
   const cloudSegments = useMemo(() => (isMobile ? 40 : 80), [isMobile]);
-  const atmosphereColors = useMemo(() => ATMOSPHERE_PALETTE[visualClass], [visualClass]);
+  const atmosphereColors = useMemo(() => {
+    if (visualClass === 'gas_giant' && cloudColor !== '#ffffff') {
+      const gColor = new THREE.Color(cloudColor);
+      return {
+        inner: `#${gColor.getHexString()}`,
+        outer: `#${gColor.clone().multiplyScalar(0.7).getHexString()}`,
+      };
+    }
+    return ATMOSPHERE_PALETTE[visualClass];
+  }, [visualClass, cloudColor]);
 
   const cloudTextureSize = isMobile ? 512 : 1024;
 
@@ -381,6 +400,7 @@ export const Planet = memo(function Planet({
             <sphereGeometry args={[radius * 1.018, cloudSegments, cloudSegments]} />
             <meshStandardMaterial
               map={cloudTexture1}
+              color={cloudColor}
               transparent
               opacity={0.26}
               alphaMap={cloudTexture1}
@@ -396,6 +416,7 @@ export const Planet = memo(function Planet({
             <sphereGeometry args={[radius * 1.029, cloudSegments, cloudSegments]} />
             <meshStandardMaterial
               map={cloudTexture2}
+              color={cloudColor}
               transparent
               opacity={0.18}
               alphaMap={cloudTexture2}
@@ -411,6 +432,7 @@ export const Planet = memo(function Planet({
             <sphereGeometry args={[radius * 1.042, cloudSegments, cloudSegments]} />
             <meshStandardMaterial
               map={cloudTexture3}
+              color={cloudColor}
               transparent
               opacity={0.12}
               alphaMap={cloudTexture3}
@@ -424,8 +446,8 @@ export const Planet = memo(function Planet({
         </>
       )}
 
-      <BaseManager planetRadius={radius} geographyManager={geographyManager} />
-      <ResourceManager planetRadius={radius} isMobile={isMobile} geographyManager={geographyManager} />
+      <BaseManager planetRadius={radius} geographyManager={geographyManager} planetId={id} />
+      <ResourceManager planetRadius={radius} isMobile={isMobile} geographyManager={geographyManager} planetId={id} />
     </group>
   );
 });

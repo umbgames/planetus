@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createPRNG, hashCombine, seededRange } from '../utils/random';
 
-export type VisualClass = 'rocky' | 'dry_arid' | 'desert' | 'red';
+export type VisualClass = 'rocky' | 'dry_arid' | 'desert' | 'red' | 'volcanic' | 'lush_green' | 'ice' | 'gas_giant';
 
 export interface MoonData {
   id: string;
@@ -17,7 +17,8 @@ export interface MoonData {
   landThreshold: number;
   paletteSeed: number;
   hasClouds: boolean;
-  visualClass: 'rocky';
+  cloudColor: string;
+  visualClass: VisualClass;
 }
 
 export interface RingData {
@@ -47,6 +48,7 @@ export interface PlanetData {
   cloudDensity: number;
   cloudSpeed: number;
   cloudRotationSpeed: number;
+  cloudColor: string;
   visualClass: VisualClass;
   moons: MoonData[];
   ring: RingData | null;
@@ -75,11 +77,11 @@ export interface SolarSystemData {
 const STAR_COLORS = ['#fff4de', '#ffe8b5', '#ffd6a5', '#cfe8ff', '#bcd5ff', '#ffd1dc'];
 const RING_COLORS = ['#d8c3a5', '#c4b5a0', '#bfa88a', '#d9d1c7', '#c7c2b8'];
 
-function createRingData(bodySeed: string, radius: number): RingData {
+function createRingData(bodySeed: string, radius: number, defaultColor?: string): RingData {
   return {
     innerRadius: radius * seededRange(hashCombine(bodySeed, 'ringInner'), 1.45, 1.72),
     outerRadius: radius * seededRange(hashCombine(bodySeed, 'ringOuter'), 1.95, 2.75),
-    color: RING_COLORS[Math.floor(seededRange(hashCombine(bodySeed, 'ringColor'), 0, RING_COLORS.length - 0.001))],
+    color: defaultColor || RING_COLORS[Math.floor(seededRange(hashCombine(bodySeed, 'ringColor'), 0, RING_COLORS.length - 0.001))],
     opacity: seededRange(hashCombine(bodySeed, 'ringOpacity'), 0.2, 0.38),
   };
 }
@@ -133,14 +135,41 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
     const moonCount = Math.min(2, moonCountBase);
 
     const heat = THREE.MathUtils.clamp(1 - radialRatio + seededRange(hashCombine(bodySeed, 'heatBias'), -0.12, 0.12), 0, 1);
-    const visualClass: VisualClass =
-      heat > 0.72
-        ? (bodyPrng() > 0.45 ? 'desert' : 'red')
-        : heat > 0.5
-          ? 'dry_arid'
-          : bodyPrng() > 0.65
-            ? 'red'
-            : 'rocky';
+    
+    // Determine Gas Giant status
+    const isGasGiant = radius >= 22 || (radius >= 14 && bodyPrng() > 0.65);
+    
+    let visualClass: VisualClass;
+    let cloudColor = '#ffffff';
+    let hasClouds = false;
+    let cloudDensity = 0;
+
+    if (isGasGiant) {
+      visualClass = 'gas_giant';
+      hasClouds = true;
+      cloudDensity = seededRange(hashCombine(bodySeed, 'cloudDensity_g'), 0.8, 1);
+      cloudColor = RING_COLORS[Math.floor(seededRange(hashCombine(bodySeed, 'gasColor'), 0, RING_COLORS.length - 0.001))];
+    } else {
+      hasClouds = bodyPrng() > 0.4;
+      cloudDensity = hasClouds ? seededRange(hashCombine(bodySeed, 'cloudDensity_g'), 0.3, 0.8) : 0;
+      
+      if (heat > 0.78) {
+        visualClass = bodyPrng() > 0.3 ? 'volcanic' : 'red';
+        cloudColor = '#4a3b38'; // Dark ash
+      } else if (heat > 0.6) {
+        visualClass = bodyPrng() > 0.45 ? 'desert' : 'red';
+        cloudColor = '#f2e8c9'; // Dusty sand clouds
+      } else if (heat > 0.4) {
+        visualClass = bodyPrng() > 0.35 ? 'lush_green' : (bodyPrng() > 0.5 ? 'dry_arid' : 'rocky');
+        cloudColor = '#ffffff'; // White fluffy clouds
+      } else if (heat > 0.25) {
+        visualClass = bodyPrng() > 0.65 ? 'ice' : 'rocky';
+        cloudColor = '#e0f7fa'; // Pale icy clouds
+      } else {
+        visualClass = 'ice';
+        cloudColor = '#b3e5fc'; // Frosty wisps
+      }
+    }
 
     const moons: MoonData[] = Array.from({ length: moonCount }, (_, moonIndex) => {
       const moonSeed = hashCombine(bodySeed, 'moon', moonIndex);
@@ -158,8 +187,9 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
         noiseScale: seededRange(hashCombine(moonSeed, 'noiseScale'), 0.9, 2.6),
         landThreshold: seededRange(hashCombine(moonSeed, 'landThreshold'), 0.03, 0.33),
         paletteSeed: seededRange(hashCombine(moonSeed, 'paletteSeed'), 0, 1),
-        hasClouds: false,
-        visualClass: 'rocky',
+        hasClouds: moonPrng() > 0.7,
+        cloudColor: moonPrng() > 0.5 ? '#e0f7fa' : '#ffffff',
+        visualClass: moonPrng() > 0.8 ? 'ice' : (moonPrng() > 0.6 ? 'red' : 'rocky'),
       };
     });
 
@@ -179,13 +209,14 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
       temperatureBias: seededRange(hashCombine(bodySeed, 'temperatureBias'), -0.25, 0.25),
       humidityBias: seededRange(hashCombine(bodySeed, 'humidityBias'), -0.25, 0.25),
       paletteSeed: seededRange(hashCombine(bodySeed, 'paletteSeed'), 0, 1),
-      hasClouds: false,
-      cloudDensity: 0,
-      cloudSpeed: 0,
-      cloudRotationSpeed: 0,
+      hasClouds,
+      cloudDensity,
+      cloudSpeed: hasClouds ? seededRange(hashCombine(bodySeed, 'cloudSpeed'), 0.8, 2.5) : 0,
+      cloudRotationSpeed: hasClouds ? seededRange(hashCombine(bodySeed, 'cloudRot'), 0.5, 2) : 0,
+      cloudColor,
       visualClass,
       moons,
-      ring: isRingCandidate ? createRingData(bodySeed, radius) : null,
+      ring: isRingCandidate ? createRingData(bodySeed, radius, isGasGiant ? cloudColor : undefined) : null,
     });
   }
 
@@ -198,7 +229,7 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
 
   planets.forEach((planet) => {
     planet.ring = chosenRingPlanet && planet.id === chosenRingPlanet.id
-      ? createRingData(planet.seed, planet.radius)
+      ? createRingData(planet.seed, planet.radius, planet.visualClass === 'gas_giant' ? planet.cloudColor : undefined)
       : null;
   });
 

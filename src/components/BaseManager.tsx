@@ -11,6 +11,7 @@ interface BaseManagerProps {
   planetRadius: number;
   isMobile?: boolean;
   geographyManager: GeographyManager;
+  planetId?: string;
 }
 
 const CUBE_WIDTH = 0.06
@@ -107,7 +108,7 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
     }
 
     /** BASE DEFENSE LOGIC **/
-    if (ammo > 0 && time - lastFired.current > fireRate) {
+    if (data.type !== 'orbital' && ammo > 0 && time - lastFired.current > fireRate) {
       // Find nearest enemy projectile
       let nearestProj = null;
       let minDist = defenseRange;
@@ -180,7 +181,7 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
 
     groupRef.current.visible = true
 
-    let scale = 1
+    let scale = data.type === 'orbital' ? 4 : 1 // Orbital bases are much larger
 
     if(dist > fadeDist){
       scale = 1 - (dist - fadeDist)/(maxDist - fadeDist)
@@ -239,12 +240,36 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
 
       <group ref={highDetailRef}>
 
-        {/* PLATFORM */}
-
-        <mesh position={[0,0.02,0]}>
-          <cylinderGeometry args={[CUBE_WIDTH*2.2,CUBE_WIDTH*2.4,0.02,24]} />
-          <meshStandardMaterial color={color} metalness={0.8} roughness={0.45}/>
-        </mesh>
+        {/* --- ORBITAL BASE VISUAL --- */}
+        {data.type === 'orbital' ? (
+          <group position={[0, totalHeight * 0.5, 0]}>
+            <mesh position={[0, 0, 0]}>
+              <cylinderGeometry args={[0.06, 0.06, totalHeight * 1.5, 16]}/>
+              <meshStandardMaterial color={color} metalness={0.9} roughness={0.2}/>
+            </mesh>
+            <mesh rotation={[Math.PI/2, 0, 0]} position={[0, 0, 0]}>
+              <torusGeometry args={[0.15, 0.02, 16, 40]} />
+              <meshStandardMaterial color="#22d3ee" emissive="#22d3ee" emissiveIntensity={0.8} />
+            </mesh>
+            <mesh position={[0, totalHeight, 0]}>
+              <sphereGeometry args={[0.08, 16, 16]} />
+              <meshStandardMaterial color={color} metalness={0.8} roughness={0.3} />
+            </mesh>
+            {/* Solar Panels */}
+            {[-1, 1].map(side => (
+              <mesh key={side} position={[side * 0.15, 0, 0]}>
+                <boxGeometry args={[0.15, 0.01, 0.08]} />
+                <meshStandardMaterial color="#0284c7" metalness={1} roughness={0.1} emissive="#0284c7" emissiveIntensity={0.2} />
+              </mesh>
+            ))}
+          </group>
+        ) : (
+          <>
+            {/* PLATFORM FOR SURFACE BASE */}
+            <mesh position={[0,0.02,0]}>
+              <cylinderGeometry args={[CUBE_WIDTH*2.2,CUBE_WIDTH*2.4,0.02,24]} />
+              <meshStandardMaterial color={color} metalness={0.8} roughness={0.45}/>
+            </mesh>
 
         {/* COMMAND TOWER */}
 
@@ -363,6 +388,8 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
             </mesh>
           </group>
         )}
+        </>
+        )}
 
       </group>
 
@@ -442,7 +469,7 @@ function Base({ data, isMobile, geographyManager }: { data: BaseData, isMobile:b
 
 }
 
-export function BaseManager({ planetRadius, isMobile=false, geographyManager }: BaseManagerProps){
+export function BaseManager({ planetRadius, isMobile=false, geographyManager, planetId }: BaseManagerProps){
 
   const [bases,setBases] = useState<BaseData[]>([])
 
@@ -466,7 +493,7 @@ export function BaseManager({ planetRadius, isMobile=false, geographyManager }: 
 
   return(
     <group>
-      {bases.map(base=>(
+      {bases.filter(b => b.bodyId === (planetId || 'alpha_centauri')).map(base=>(
         <Base key={base.id} data={base} isMobile={isMobile} geographyManager={geographyManager} />
       ))}
     </group>

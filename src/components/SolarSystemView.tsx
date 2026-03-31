@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { SolarSystemData, PlanetData, AsteroidBeltData, MoonData } from '../services/solarSystem';
 import { Planet } from './Planet';
 import { Sun } from './Sun';
-import { VISUAL_SCALE, buildOrbitMap, getScaledPlanetRadius, getScaledStarRadius } from '../services/orbitUtils';
+import { VISUAL_SCALE, buildOrbitMap, getScaledPlanetRadius, getScaledStarRadius, getBodyWorldPosition } from '../services/orbitUtils';
 import { NavigationStrip } from './NavigationStrip';
 import { createPRNG } from '../utils/random';
 import { useShipStore } from '../services/shipStore';
@@ -224,7 +224,7 @@ const OrbitingPlanet = memo(function OrbitingPlanet({ planet, isMobile, currentP
   );
 });
 
-function OrbitRing({ radius, color = '#1e3a8a' }: { radius: number; color?: string }) {
+function OrbitRing({ radius, color = '#1e3a8a' }: { radius: number; color?: string; key?: string | number }) {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]}>
       <ringGeometry args={[radius - 0.22, radius + 0.22, 128]} />
@@ -233,7 +233,7 @@ function OrbitRing({ radius, color = '#1e3a8a' }: { radius: number; color?: stri
   );
 }
 
-function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'medium', visible = true }: { belt: AsteroidBeltData; scaledOrbitDistance: number; scaledWidth: number; quality?: 'low' | 'medium' | 'high'; visible?: boolean; }) {
+function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'medium', visible = true }: { belt: AsteroidBeltData; scaledOrbitDistance: number; scaledWidth: number; quality?: 'low' | 'medium' | 'high'; visible?: boolean; key?: string | number }) {
   const groupRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const asteroidCount = useMemo(() => {
@@ -291,7 +291,9 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
   const planets = useMemo(() => data.bodies.filter((body): body is PlanetData => body.type === 'planet'), [data.bodies]);
   const visibilityBand = useMemo(() => {
     if (!currentPlanetId) return Number.POSITIVE_INFINITY;
-    const activeOrbit = orbitMap.get(currentPlanetId) ?? 0;
+    let activeOrbit = 0;
+    const parentPlanet = planets.find(p => p.id === currentPlanetId || p.moons.some(m => m.id === currentPlanetId));
+    if (parentPlanet) activeOrbit = orbitMap.get(parentPlanet.id) ?? 0;
     const gaps = planets
       .map((planet) => Math.abs((orbitMap.get(planet.id) ?? planet.orbitDistance) - activeOrbit))
       .filter((gap) => gap > 0.01)
@@ -303,16 +305,8 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
   useFrame((state) => {
     if (!groupRef.current) return;
     if (currentPlanetId) {
-      const planet = data.bodies.find((b): b is PlanetData => b.type === 'planet' && b.id === currentPlanetId);
-      if (planet) {
-        const scaledOrbitDistance = orbitMap.get(planet.id) ?? planet.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
-        const time = state.clock.getElapsedTime();
-        const angle = planet.initialAngle + time * planet.orbitSpeed;
-        const x = Math.cos(angle) * scaledOrbitDistance;
-        const z = Math.sin(angle) * scaledOrbitDistance;
-        const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
-        groupRef.current.position.set(-x, -y, -z);
-      }
+      const pos = getBodyWorldPosition(currentPlanetId, data, state.clock.getElapsedTime(), orbitMap);
+      groupRef.current.position.set(-pos.x, -pos.y, -pos.z);
     } else {
       groupRef.current.position.set(0, 0, 0);
     }
@@ -325,9 +319,11 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
       {showOrbitRings && data.bodies.map((body) => {
         if (body.type !== 'planet') return null;
         const orbitDistance = orbitMap.get(body.id) ?? body.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
-        const visible = !currentPlanetId || body.id === currentPlanetId || Math.abs(orbitDistance - (orbitMap.get(currentPlanetId) ?? 0)) <= visibilityBand;
+        const parentPlanet = planets.find(p => p.id === currentPlanetId || p.moons.some(m => m.id === currentPlanetId));
+        const activeOrbit = parentPlanet ? (orbitMap.get(parentPlanet.id) ?? 0) : 0;
+        const visible = !currentPlanetId || body.id === currentPlanetId || (parentPlanet && body.id === parentPlanet.id) || Math.abs(orbitDistance - activeOrbit) <= visibilityBand;
         if (!visible) return null;
-        return <OrbitRing key={`ring-${body.id}`} radius={orbitDistance} color={currentPlanetId === body.id ? '#38bdf8' : '#1d4ed8'} />;
+        return <OrbitRing key={`ring-${body.id}`} radius={orbitDistance} color={currentPlanetId === body.id || (parentPlanet && parentPlanet.id === body.id) ? '#38bdf8' : '#1d4ed8'} />;
       })}
 
       <NavigationStrip solarSystem={data} currentPlanetId={currentPlanetId} active={enableLOD} />
@@ -335,12 +331,16 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
       {data.bodies.map((body) => {
         if (body.type === 'planet') {
           const scaledOrbitDistance = orbitMap.get(body.id) ?? body.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
-          const isVisibleInContext = !currentPlanetId || body.id === currentPlanetId || Math.abs(scaledOrbitDistance - (orbitMap.get(currentPlanetId) ?? 0)) <= visibilityBand;
+          const parentPlanet = planets.find(p => p.id === currentPlanetId || p.moons.some(m => m.id === currentPlanetId));
+          const activeOrbit = parentPlanet ? (orbitMap.get(parentPlanet.id) ?? 0) : 0;
+          const isVisibleInContext = !currentPlanetId || body.id === currentPlanetId || (parentPlanet && body.id === parentPlanet.id) || Math.abs(scaledOrbitDistance - activeOrbit) <= visibilityBand;
           return <OrbitingPlanet key={body.id} planet={body} isMobile={isMobile} currentPlanetId={currentPlanetId} setCurrentPlanetId={setCurrentPlanetId} scaledOrbitDistance={scaledOrbitDistance} quality={quality} enableLOD={enableLOD} isVisibleInContext={isVisibleInContext} />;
         }
         const scaledOrbitDistance = body.orbitDistance * VISUAL_SCALE.ASTEROID_DISTANCE_MULTIPLIER;
         const scaledWidth = body.width * VISUAL_SCALE.ASTEROID_WIDTH_MULTIPLIER;
-        const visible = !currentPlanetId || Math.abs(scaledOrbitDistance - (orbitMap.get(currentPlanetId) ?? 0)) <= visibilityBand;
+        const parentPlanet = planets.find(p => p.id === currentPlanetId || p.moons.some(m => m.id === currentPlanetId));
+        const activeOrbit = parentPlanet ? (orbitMap.get(parentPlanet.id) ?? 0) : 0;
+        const visible = !currentPlanetId || Math.abs(scaledOrbitDistance - activeOrbit) <= visibilityBand;
         return <AsteroidBelt key={body.id} belt={body} scaledOrbitDistance={scaledOrbitDistance} scaledWidth={scaledWidth} quality={quality} visible={visible} />;
       })}
     </group>
