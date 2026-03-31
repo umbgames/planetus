@@ -139,6 +139,89 @@ const TargetReticle = ({
   );
 };
 
+const MobileJoystick = ({ onChange }: { onChange: (x: number, y: number) => void }) => {
+  const [active, setActive] = useState(false);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const centerRef = React.useRef({ x: 0, y: 0 });
+  const baseRef = React.useRef<HTMLDivElement>(null);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.target.setPointerCapture(e.pointerId);
+    setActive(true);
+    if (baseRef.current) {
+      const rect = baseRef.current.getBoundingClientRect();
+      centerRef.current = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }
+    updatePos(e.clientX, e.clientY);
+  };
+
+  const updatePos = (clientX: number, clientY: number) => {
+    const dx = clientX - centerRef.current.x;
+    const dy = clientY - centerRef.current.y;
+    const maxRadius = 40;
+    const distance = Math.min(Math.sqrt(dx * dx + dy * dy), maxRadius);
+    const angle = Math.atan2(dy, dx);
+    const newX = Math.cos(angle) * distance;
+    const newY = Math.sin(angle) * distance;
+    setPosition({ x: newX, y: newY });
+    
+    onChange(newX / maxRadius, newY / maxRadius);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!active) return;
+    e.stopPropagation();
+    updatePos(e.clientX, e.clientY);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    e.target.releasePointerCapture(e.pointerId);
+    setActive(false);
+    setPosition({ x: 0, y: 0 });
+    onChange(0, 0);
+  };
+
+  return (
+    <div
+      ref={baseRef}
+      style={{
+        position: 'absolute',
+        bottom: 36,
+        left: 20,
+        width: 120,
+        height: 120,
+        borderRadius: '50%',
+        background: 'rgba(0,0,0,0.35)',
+        border: '1px solid rgba(255,255,255,0.18)',
+        backdropFilter: 'blur(4px)',
+        touchAction: 'none',
+        pointerEvents: 'auto',
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          width: 40,
+          height: 40,
+          borderRadius: '50%',
+          background: 'rgba(255,255,255,0.8)',
+          transform: `translate(calc(-50% + ${position.x}px), calc(-50% + ${position.y}px))`,
+          boxShadow: '0 0 10px rgba(0,0,0,0.5)',
+          pointerEvents: 'none',
+        }}
+      />
+    </div>
+  );
+};
+
 export function ShipUI({ onExit, userData }: ShipUIProps) {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -502,152 +585,6 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             <X size={22} />
           </button>
 
-          {/* Mobile top hint */}
-          <div
-            style={{
-              position: 'absolute',
-              top: 16,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              color: 'rgba(255,255,255,0.5)',
-              fontSize: '11px',
-              textAlign: 'center',
-              pointerEvents: 'none',
-            }}
-          >
-            Right side: Look around
-          </div>
-
-          {/* Mobile left info */}
-          <div className="absolute left-4 bottom-[152px] flex flex-col gap-3 pointer-events-none max-w-[120px]">
-            <div>
-              <div className="text-[10px] text-zinc-500 font-bold tracking-wider mb-1">
-                FLIGHT
-              </div>
-              <div className="text-white text-sm font-mono leading-tight">
-                {velocity.toFixed(0)}
-              </div>
-              <div className="text-zinc-500 text-[10px] uppercase">m/s</div>
-
-              <div className="mt-2 text-white text-sm font-mono leading-tight">
-                {altitude.toFixed(0)}
-              </div>
-              <div className="text-zinc-500 text-[10px] uppercase">m</div>
-            </div>
-
-            {lockedTarget && (
-              <div>
-                <div className="text-cyan-400 text-[10px] font-bold tracking-widest uppercase">
-                  Locked
-                </div>
-                <div className="text-white text-xs font-mono mt-1 break-words">
-                  {(lockedTarget.id || lockedTarget.name || '').toUpperCase()}
-                </div>
-                {targetDistance !== null && (
-                  <div className="text-zinc-400 text-[10px] mt-1">
-                    {targetDistance.toFixed(1)}m
-                  </div>
-                )}
-                {lockedTarget.health !== undefined && (
-                  <div className="mt-2">
-                    <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full transition-all duration-300 ${
-                          lockedTarget.health > 50
-                            ? 'bg-emerald-500'
-                            : lockedTarget.health > 20
-                            ? 'bg-amber-500'
-                            : 'bg-red-500'
-                        }`}
-                        style={{ width: `${lockedTarget.health}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {isJumping && (
-              <div className="text-cyan-400 text-[10px] font-bold tracking-[0.25em] uppercase animate-pulse">
-                Jumping
-              </div>
-            )}
-          </div>
-
-          {/* Mobile right info */}
-          <div className="absolute right-4 bottom-[152px] flex flex-col gap-3 text-right pointer-events-none max-w-[132px]">
-            <div>
-              <div className="text-zinc-500 text-[10px] font-bold tracking-wider mb-1">
-                STATUS
-              </div>
-              <div className="text-white text-xs">
-                Common: {userData ? userData.commonResources : 0}
-              </div>
-              <div className="text-fuchsia-400 text-xs">
-                Aetherium: {userData ? userData.rareResources : 0}
-              </div>
-            </div>
-
-            <div>
-              <div className="text-zinc-500 text-[10px] font-bold tracking-wider mb-1">
-                WEAPONS
-              </div>
-
-              <div className="mb-2">
-                <div className="flex items-center gap-2 justify-end">
-                  <span className="text-yellow-500 font-mono text-[10px]">∞</span>
-                  <span className="text-white text-[10px]">MG</span>
-                </div>
-                <WeaponCooldown
-                  lastFireTime={lastMgFire}
-                  cooldownDuration={100}
-                  color="bg-yellow-500"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2 justify-end">
-                  <span className="text-red-500 font-mono text-[10px]">∞</span>
-                  <span className="text-white text-[10px]">MSL</span>
-                </div>
-                <WeaponCooldown
-                  lastFireTime={lastMissileFire}
-                  cooldownDuration={250}
-                  color="bg-red-500"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Mobile center bars */}
-          <div className="absolute bottom-[112px] left-1/2 -translate-x-1/2 flex gap-4 pointer-events-none">
-            <div className="flex flex-col items-center gap-1">
-              <div className="text-[8px] text-cyan-500 font-bold tracking-widest uppercase">
-                Shield
-              </div>
-              <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
-                <div className="h-full bg-cyan-400" style={{ width: `${shield}%` }} />
-              </div>
-            </div>
-
-            <div className="flex flex-col items-center gap-1">
-              <div className="text-[8px] text-amber-500 font-bold tracking-widest uppercase">
-                Boost
-              </div>
-              <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
-                <div className="h-full bg-amber-500" style={{ width: `${boostEnergy}%` }} />
-              </div>
-            </div>
-
-            <div className="flex flex-col items-center gap-1">
-              <div className="text-[8px] text-red-500 font-bold tracking-widest uppercase">
-                Hull
-              </div>
-              <div className="w-20 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
-                <div className="h-full bg-red-500" style={{ width: `${health}%` }} />
-              </div>
-            </div>
-          </div>
 
           {/* Right controls */}
           <button
@@ -773,111 +710,17 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             <Target size={24} color={lockedTarget ? '#ff0000' : '#fff'} />
           </button>
 
-          {/* Left controls */}
-          <div
-            style={{
-              position: 'absolute',
-              bottom: 36,
-              left: 20,
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, 56px)',
-              gap: '8px',
+          {/* Left controls - Joystick */}
+          <MobileJoystick
+            onChange={(x, y) => {
+              const keysToSet: any = { w: false, s: false, a: false, d: false };
+              if (y < -0.3) keysToSet.w = true;
+              else if (y > 0.3) keysToSet.s = true;
+              if (x < -0.3) keysToSet.a = true;
+              else if (x > 0.3) keysToSet.d = true;
+              setMobileKeys((k: any) => ({ ...k, ...keysToSet }));
             }}
-          >
-            <div />
-            <button
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, w: true }));
-              }}
-              onPointerUp={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, w: false }));
-              }}
-              onPointerLeave={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, w: false }));
-              }}
-              style={{
-                ...btnStyle,
-                width: '56px',
-                height: '56px',
-                background: mobileKeys.w ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)',
-              }}
-            >
-              <ArrowUp />
-            </button>
-            <div />
-
-            <button
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, a: true }));
-              }}
-              onPointerUp={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, a: false }));
-              }}
-              onPointerLeave={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, a: false }));
-              }}
-              style={{
-                ...btnStyle,
-                width: '56px',
-                height: '56px',
-                background: mobileKeys.a ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)',
-              }}
-            >
-              <ArrowLeft />
-            </button>
-
-            <button
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, s: true }));
-              }}
-              onPointerUp={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, s: false }));
-              }}
-              onPointerLeave={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, s: false }));
-              }}
-              style={{
-                ...btnStyle,
-                width: '56px',
-                height: '56px',
-                background: mobileKeys.s ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)',
-              }}
-            >
-              <ArrowDown />
-            </button>
-
-            <button
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, d: true }));
-              }}
-              onPointerUp={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, d: false }));
-              }}
-              onPointerLeave={(e) => {
-                e.stopPropagation();
-                setMobileKeys((k: any) => ({ ...k, d: false }));
-              }}
-              style={{
-                ...btnStyle,
-                width: '56px',
-                height: '56px',
-                background: mobileKeys.d ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)',
-              }}
-            >
-              <ArrowRight />
-            </button>
-          </div>
+          />
 
           <TargetReticle
             locked={Boolean(lockedTarget)}

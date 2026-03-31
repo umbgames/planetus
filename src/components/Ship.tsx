@@ -848,9 +848,6 @@ export function Ship({
       </group>
 
       <group ref={shipRef}>
-        <pointLight position={[0, 0.28, -0.4]} intensity={1.4} distance={1.8} color="#8fd3ff" />
-        <pointLight position={[0, 0.05, 1.2]} intensity={1.1} distance={1.4} color="#6ee7ff" />
-        
         {/* Centered Single Engine Trail */}
         <Trail
           width={0.025}
@@ -866,19 +863,6 @@ export function Ship({
         <group ref={shipModelRef} position={[0, -0.002, -0.005]} scale={0.01}>
           <SharedShipModel type={normalizedShipType} />
 
-          <mesh ref={shieldMeshRef} scale={[1.2, 0.72, 1.62]} visible={false}>
-            <sphereGeometry args={[1.42, 24, 24]} />
-            <meshStandardMaterial
-              ref={shieldMaterialRef}
-              color="#49d7ff"
-              emissive="#49d7ff"
-              emissiveIntensity={0}
-              transparent
-              opacity={0}
-              depthWrite={false}
-              wireframe
-            />
-          </mesh>
         </group>
       </group>
 

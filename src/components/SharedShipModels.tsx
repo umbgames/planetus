@@ -52,9 +52,7 @@ function ExhaustTrail({ position, color='#00f0ff', radius=0.2, length=2.2, flick
   return <group position={position}><mesh ref={trailRef} position={[0,0,length*0.5]} rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[radius*0.42,radius,length,18,1,true]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={3} transparent opacity={0.18} toneMapped={false} side={THREE.DoubleSide} /></mesh><mesh ref={haloRef} rotation={[Math.PI/2,0,0]} position={[0,0,length*0.75]}><ringGeometry args={[radius*0.7,radius*1.4,28]} /><meshBasicMaterial color={color} transparent opacity={0.06} side={THREE.DoubleSide} toneMapped={false} /></mesh></group>;
 }
 function ShieldField({ radius=1, color='#3bcfff', opacity=0.08, scale=[1,1,1] }:{ radius?:number; color?:string; opacity?:number; scale?:[number,number,number] }) {
-  const ref = useRef<THREE.Mesh>(null!);
-  useFrame((state)=>{ const t=state.clock.elapsedTime; if(ref.current){ ref.current.rotation.y += 0.0035; ref.current.rotation.z = Math.sin(t*0.35)*0.08; (ref.current.material as THREE.MeshStandardMaterial).opacity = opacity + Math.sin(t*1.4)*0.015; }});
-  return <mesh ref={ref} scale={scale}><icosahedronGeometry args={[radius,2]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.7} metalness={0.15} roughness={0.1} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} /></mesh>;
+  return null;
 }
 function SurfacePanels({ rows=2, cols=4, width=1, depth=2, y=0.12, inset=0.02, color='#2a3240' }:{ rows?:number; cols?:number; width?:number; depth?:number; y?:number; inset?:number; color?:string }) {
   const panels = useMemo(()=>{ const items:[number,number,number,number,number,number][]=[]; const stepX=width/cols; const stepZ=depth/rows; for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){ const w=stepX-inset; const d=stepZ-inset; const x=-width/2+stepX*c+stepX/2; const z=-depth/2+stepZ*r+stepZ/2; items.push([x,y,z,w,0.012,d]); } return items; },[rows,cols,width,depth,y,inset]);
