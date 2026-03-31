@@ -13,7 +13,7 @@ interface SunProps {
 export function Sun({ radius = 2, distance = 30, speed = 0.1, onClick, color = '#fff1b8' }: SunProps) {
   const groupRef = useRef<THREE.Group>(null);
   const lightRef = useRef<THREE.DirectionalLight>(null);
-  const coreSegments = useMemo(() => (radius > 20 ? 40 : 28), [radius]);
+  const coreSegments = useMemo(() => (radius > 100 ? 64 : radius > 20 ? 40 : 28), [radius]);
 
   useFrame((state) => {
     if (groupRef.current && distance > 0) {
@@ -70,17 +70,7 @@ export function Sun({ radius = 2, distance = 30, speed = 0.1, onClick, color = '
       <directionalLight
         ref={lightRef}
         color="#ffddaa"
-        intensity={4}
-        castShadow
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
-        shadow-camera-near={0.5}
-        shadow-camera-far={100}
-        shadow-camera-left={-20}
-        shadow-camera-right={20}
-        shadow-camera-top={20}
-        shadow-camera-bottom={-20}
-        shadow-bias={-0.0001}
+        intensity={6}
       />
     </group>
   );

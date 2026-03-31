@@ -500,7 +500,7 @@ export function Ship({
     const fog = scene.fog as THREE.Fog;
     fog.color.copy(skyColor.current);
     fog.near = THREE.MathUtils.lerp(8000, 0.5, Math.pow(tiltFactor, 4));
-    fog.far = THREE.MathUtils.lerp(30000, 4.0, Math.pow(tiltFactor, 4));
+    fog.far = THREE.MathUtils.lerp(3000000, 4.0, Math.pow(tiltFactor, 4));
 
     if (isLaunching) {
       launchProgress.current += delta;
@@ -534,11 +534,11 @@ export function Ship({
         const toBase = basePos.clone().sub(position.current);
         const dist = toBase.length();
 
-        if (dist < 50) {
+        if (dist < 400) {
           toBase.normalize();
           const dot = shipForward.dot(toBase);
           if (dot > 0.8) {
-            const score = dot - (dist / 100);
+            const score = dot - (dist / 800);
             if (score > bestScore) {
               bestScore = score;
               bestTarget = { ...base, type: 'base' };
@@ -557,11 +557,11 @@ export function Ship({
         const toSat = satPos.clone().sub(position.current);
         const dist = toSat.length();
 
-        if (dist < 50) {
+        if (dist < 400) {
           toSat.normalize();
           const dot = shipForward.dot(toSat);
           if (dot > 0.8) {
-            const score = dot - (dist / 100);
+            const score = dot - (dist / 800);
             if (score > bestScore) {
               bestScore = score;
               bestTarget = { ...sat, position: satPos, type: 'satellite', health: 100 };
@@ -666,10 +666,10 @@ export function Ship({
     const canBoost = !boostLockoutRef.current && boostEnergy.current > 0;
     const isBoostingActive = wantsBoost && canBoost;
 
-    const baseSpeed = 0.6 * shipSpeedStat;
-    const baseAccel = 0.8 * shipSpeedStat * delta;
-    const boostBaseSpeed = 2.5 * shipSpeedStat;
-    const boostBaseAccel = 2.5 * shipSpeedStat * delta;
+    const baseSpeed = 1.8 * shipSpeedStat;
+    const baseAccel = 2.4 * shipSpeedStat * delta;
+    const boostBaseSpeed = 8.5 * shipSpeedStat;
+    const boostBaseAccel = 8.5 * shipSpeedStat * delta;
     const friction = 0.96;
 
     if (isBoostingActive) {
@@ -697,7 +697,7 @@ export function Ship({
     if (cameraRef.current) {
       const targetFov = isBoostingActive ? 68 : 50;
       cameraRef.current.fov = THREE.MathUtils.lerp(cameraRef.current.fov, targetFov, 1 - Math.exp(-8 * delta));
-      cameraRef.current.far = 9000;
+      cameraRef.current.far = 5000000;
       cameraRef.current.updateProjectionMatrix();
 
       const targetCameraZ = isBoostingActive ? 0.24 : 0.15; // hard limit

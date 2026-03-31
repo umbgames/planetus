@@ -53,8 +53,8 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
     fog.color.copy(skyColor);
     
     // Use exponential curve for fog distances so it only comes in near the surface
-    const fogNear = THREE.MathUtils.lerp(1000000, 0.5, Math.pow(tiltFactor, 4));
-    const fogFar = THREE.MathUtils.lerp(2000000, 4.0, Math.pow(tiltFactor, 4));
+    const fogNear = THREE.MathUtils.lerp(5000000, 0.5, Math.pow(tiltFactor, 4));
+    const fogFar = THREE.MathUtils.lerp(10000000, 4.0, Math.pow(tiltFactor, 4));
     fog.near = fogNear;
     fog.far = fogFar;
 
@@ -144,7 +144,7 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
       ref={controlsRef} 
       enablePan={false} 
       minDistance={currentPlanetId ? planetRadius + 0.0002 : 8.0002} 
-      maxDistance={1000000} 
+      maxDistance={10000000} 
       makeDefault
       onStart={() => {
         if (trackedSatellite) {
