@@ -1,5 +1,5 @@
-import React, { useRef, useMemo, useState, memo, useEffect } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import React, { useRef, useMemo, memo, useEffect } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { SolarSystemData, PlanetData, AsteroidBeltData, MoonData } from '../services/solarSystem';
 import { Planet } from './Planet';
@@ -19,7 +19,6 @@ interface SolarSystemViewProps {
   setCurrentPlanetId: (id: string | null) => void;
   showOrbitRings?: boolean;
   quality?: 'low' | 'medium' | 'high';
-  enableLOD?: boolean;
 }
 
 interface OrbitingPlanetProps {
@@ -29,7 +28,6 @@ interface OrbitingPlanetProps {
   setCurrentPlanetId: (id: string | null) => void;
   scaledOrbitDistance: number;
   quality?: 'low' | 'medium' | 'high';
-  enableLOD?: boolean;
   isVisibleInContext?: boolean;
 }
 
@@ -143,13 +141,9 @@ const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, 
   );
 });
 
-const OrbitingPlanet = memo(function OrbitingPlanet({ planet, isMobile, currentPlanetId, setCurrentPlanetId, scaledOrbitDistance, quality = 'medium', enableLOD = false, isVisibleInContext = true }: OrbitingPlanetProps) {
+const OrbitingPlanet = memo(function OrbitingPlanet({ planet, isMobile, currentPlanetId, setCurrentPlanetId, scaledOrbitDistance, quality = 'medium', isVisibleInContext = true }: OrbitingPlanetProps) {
   const groupRef = useRef<THREE.Group>(null);
   const spinRef = useRef<THREE.Group>(null);
-  const [isActive, setIsActive] = useState(false);
-  const { camera } = useThree();
-  const worldPos = useMemo(() => new THREE.Vector3(), []);
-  const scaledRadius = useMemo(() => getScaledPlanetRadius(planet.radius), [planet.radius]);
 
   useFrame((state, delta) => {
     if (!groupRef.current) return;
@@ -165,21 +159,6 @@ const OrbitingPlanet = memo(function OrbitingPlanet({ planet, isMobile, currentP
       spinRef.current.rotation.y += effectiveSpinSpeed * delta;
       if (currentPlanetId === planet.id) planetRotationRef.current = spinRef.current.rotation.y;
     }
-
-    groupRef.current.getWorldPosition(worldPos);
-    const dist = camera.position.distanceTo(worldPos);
-    if (!isVisibleInContext) {
-      if (isActive) setIsActive(false);
-      return;
-    }
-
-    if (!enableLOD) {
-      if (!isActive) setIsActive(true);
-      return;
-    }
-    const activationDistance = Math.max(220, scaledRadius * 40 * VISUAL_SCALE.PLANET_LOD_DISTANCE_MULTIPLIER * 100);
-    if (dist < activationDistance && !isActive) setIsActive(true);
-    else if (dist >= activationDistance && isActive) setIsActive(false);
   });
 
   if (!isVisibleInContext) return null;
@@ -195,31 +174,27 @@ const OrbitingPlanet = memo(function OrbitingPlanet({ planet, isMobile, currentP
       onPointerOut={() => { document.body.style.cursor = 'auto'; }}
     >
       <group ref={spinRef}>
-        {isActive && (
-          <>
-            {planet.ring && (
-              <RingMesh
-                innerRadius={getScaledPlanetRadius(planet.ring.innerRadius)}
-                outerRadius={getScaledPlanetRadius(planet.ring.outerRadius)}
-                color={planet.ring.color}
-                opacity={planet.ring.opacity}
-              />
-            )}
-
-            <Planet
-              id={planet.id}
-              radius={scaledRadius}
-              isMobile={isMobile}
-              seed={planet.seed}
-              noiseScale={planet.noiseScale}
-              landThreshold={planet.landThreshold}
-              textureDetail={getTextureDetailForQuality(quality)}
-              visualClass={planet.visualClass}
-            />
-
-            {planet.moons.map((moon) => <OrbitingMoon key={moon.id} moon={moon} parentPlanet={planet} isMobile={isMobile} quality={quality} setCurrentPlanetId={setCurrentPlanetId} />)}
-          </>
+        {planet.ring && (
+          <RingMesh
+            innerRadius={getScaledPlanetRadius(planet.ring.innerRadius)}
+            outerRadius={getScaledPlanetRadius(planet.ring.outerRadius)}
+            color={planet.ring.color}
+            opacity={planet.ring.opacity}
+          />
         )}
+
+        <Planet
+          id={planet.id}
+          radius={getScaledPlanetRadius(planet.radius)}
+          isMobile={isMobile}
+          seed={planet.seed}
+          noiseScale={planet.noiseScale}
+          landThreshold={planet.landThreshold}
+          textureDetail={getTextureDetailForQuality(quality)}
+          visualClass={planet.visualClass}
+        />
+
+        {planet.moons.map((moon) => <OrbitingMoon key={moon.id} moon={moon} parentPlanet={planet} isMobile={isMobile} quality={quality} setCurrentPlanetId={setCurrentPlanetId} />)}
       </group>
     </group>
   );
@@ -285,7 +260,7 @@ function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'mediu
   );
 }
 
-export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPlanetId, showOrbitRings = true, quality = 'medium', enableLOD = false }: SolarSystemViewProps) {
+export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPlanetId, showOrbitRings = true, quality = 'medium' }: SolarSystemViewProps) {
   const groupRef = useRef<THREE.Group>(null);
   const orbitMap = useMemo(() => buildOrbitMap(data.bodies), [data.bodies]);
   const scaledStarRadius = useMemo(() => getScaledStarRadius(data.starRadius), [data.starRadius]);
@@ -327,7 +302,7 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
         return <OrbitRing key={`ring-${body.id}`} radius={orbitDistance} color={currentPlanetId === body.id || (parentPlanet && parentPlanet.id === body.id) ? '#38bdf8' : '#1d4ed8'} />;
       })}
 
-      <NavigationStrip solarSystem={data} currentPlanetId={currentPlanetId} active={enableLOD} />
+      <NavigationStrip solarSystem={data} currentPlanetId={currentPlanetId} active={true} />
 
       {data.bodies.map((body) => {
         if (body.type === 'planet') {
@@ -335,7 +310,7 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
           const parentPlanet = planets.find(p => p.id === currentPlanetId || p.moons.some(m => m.id === currentPlanetId));
           const activeOrbit = parentPlanet ? (orbitMap.get(parentPlanet.id) ?? 0) : 0;
           const isVisibleInContext = !currentPlanetId || body.id === currentPlanetId || (parentPlanet && body.id === parentPlanet.id) || Math.abs(scaledOrbitDistance - activeOrbit) <= visibilityBand;
-          return <OrbitingPlanet key={body.id} planet={body} isMobile={isMobile} currentPlanetId={currentPlanetId} setCurrentPlanetId={setCurrentPlanetId} scaledOrbitDistance={scaledOrbitDistance} quality={quality} enableLOD={enableLOD} isVisibleInContext={isVisibleInContext} />;
+          return <OrbitingPlanet key={body.id} planet={body} isMobile={isMobile} currentPlanetId={currentPlanetId} setCurrentPlanetId={setCurrentPlanetId} scaledOrbitDistance={scaledOrbitDistance} quality={quality} isVisibleInContext={isVisibleInContext} />;
         }
         const scaledOrbitDistance = body.orbitDistance * VISUAL_SCALE.ASTEROID_DISTANCE_MULTIPLIER;
         const scaledWidth = body.width * VISUAL_SCALE.ASTEROID_WIDTH_MULTIPLIER;

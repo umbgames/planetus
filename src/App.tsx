@@ -991,7 +991,6 @@ export default function App() {
             setCurrentPlanetId={setCurrentPlanetId}
             showOrbitRings={!isShipMode && showOrbitRings}
             quality={qualityPreset}
-            enableLOD={isShipMode}
           />
         )}
 

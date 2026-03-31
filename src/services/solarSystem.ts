@@ -179,7 +179,7 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
         seed: moonSeed,
         parentPlanetId: `planet_${i}`,
         radius: seededRange(hashCombine(moonSeed, 'radius'), Math.max(1.2, radius * 0.1), Math.max(2.8, radius * 0.26)),
-        orbitDistance: radius * seededRange(hashCombine(moonSeed, 'orbit'), 3.8 + moonIndex * 1.1, 6.6 + moonIndex * 1.6),
+        orbitDistance: radius * seededRange(hashCombine(moonSeed, 'orbit'), 28 + moonIndex * 8, 50 + moonIndex * 12),
         orbitSpeed: seededRange(hashCombine(moonSeed, 'speed'), 0.014, 0.065) * (moonPrng() > 0.5 ? 1 : -1),
         orbitTiltX: seededRange(hashCombine(moonSeed, 'tiltX'), -0.28, 0.28),
         orbitTiltZ: seededRange(hashCombine(moonSeed, 'tiltZ'), -0.28, 0.28),

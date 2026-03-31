@@ -25,8 +25,9 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
     const altitude = dist - R;
     
     let tiltFactor = 0;
-    if (currentPlanetId && altitude < 4) {
-      tiltFactor = 1 - (altitude / 4);
+    const atmosphereHeight = R * 0.5;
+    if (currentPlanetId && altitude < atmosphereHeight) {
+      tiltFactor = 1 - (altitude / atmosphereHeight);
     }
     tiltFactor = Math.max(0, Math.min(1, tiltFactor));
     tiltFactor = tiltFactor * tiltFactor * (3 - 2 * tiltFactor); // smoothstep

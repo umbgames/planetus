@@ -481,7 +481,8 @@ export function Ship({
     const altitude = distForAtmosphere - R;
 
     let tiltFactor = 0;
-    if (altitude < 4) tiltFactor = 1 - altitude / 4;
+    const atmosphereHeight = R * 0.35;
+    if (altitude < atmosphereHeight) tiltFactor = 1 - altitude / atmosphereHeight;
     tiltFactor = THREE.MathUtils.clamp(tiltFactor, 0, 1);
     tiltFactor = tiltFactor * tiltFactor * (3 - 2 * tiltFactor);
 
