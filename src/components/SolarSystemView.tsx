@@ -274,26 +274,28 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
   });
 
   return (
-    <group ref={groupRef}>
-      <Sun radius={scaledStarRadius} distance={0} speed={0} onClick={() => setCurrentPlanetId(null)} color={data.starColor} />
-
-      {showOrbitRings && data.bodies.map((body) => {
-        if (body.type !== 'planet') return null;
-        const orbitDistance = orbitMap.get(body.id) ?? body.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
-        return <OrbitRing key={`ring-${body.id}`} radius={orbitDistance} color={currentPlanetId === body.id ? '#38bdf8' : '#1d4ed8'} />;
-      })}
-
+    <>
       <NavigationStrip solarSystem={data} currentPlanetId={currentPlanetId} active={true} />
 
-      {data.bodies.map((body) => {
-        if (body.type === 'planet') {
-          const scaledOrbitDistance = orbitMap.get(body.id) ?? body.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
-          return <OrbitingPlanet key={body.id} planet={body} isMobile={isMobile} currentPlanetId={currentPlanetId} setCurrentPlanetId={setCurrentPlanetId} scaledOrbitDistance={scaledOrbitDistance} quality={quality} />;
-        }
-        const scaledOrbitDistance = body.orbitDistance * VISUAL_SCALE.ASTEROID_DISTANCE_MULTIPLIER;
-        const scaledWidth = body.width * VISUAL_SCALE.ASTEROID_WIDTH_MULTIPLIER;
-        return <AsteroidBelt key={body.id} belt={body} scaledOrbitDistance={scaledOrbitDistance} scaledWidth={scaledWidth} quality={quality} />;
-      })}
-    </group>
+      <group ref={groupRef}>
+        <Sun radius={scaledStarRadius} distance={0} speed={0} onClick={() => setCurrentPlanetId(null)} color={data.starColor} />
+
+        {showOrbitRings && data.bodies.map((body) => {
+          if (body.type !== 'planet') return null;
+          const orbitDistance = orbitMap.get(body.id) ?? body.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
+          return <OrbitRing key={`ring-${body.id}`} radius={orbitDistance} color={currentPlanetId === body.id ? '#38bdf8' : '#1d4ed8'} />;
+        })}
+
+        {data.bodies.map((body) => {
+          if (body.type === 'planet') {
+            const scaledOrbitDistance = orbitMap.get(body.id) ?? body.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
+            return <OrbitingPlanet key={body.id} planet={body} isMobile={isMobile} currentPlanetId={currentPlanetId} setCurrentPlanetId={setCurrentPlanetId} scaledOrbitDistance={scaledOrbitDistance} quality={quality} />;
+          }
+          const scaledOrbitDistance = body.orbitDistance * VISUAL_SCALE.ASTEROID_DISTANCE_MULTIPLIER;
+          const scaledWidth = body.width * VISUAL_SCALE.ASTEROID_WIDTH_MULTIPLIER;
+          return <AsteroidBelt key={body.id} belt={body} scaledOrbitDistance={scaledOrbitDistance} scaledWidth={scaledWidth} quality={quality} />;
+        })}
+      </group>
+    </>
   );
 }

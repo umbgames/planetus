@@ -40,15 +40,6 @@ export function NavigationStrip({ solarSystem, currentPlanetId, active }: Naviga
 
     const elapsed = clock.getElapsedTime();
     const planets = solarSystem.bodies.filter((body): body is PlanetData => body.type === 'planet');
-    const activeOrbit = currentPlanetId ? orbitMap.get(currentPlanetId) ?? 0 : 0;
-    const orbitDistances = planets.map((planet) => orbitMap.get(planet.id) ?? planet.orbitDistance).sort((a, b) => a - b);
-    const nearestGap = currentPlanetId
-      ? orbitDistances.reduce((best, orbitDistance) => {
-          const gap = Math.abs(orbitDistance - activeOrbit);
-          return gap > 0.01 && gap < best ? gap : best;
-        }, Number.POSITIVE_INFINITY)
-      : Number.POSITIVE_INFINITY;
-    const visibilityBand = Number.isFinite(nearestGap) ? Math.max(180, nearestGap + 120) : 420;
 
     const currentOrigin = currentPlanetId
       ? getBodyWorldPosition(currentPlanetId, solarSystem, elapsed, orbitMap, scratchCurrent)
@@ -63,8 +54,6 @@ export function NavigationStrip({ solarSystem, currentPlanetId, active }: Naviga
     const maxAngle = Math.PI * 0.46;
 
     for (const planet of planets) {
-      const scaledOrbit = orbitMap.get(planet.id) ?? planet.orbitDistance;
-      if (currentPlanetId && planet.id !== currentPlanetId && Math.abs(scaledOrbit - activeOrbit) > visibilityBand) continue;
 
       const planetWorld = getBodyWorldPosition(planet.id, solarSystem, elapsed, orbitMap, scratchTarget);
       scratchRelative.copy(planetWorld).sub(currentOrigin).sub(camera.position);
