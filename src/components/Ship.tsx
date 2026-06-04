@@ -684,8 +684,8 @@ export function Ship({
     }
 
     const altitudeFromSurface = Math.max(0, position.current.length() - planetRadius);
-    const outsideFactor = THREE.MathUtils.clamp(altitudeFromSurface / Math.max(planetRadius * 4, 8), 0, 1);
-    const deepSpaceFactor = THREE.MathUtils.clamp(altitudeFromSurface / Math.max(planetRadius * 30, 40), 0, 1);
+    const outsideFactor = THREE.MathUtils.clamp(altitudeFromSurface / Math.max(planetRadius * 4, 8), 0, 10);
+    const deepSpaceFactor = THREE.MathUtils.clamp(altitudeFromSurface / Math.max(planetRadius * 30, 40), 0, 10);
 
     // Normal movement stays normal even outside the planet.
     // Only boost gets the large travel multipliers.
@@ -693,7 +693,7 @@ export function Ship({
     const boostCruiseMultiplier = THREE.MathUtils.lerp(25, 50, outsideFactor) * THREE.MathUtils.lerp(25, 70, deepSpaceFactor);
 
     const effectiveSpeed = (isBoostingActive ? boostBaseSpeed : baseSpeed) * (isBoostingActive ? boostCruiseMultiplier : normalCruiseMultiplier);
-    const effectiveAccel = (isBoostingActive ? boostBaseAccel : baseAccel) * (isBoostingActive ? THREE.MathUtils.lerp(1.2, 14, outsideFactor) * THREE.MathUtils.lerp(1, 2.6, deepSpaceFactor) : 1);
+    const effectiveAccel = (isBoostingActive ? boostBaseAccel : baseAccel) * (isBoostingActive ? THREE.MathUtils.lerp(30, 60, outsideFactor) * THREE.MathUtils.lerp(1, 50, deepSpaceFactor) : 10);
 
     if (cameraRef.current) {
       const targetFov = isBoostingActive ? 68 : 50;
