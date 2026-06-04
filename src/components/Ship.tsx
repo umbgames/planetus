@@ -689,8 +689,8 @@ export function Ship({
 
     // Normal movement stays normal even outside the planet.
     // Only boost gets the large travel multipliers.
-    const normalCruiseMultiplier = 1;
-    const boostCruiseMultiplier = THREE.MathUtils.lerp(1.5, 18, outsideFactor) * THREE.MathUtils.lerp(1, 3.5, deepSpaceFactor);
+    const normalCruiseMultiplier = 10;
+    const boostCruiseMultiplier = THREE.MathUtils.lerp(25, 50, outsideFactor) * THREE.MathUtils.lerp(25, 70, deepSpaceFactor);
 
     const effectiveSpeed = (isBoostingActive ? boostBaseSpeed : baseSpeed) * (isBoostingActive ? boostCruiseMultiplier : normalCruiseMultiplier);
     const effectiveAccel = (isBoostingActive ? boostBaseAccel : baseAccel) * (isBoostingActive ? THREE.MathUtils.lerp(1.2, 14, outsideFactor) * THREE.MathUtils.lerp(1, 2.6, deepSpaceFactor) : 1);
