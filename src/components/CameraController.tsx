@@ -13,6 +13,7 @@ interface CameraControllerProps {
 export function CameraController({ trackedSatellite, onInteract, currentPlanetId, planetRadius }: CameraControllerProps) {
   const { camera, scene } = useThree();
   const controlsRef = useRef<any>(null);
+  const R = planetRadius; // Planet radius or Sun radius
   
   const targetPos = useMemo(() => new THREE.Vector3(), []);
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 0, 0), []);
@@ -21,7 +22,6 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
   
   useFrame((state) => {
     const dist = camera.position.length();
-    const R = planetRadius; // Planet radius or Sun radius
     const altitude = dist - R;
     
     let tiltFactor = 0;
