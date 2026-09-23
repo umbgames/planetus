@@ -980,7 +980,7 @@ export default function App() {
 
       <Canvas
         shadows={false}
-        camera={{ position: [0, 0, 25], fov: 42, near: 0.0001, far: 12000 }}
+        camera={{ position: [0, 0, 25], fov: 42, near: 0.0001, far: 10000000 }}
         dpr={dpr}
         performance={{ min: 0.5 }}
         gl={{ antialias: false, powerPreference: 'high-performance' }}
@@ -1205,26 +1205,26 @@ export default function App() {
               initial={{ opacity: 0, y: -12, scale: 0.96 }}
               animate={{ opacity: 1, y: 10, scale: 1 }}
               exit={{ opacity: 0, y: -8, scale: 0.96 }}
-              className="mt-3 bg-zinc-900/80 backdrop-blur border border-zinc-700 rounded-2xl p-4 w-[280px]"
+              className="mt-3 glass-panel-light rounded-2xl p-4 w-[280px]"
             >
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <div className="text-xs uppercase tracking-[0.25em] text-cyan-400 font-bold">
+                  <div className="text-[10px] uppercase font-display tracking-[0.25em] text-[#38bdf8] font-bold">
                     System Control
                   </div>
-                  <div className="text-sm text-white font-semibold">Performance + Navigation</div>
+                  <div className="text-sm text-white font-bold">Performance + Navigation</div>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between bg-zinc-800/70 rounded-xl px-3 py-2 border border-zinc-700">
+              <div className="flex items-center justify-between bg-black/40 rounded-xl px-3 py-2 border border-white/5 shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
                 <div>
-                  <div className="text-sm text-white font-medium">Orbit Rings</div>
-                  <div className="text-[11px] text-zinc-400">Better navigation in solar view</div>
+                  <div className="text-sm text-white font-bold">Orbit Rings</div>
+                  <div className="text-[11px] text-[#94a3b8]">Better navigation in solar view</div>
                 </div>
                 <button
                   onClick={() => setShowOrbitRings((v) => !v)}
                   className={`w-14 h-8 rounded-full transition-colors relative ${
-                    showOrbitRings ? 'bg-cyan-600' : 'bg-zinc-700'
+                    showOrbitRings ? 'bg-[#38bdf8] shadow-[0_0_8px_#38bdf8]' : 'bg-[#334155]'
                   }`}
                 >
                   <span
@@ -1236,7 +1236,7 @@ export default function App() {
               </div>
 
               <div className="mt-3 space-y-2">
-                <div className="text-sm text-white font-medium">Graphics Level</div>
+                <div className="text-sm text-white font-bold">Graphics Level</div>
                 <div className="grid grid-cols-2 gap-2">
                   {([
                     { key: 'medium', label: 'Mid', detail: 'Balanced visuals' },
@@ -1249,20 +1249,20 @@ export default function App() {
                         onClick={() => setQualityPreset(option.key)}
                         className={`rounded-xl border px-3 py-3 text-left transition-all ${
                           active
-                            ? 'border-cyan-400 bg-cyan-500/15 shadow-[0_0_0_1px_rgba(34,211,238,0.35)]'
-                            : 'border-zinc-700 bg-zinc-800/70 hover:bg-zinc-800'
+                            ? 'border-[#38bdf8] bg-[#38bdf8]/15 shadow-[0_0_8px_rgba(56,189,248,0.35)]'
+                            : 'border-white/10 bg-black/40 hover:bg-black/60 shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]'
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <div className="text-sm font-semibold text-white">{option.label}</div>
-                          {active && <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-300">Active</div>}
+                          <div className="text-sm font-bold text-white">{option.label}</div>
+                          {active && <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#38bdf8]">Active</div>}
                         </div>
-                        <div className="mt-1 text-[11px] text-zinc-400">{option.detail}</div>
+                        <div className="mt-1 text-[10px] text-[#94a3b8]">{option.detail}</div>
                       </button>
                     );
                   })}
                 </div>
-                <div className="text-[11px] text-zinc-400 leading-relaxed">
+                <div className="text-[10px] text-[#64748b] leading-relaxed mt-2 font-medium">
                   Mid keeps post-processing lighter. High enables the full visual pass with stronger nebula depth, bloom, and scene grading.
                 </div>
               </div>
@@ -1277,30 +1277,32 @@ export default function App() {
             initial={{ opacity: 1 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[80] bg-black flex items-center justify-center pointer-events-auto"
+            className="absolute inset-0 z-[80] bg-[#02040a] flex items-center justify-center pointer-events-auto"
           >
-            <div className="w-full max-w-md px-8">
+            <div className="w-full max-w-md px-8 glass-panel-light py-10 rounded-3xl border-b-4 border-b-[#38bdf8] mx-4">
               <div className="flex items-center justify-center gap-3 mb-2">
-                <LoaderCircle size={28} className="text-cyan-400 animate-spin" />
-                <div className="text-white text-2xl font-black tracking-wider">PLANET:US</div>
+                <LoaderCircle size={28} className="text-[#38bdf8] animate-spin" />
+                <div className="text-white text-3xl font-black font-display tracking-widest">PLANET:US</div>
               </div>
-              <div className="text-center mb-5">
-                <div className="text-[10px] uppercase font-bold tracking-[0.25em] text-cyan-400">
+              <div className="text-center mb-6">
+                <div className="text-[10px] uppercase font-bold tracking-[0.25em] text-[#38bdf8] font-display">
                   UMB Games and Technology Ltd
                 </div>
-                <div className="text-[10px] text-zinc-500 mt-0.5">
+                <div className="text-[10px] text-[#94a3b8] mt-1 font-mono">
                   umbtechnologies.com • @umbgames • @umbtechnologies
                 </div>
               </div>
-              <div className="text-center text-zinc-400 text-sm mb-4">{loadingStatus.label}</div>
-              <div className="h-3 bg-zinc-800 rounded-full overflow-hidden border border-zinc-700">
+              <div className="text-center text-[#cbd5e1] text-xs font-bold uppercase tracking-widest mb-3">
+                {loadingStatus.label}
+              </div>
+              <div className="h-1.5 bg-black/50 rounded-full overflow-hidden shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
                 <motion.div
-                  className="h-full bg-cyan-500"
+                  className="h-full bg-[#38bdf8] shadow-[0_0_8px_#38bdf8]"
                   initial={{ width: 0 }}
                   animate={{ width: `${Math.round(loadingStatus.progress * 100)}%` }}
                 />
               </div>
-              <div className="text-center text-cyan-300 text-xs mt-3 font-mono">
+              <div className="text-center text-[#38bdf8] text-[10px] mt-3 font-mono font-bold tracking-widest">
                 {Math.round(loadingStatus.progress * 100)}% CACHED
               </div>
             </div>

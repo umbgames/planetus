@@ -118,9 +118,10 @@ export function generateSolarSystem(worldSeed: string): SolarSystemData {
     }
 
     const giantBias = Math.pow(radialRatio, 1.7);
+    const giantThreshold = 0.95 - giantBias * 0.45;
     const baseRadius = seededRange(hashCombine(bodySeed, 'radius'), 6.5, 13.5);
     const giantRoll = seededRange(hashCombine(bodySeed, 'giantRoll'), 0, 1);
-    const giantMultiplier = giantRoll > (0.72 - giantBias * 0.28)
+    const giantMultiplier = giantRoll > giantThreshold
       ? seededRange(hashCombine(bodySeed, 'giantMultiplier'), 1.5, 3.2 + giantBias * 2.2)
       : seededRange(hashCombine(bodySeed, 'standardMultiplier'), 0.95, 1.45 + giantBias * 0.45);
     const radius = baseRadius * giantMultiplier;

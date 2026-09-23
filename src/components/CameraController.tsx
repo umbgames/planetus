@@ -21,7 +21,7 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
   
   useFrame((state) => {
     const dist = camera.position.length();
-    const R = currentPlanetId ? planetRadius : 8; // Planet radius or Sun radius
+    const R = planetRadius; // Planet radius or Sun radius
     const altitude = dist - R;
     
     let tiltFactor = 0;
@@ -144,7 +144,7 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
     <OrbitControls 
       ref={controlsRef} 
       enablePan={false} 
-      minDistance={currentPlanetId ? planetRadius + 0.0002 : 8.0002} 
+      minDistance={R + 0.0002} 
       maxDistance={10000000} 
       makeDefault
       onStart={() => {

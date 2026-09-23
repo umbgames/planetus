@@ -26,6 +26,256 @@ interface ShipProps {
   respawnNonce?: number;
 }
 
+interface LaserBolt {
+  id: string;
+  pos: THREE.Vector3;
+  dir: THREE.Vector3;
+  quat: THREE.Quaternion;
+  createdAt: number;
+  speed: number;
+  length: number;
+  maxDist: number;
+  traveled: number;
+}
+
+interface ActiveMissile {
+  id: string;
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  dir: THREE.Vector3;
+  quat: THREE.Quaternion;
+  targetPos: THREE.Vector3 | null;
+  targetKind?: 'base' | 'satellite' | 'resource';
+  targetObj?: any;
+  targetId?: string;
+  createdAt: number;
+}
+
+interface SmokePuff {
+  id: string;
+  pos: THREE.Vector3;
+  createdAt: number;
+  initialSize: number;
+}
+
+interface ExplosionFX {
+  id: string;
+  pos: THREE.Vector3;
+  createdAt: number;
+  size: number;
+  color: string;
+}
+
+function SpaceDust({
+  shipPos,
+  shipVel,
+  isBoosting,
+}: {
+  shipPos: React.MutableRefObject<THREE.Vector3>;
+  shipVel: React.MutableRefObject<THREE.Vector3>;
+  isBoosting: boolean;
+}) {
+  const count = 300;
+  const radius = 60;
+
+  const offsets = useMemo(() => {
+    const offs = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      offs[i * 3] = (Math.random() - 0.5) * radius * 2;
+      offs[i * 3 + 1] = (Math.random() - 0.5) * radius * 2;
+      offs[i * 3 + 2] = (Math.random() - 0.5) * radius * 2;
+    }
+    return offs;
+  }, [count, radius]);
+
+  const linesRef = useRef<THREE.LineSegments>(null);
+  const linePositions = useMemo(() => new Float32Array(count * 6), [count]);
+
+  useFrame(() => {
+    if (!linesRef.current) return;
+    const center = shipPos.current;
+    const vel = shipVel.current;
+    const speed = vel.length();
+    const streakLength = Math.max(0.12, Math.min(speed * (isBoosting ? 0.09 : 0.03), 12));
+    const velNorm = speed > 0.05 ? vel.clone().normalize() : new THREE.Vector3(0, 0, -1);
+
+    const span = radius * 2;
+    for (let i = 0; i < count; i++) {
+      const idx3 = i * 3;
+      const idx6 = i * 6;
+
+      let px = offsets[idx3] - center.x;
+      let py = offsets[idx3 + 1] - center.y;
+      let pz = offsets[idx3 + 2] - center.z;
+
+      px = (((px + radius) % span) + span) % span - radius + center.x;
+      py = (((py + radius) % span) + span) % span - radius + center.y;
+      pz = (((pz + radius) % span) + span) % span - radius + center.z;
+
+      linePositions[idx6] = px;
+      linePositions[idx6 + 1] = py;
+      linePositions[idx6 + 2] = pz;
+
+      linePositions[idx6 + 3] = px - velNorm.x * streakLength;
+      linePositions[idx6 + 4] = py - velNorm.y * streakLength;
+      linePositions[idx6 + 5] = pz - velNorm.z * streakLength;
+    }
+
+    const geom = linesRef.current.geometry;
+    geom.attributes.position.needsUpdate = true;
+  });
+
+  return (
+    <lineSegments ref={linesRef} frustumCulled={false}>
+      <bufferGeometry>
+        <bufferAttribute
+          attach="attributes-position"
+          count={count * 2}
+          array={linePositions}
+          itemSize={3}
+        />
+      </bufferGeometry>
+      <lineBasicMaterial
+        color={isBoosting ? '#38bdf8' : '#7dd3fc'}
+        transparent
+        opacity={isBoosting ? 0.8 : 0.35}
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+      />
+    </lineSegments>
+  );
+}
+
+function LaserBoltsRenderer({ boltsRef }: { boltsRef: React.MutableRefObject<LaserBolt[]> }) {
+  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+
+  useFrame(() => {
+    if (!meshRef.current) return;
+    const bolts = boltsRef.current;
+    const count = Math.min(bolts.length, 64);
+    meshRef.current.count = count;
+    for (let i = 0; i < count; i++) {
+      const b = bolts[i];
+      dummy.position.copy(b.pos);
+      dummy.quaternion.copy(b.quat);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      meshRef.current.setMatrixAt(i, dummy.matrix);
+    }
+    meshRef.current.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <instancedMesh ref={meshRef} args={[undefined, undefined, 64]} frustumCulled={false}>
+      <cylinderGeometry args={[0.045, 0.045, 3.2, 6]} />
+      <meshBasicMaterial color="#38bdf8" toneMapped={false} />
+    </instancedMesh>
+  );
+}
+
+function MissilesRenderer({
+  missilesRef,
+  smokeRef,
+}: {
+  missilesRef: React.MutableRefObject<ActiveMissile[]>;
+  smokeRef: React.MutableRefObject<SmokePuff[]>;
+}) {
+  const missilesMeshRef = useRef<THREE.InstancedMesh>(null);
+  const smokeMeshRef = useRef<THREE.InstancedMesh>(null);
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+
+  useFrame(() => {
+    if (missilesMeshRef.current) {
+      const missiles = missilesRef.current;
+      const count = Math.min(missiles.length, 16);
+      missilesMeshRef.current.count = count;
+      for (let i = 0; i < count; i++) {
+        const m = missiles[i];
+        dummy.position.copy(m.pos);
+        dummy.quaternion.copy(m.quat);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        missilesMeshRef.current.setMatrixAt(i, dummy.matrix);
+      }
+      missilesMeshRef.current.instanceMatrix.needsUpdate = true;
+    }
+
+    if (smokeMeshRef.current) {
+      const puffs = smokeRef.current;
+      const now = Date.now();
+      const count = Math.min(puffs.length, 80);
+      smokeMeshRef.current.count = count;
+      for (let i = 0; i < count; i++) {
+        const p = puffs[i];
+        const age = Math.min(1, (now - p.createdAt) / 450);
+        const scale = p.initialSize * (1 + age * 2.2);
+        dummy.position.copy(p.pos);
+        dummy.quaternion.identity();
+        dummy.scale.set(scale, scale, scale);
+        dummy.updateMatrix();
+        smokeMeshRef.current.setMatrixAt(i, dummy.matrix);
+      }
+      smokeMeshRef.current.instanceMatrix.needsUpdate = true;
+    }
+  });
+
+  return (
+    <>
+      <instancedMesh ref={missilesMeshRef} args={[undefined, undefined, 16]} frustumCulled={false}>
+        <cylinderGeometry args={[0.07, 0.09, 0.85, 8]} />
+        <meshStandardMaterial color="#ef4444" emissive="#ff3300" emissiveIntensity={1.8} toneMapped={false} />
+      </instancedMesh>
+
+      <instancedMesh ref={smokeMeshRef} args={[undefined, undefined, 80]} frustumCulled={false}>
+        <sphereGeometry args={[1, 8, 8]} />
+        <meshBasicMaterial color="#fb923c" transparent opacity={0.35} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
+      </instancedMesh>
+    </>
+  );
+}
+
+function ExplosionsRenderer({ explosions }: { explosions: ExplosionFX[] }) {
+  if (explosions.length === 0) return null;
+  const now = Date.now();
+
+  return (
+    <>
+      {explosions.map((e) => {
+        const age = Math.min(1, (now - e.createdAt) / 500);
+        const coreScale = e.size * (1 + age * 1.5);
+        const ringScale = e.size * (0.8 + age * 4.5);
+        const opacity = Math.max(0, 1 - age);
+
+        return (
+          <group key={e.id} position={e.pos}>
+            <mesh scale={coreScale}>
+              <sphereGeometry args={[1, 14, 14]} />
+              <meshBasicMaterial
+                color={e.color}
+                transparent
+                opacity={opacity}
+                toneMapped={false}
+              />
+            </mesh>
+
+            <mesh scale={ringScale} rotation={[Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[0.7, 1.0, 24]} />
+              <meshBasicMaterial
+                color="#ffffff"
+                side={THREE.DoubleSide}
+                transparent
+                opacity={opacity * 0.7}
+                toneMapped={false}
+              />
+            </mesh>
+          </group>
+        );
+      })}
+    </>
+  );
+}
+
 export function Ship({
   planetRadius,
   onExit,
@@ -99,7 +349,12 @@ export function Ship({
 
   const lastFired = useRef(0);
   const lastMissile = useRef(0);
-  const [explosions, setExplosions] = useState<{ id: string; pos: THREE.Vector3; createdAt: number; size: number }[]>([]);
+  const shakeIntensity = useRef(0);
+  const altWing = useRef<-1 | 1>(-1);
+  const laserBolts = useRef<LaserBolt[]>([]);
+  const missiles = useRef<ActiveMissile[]>([]);
+  const smokePuffs = useRef<SmokePuff[]>([]);
+  const [explosions, setExplosions] = useState<ExplosionFX[]>([]);
   const [muzzleFlashes, setMuzzleFlashes] = useState<{ id: string; pos: THREE.Vector3; createdAt: number }[]>([]);
 
   const prevPlanetId = useRef(currentPlanetId);
@@ -117,7 +372,8 @@ export function Ship({
     if (lastRespawnNonce.current === respawnNonce) return;
     lastRespawnNonce.current = respawnNonce;
 
-    const spawnDistance = Math.max(planetRadius + 20, 36);
+    const isStar = currentPlanetId === null;
+    const spawnDistance = isStar ? Math.max(planetRadius * 4, 80) : Math.max(planetRadius + 20, 36);
     position.current.set(0, 0, spawnDistance);
     velocity.current.set(0, 0, 0);
     rotation.current.set(0, 0, 0, 'YXZ');
@@ -352,11 +608,15 @@ export function Ship({
 
     if (!bestHit) return;
 
+    // Trigger HUD hitmarker on confirmed hit
+    useShipStore.getState().triggerHit();
+    shakeIntensity.current = Math.min(0.025, shakeIntensity.current + (type === 'mg' ? 0.008 : 0.022));
+
     if (bestHit.kind === 'base') {
       gameManager.attackBase(bestHit.base.id, damageBase).catch(console.error);
       setExplosions(prev => [
         ...prev,
-        { id: Math.random().toString(), pos: bestHit.pos.clone(), createdAt: now, size: explosionSize }
+        { id: Math.random().toString(), pos: bestHit.pos.clone(), createdAt: now, size: explosionSize, color: '#f59e0b' }
       ]);
       return;
     }
@@ -369,7 +629,8 @@ export function Ship({
           id: Math.random().toString(),
           pos: bestHit.pos.clone(),
           createdAt: now,
-          size: type === 'mg' ? 1.2 : 3.5
+          size: type === 'mg' ? 1.4 : 3.5,
+          color: '#ef4444'
         }
       ]);
       return;
@@ -383,7 +644,8 @@ export function Ship({
           id: Math.random().toString(),
           pos: bestHit.pos.clone(),
           createdAt: now,
-          size: damageResourceExplosion
+          size: damageResourceExplosion,
+          color: '#38bdf8'
         }
       ]);
     }
@@ -611,19 +873,37 @@ export function Ship({
         setLastMgFire(now);
         if (userData && !INFINITE_TEST_AMMO) gameManager.fireMachineGun();
 
-        const fireOrigin = position.current.clone();
+        // Alternate blasters between left wing (-0.65) and right wing (+0.65)
+        altWing.current = altWing.current === -1 ? 1 : -1;
+        const wingOffset = new THREE.Vector3(altWing.current * 0.65, -0.04, -0.7).applyQuaternion(shipQuaternionRef.current);
+        const boltOrigin = position.current.clone().add(wingOffset);
+
         const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(lookQuaternionRef.current).normalize();
+        const boltQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
 
-        fireHitscan('mg', fireOrigin, dir, now, state.clock.elapsedTime);
+        // Spawn visual glowing 3D tracer bolt
+        laserBolts.current.push({
+          id: Math.random().toString(),
+          pos: boltOrigin.clone(),
+          dir: dir.clone(),
+          quat: boltQuat,
+          createdAt: now,
+          speed: 800,
+          length: 3.2,
+          maxDist: 160,
+          traveled: 0
+        });
 
-        const rightOffset = new THREE.Vector3(0.5, 0, 0).applyQuaternion(shipQuaternionRef.current);
-        const leftOffset = new THREE.Vector3(-0.5, 0, 0).applyQuaternion(shipQuaternionRef.current);
-        const forwardOffset = new THREE.Vector3(0, 0, -1).applyQuaternion(shipQuaternionRef.current);
+        // Camera impulse kick
+        shakeIntensity.current = Math.min(0.015, shakeIntensity.current + 0.0035);
 
+        // Hitscan damage registration
+        fireHitscan('mg', position.current.clone(), dir, now, state.clock.elapsedTime);
+
+        // Muzzle flash on the active blaster
         setMuzzleFlashes(prev => [
           ...prev,
-          { id: Math.random().toString(), pos: position.current.clone().add(rightOffset).add(forwardOffset), createdAt: now },
-          { id: Math.random().toString(), pos: position.current.clone().add(leftOffset).add(forwardOffset), createdAt: now }
+          { id: Math.random().toString(), pos: boltOrigin, createdAt: now }
         ]);
       }
     }
@@ -632,30 +912,130 @@ export function Ship({
       if (INFINITE_TEST_AMMO || !userData || userData.missileAmmo > 0) {
         lastMissile.current = now;
         setLastMissileFire(now);
-        recoilZ.current = 0.08;
+        recoilZ.current = 0.12;
 
         if (userData && !INFINITE_TEST_AMMO) gameManager.fireMissile();
 
-        const fireOrigin = position.current.clone();
         const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(lookQuaternionRef.current).normalize();
+        const missileOrigin = position.current.clone().add(new THREE.Vector3(0, -0.15, -0.8).applyQuaternion(shipQuaternionRef.current));
+        const missileQuat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
 
-        fireHitscan('missile', fireOrigin, dir, now, state.clock.elapsedTime);
+        const initVel = dir.clone().multiplyScalar(55).add(velocity.current.clone().multiplyScalar(0.4));
 
-        const centerOffset = new THREE.Vector3(0, 0, -1.1).applyQuaternion(shipQuaternionRef.current);
+        missiles.current.push({
+          id: Math.random().toString(),
+          pos: missileOrigin,
+          vel: initVel,
+          dir: dir.clone(),
+          quat: missileQuat,
+          targetPos: lockedTarget?.position ? lockedTarget.position.clone() : null,
+          targetKind: lockedTarget?.type,
+          targetObj: lockedTarget,
+          targetId: lockedTarget?.id,
+          createdAt: now
+        });
+
+        // Heavy camera recoil kick
+        shakeIntensity.current = Math.min(0.04, shakeIntensity.current + 0.022);
+
+        // Muzzle ignition flash
         setMuzzleFlashes(prev => [
           ...prev,
-          { id: Math.random().toString(), pos: position.current.clone().add(centerOffset), createdAt: now }
+          { id: Math.random().toString(), pos: missileOrigin, createdAt: now }
         ]);
       }
     }
 
-    // Keep store clean since weapons are now hitscan
+    // Keep store clean since weapons are handled via visual systems
     if (projectiles.length > 0) {
       setProjectiles([]);
     }
 
-    setExplosions(prev => prev.filter(e => now - e.createdAt < 500));
-    setMuzzleFlashes(prev => prev.filter(m => now - m.createdAt < 100));
+    const dt = Math.min(delta, 0.1);
+
+    // 1. Advance Laser Bolts
+    const activeBolts: LaserBolt[] = [];
+    for (let i = 0; i < laserBolts.current.length; i++) {
+      const b = laserBolts.current[i];
+      const distStep = b.speed * dt;
+      b.pos.addScaledVector(b.dir, distStep);
+      b.traveled += distStep;
+      if (b.traveled < b.maxDist && now - b.createdAt < 500) {
+        activeBolts.push(b);
+      }
+    }
+    laserBolts.current = activeBolts;
+
+    // 2. Advance Missiles & Homing Guidance
+    const activeMissiles: ActiveMissile[] = [];
+    for (let i = 0; i < missiles.current.length; i++) {
+      const m = missiles.current[i];
+      if (now - m.createdAt > 3500) {
+        setExplosions(prev => [...prev, { id: Math.random().toString(), pos: m.pos.clone(), createdAt: now, size: 2.5, color: '#ef4444' }]);
+        continue;
+      }
+
+      let targetCoord = m.targetPos;
+      if (m.targetId && lockedTarget && lockedTarget.id === m.targetId && lockedTarget.position) {
+        targetCoord = lockedTarget.position;
+      }
+
+      if (targetCoord) {
+        const toTarget = targetCoord.clone().sub(m.pos);
+        const dist = toTarget.length();
+        if (dist < 3.2) {
+          // Detonation on target
+          setExplosions(prev => [...prev, { id: Math.random().toString(), pos: m.pos.clone(), createdAt: now, size: 3.8, color: '#ef4444' }]);
+          useShipStore.getState().triggerHit();
+          shakeIntensity.current = Math.min(0.04, shakeIntensity.current + 0.025);
+
+          if (m.targetKind === 'base' && m.targetId) {
+            gameManager.attackBase(m.targetId, 50 * (shipDamageStat / 10)).catch(console.error);
+          } else if (m.targetKind === 'satellite' && m.targetObj) {
+            onSatelliteDamaged?.(m.targetObj, 55);
+          } else if (m.targetKind === 'resource' && m.targetId) {
+            gameManager.gatherResource(m.targetId).catch(console.error);
+          }
+          continue;
+        }
+
+        const desiredDir = toTarget.normalize();
+        m.dir.lerp(desiredDir, 1 - Math.exp(-7 * dt));
+        m.dir.normalize();
+        m.quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), m.dir);
+      }
+
+      const currentSpeed = m.vel.length();
+      const newSpeed = Math.min(260, currentSpeed + 320 * dt);
+      m.vel.copy(m.dir).multiplyScalar(newSpeed);
+      m.pos.addScaledVector(m.vel, dt);
+
+      // Drop smoke trail puff behind nozzle
+      const puffPos = m.pos.clone().sub(m.dir.clone().multiplyScalar(0.45));
+      smokePuffs.current.push({
+        id: Math.random().toString(),
+        pos: puffPos,
+        createdAt: now,
+        initialSize: 0.16,
+      });
+
+      activeMissiles.push(m);
+    }
+    missiles.current = activeMissiles;
+
+    smokePuffs.current = smokePuffs.current.filter(p => now - p.createdAt < 450);
+
+    setExplosions(prev => {
+      if (prev.length === 0) return prev;
+      const filtered = prev.filter(e => now - e.createdAt < 500);
+      return filtered.length === prev.length ? prev : filtered;
+    });
+
+    setMuzzleFlashes(prev => {
+      if (prev.length === 0) return prev;
+      const filtered = prev.filter(m => now - m.createdAt < 100);
+      return filtered.length === prev.length ? prev : filtered;
+    });
 
     const wantsBoost = keys['ShiftLeft'] || isBoosting;
     const boostRestartThreshold = 35;
@@ -748,7 +1128,7 @@ export function Ship({
     if (input.lengthSq() > 1) input.normalize();
 
     const rawInputX = input.x;
-    input.x *= 0.1;
+    input.x *= 0.65; // Responsive agile strafing
 
     const prevYaw = rotation.current.y;
     rotation.current.y = -mouse.x;
@@ -819,9 +1199,10 @@ export function Ship({
     }
 
     if (shipModelRef.current) {
-      // decouple roll response from unpredictable mouse position jumps using yaw velocity
+      // Natural banking: combine yaw velocity and lateral strafe input
       const yawVelocity = yawDelta / Math.max(0.0001, delta);
-      const targetRoll = THREE.MathUtils.clamp(yawVelocity * 0.5, -Math.PI / 2.5, Math.PI / 2.5);
+      const strafeBank = -rawInputX * 0.38;
+      const targetRoll = THREE.MathUtils.clamp(yawVelocity * 0.45 + strafeBank, -Math.PI / 2.5, Math.PI / 2.5);
       const rollAlpha = 1 - Math.exp(-8 * delta);
 
       shipModelRef.current.rotation.z += (targetRoll - shipModelRef.current.rotation.z) * rollAlpha;
@@ -833,6 +1214,17 @@ export function Ship({
       const recoilAlpha = 1 - Math.exp(-12 * delta);
       recoilZ.current += (0 - recoilZ.current) * recoilAlpha;
       shipModelRef.current.position.z = -0.005 + Math.max(0, recoilZ.current);
+    }
+
+    // Camera impulse recoil shake
+    if (cameraRef.current && shakeIntensity.current > 0.0002) {
+      const sx = (Math.random() - 0.5) * shakeIntensity.current;
+      const sy = (Math.random() - 0.5) * shakeIntensity.current;
+      const sz = (Math.random() - 0.5) * shakeIntensity.current;
+      cameraRef.current.position.x += sx * 0.35;
+      cameraRef.current.position.y += sy * 0.35;
+      cameraRef.current.rotation.z += sz * 0.6;
+      shakeIntensity.current *= Math.exp(-12 * delta);
     }
   });
 
@@ -850,57 +1242,75 @@ export function Ship({
         />
       </group>
 
+      {/* Space Dust & Hyperspace Speed Streaks */}
+      <SpaceDust shipPos={position} shipVel={velocity} isBoosting={Boolean(keys['ShiftLeft'] || isBoosting)} />
+
       <group ref={shipRef}>
-        {/* Centered Single Engine Trail */}
+        {/* Dual Engine Trails */}
         <Trail
-          width={0.025}
-          length={25}
-          color={new THREE.Color('#6ee7ff')}
+          width={keys['ShiftLeft'] || isBoosting ? 0.038 : 0.022}
+          length={keys['ShiftLeft'] || isBoosting ? 38 : 22}
+          color={new THREE.Color(keys['ShiftLeft'] || isBoosting ? '#ffb703' : '#6ee7ff')}
           attenuation={(t) => t * t}
           decay={1}
           local={false}
         >
-          <mesh visible={false} position={[0, -0.002, 0.012]} />
+          <mesh visible={false} position={[-0.008, -0.002, 0.012]} />
         </Trail>
+
+        <Trail
+          width={keys['ShiftLeft'] || isBoosting ? 0.038 : 0.022}
+          length={keys['ShiftLeft'] || isBoosting ? 38 : 22}
+          color={new THREE.Color(keys['ShiftLeft'] || isBoosting ? '#ffb703' : '#6ee7ff')}
+          attenuation={(t) => t * t}
+          decay={1}
+          local={false}
+        >
+          <mesh visible={false} position={[0.008, -0.002, 0.012]} />
+        </Trail>
+
+        {/* Dynamic Afterburner Cone */}
+        {(keys['ShiftLeft'] || isBoosting) && (
+          <mesh position={[0, -0.002, 0.018]} rotation={[Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.008, 0.035, 12]} />
+            <meshBasicMaterial color="#ffaa00" transparent opacity={0.8} toneMapped={false} />
+          </mesh>
+        )}
 
         <group ref={shipModelRef} position={[0, -0.002, -0.005]} scale={0.01}>
           <SharedShipModel type={normalizedShipType} />
-
         </group>
       </group>
 
-      {/* No visible projectile meshes anymore: FPS / hitscan style */}
+      {/* 3D Glowing Laser Tracer Bolts */}
+      <LaserBoltsRenderer boltsRef={laserBolts} />
 
-      {explosions.map(e => (
-        <mesh key={e.id} position={e.pos}>
-          <sphereGeometry args={[e.size]} />
-          <meshBasicMaterial
-            color={e.size > 1 ? '#ff0000' : '#00ffff'}
-            transparent
-            opacity={1 - (Date.now() - e.createdAt) / 500}
-          />
-        </mesh>
-      ))}
+      {/* Physical Guided Missiles & Smoke Trails */}
+      <MissilesRenderer missilesRef={missiles} smokeRef={smokePuffs} />
 
+      {/* Multi-layer Detonations */}
+      <ExplosionsRenderer explosions={explosions} />
+
+      {/* Muzzle Flashes */}
       {muzzleFlashes.map(m => (
         <mesh key={m.id} position={m.pos}>
-          <sphereGeometry args={[0.2]} />
-          <meshBasicMaterial color="#00ffff" transparent opacity={1 - (Date.now() - m.createdAt) / 100} />
+          <sphereGeometry args={[0.22, 10, 10]} />
+          <meshBasicMaterial color="#7dd3fc" transparent opacity={1 - (Date.now() - m.createdAt) / 100} toneMapped={false} />
         </mesh>
       ))}
 
       {(() => {
         if (!lockedTarget) return null;
         const isOwnBase = lockedTarget.type === 'base' && userData && lockedTarget.ownerId === userData.uid;
-        const color = isOwnBase ? '#3b82f6' : '#ff0000';
-        const colorClass = isOwnBase ? 'text-blue-500 border-blue-500/50' : 'text-red-500 border-red-500/50';
+        const color = isOwnBase ? '#38bdf8' : '#ef4444';
+        const colorClass = isOwnBase ? 'text-sky-400 border-sky-400/50' : 'text-red-500 border-red-500/50';
 
         return (
           <mesh position={[lockedTarget.position.x, lockedTarget.position.y, lockedTarget.position.z]}>
             <ringGeometry args={[2, 2.2, 32]} />
             <meshBasicMaterial color={color} side={THREE.DoubleSide} transparent opacity={0.8} />
             <Html center>
-              <div className={`${colorClass} font-mono text-xs font-bold whitespace-nowrap bg-black/50 px-2 py-1 rounded border`}>
+              <div className={`${colorClass} font-mono text-xs font-bold whitespace-nowrap bg-black/50 px-2 py-1 rounded border backdrop-blur-sm`}>
                 {isOwnBase ? 'SELECTED: ' : 'LOCKED: '} {lockedTarget.name || 'Base'}
                 <br />
                 HP: {lockedTarget.health}

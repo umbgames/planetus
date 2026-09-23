@@ -57,13 +57,26 @@ const TargetReticle = ({
   label,
   distance,
   health,
+  lastHitTime = 0,
+  isFiring = false,
 }: {
   locked: boolean;
   label?: string;
   distance: number | null;
   health?: number;
+  lastHitTime?: number;
+  isFiring?: boolean;
 }) => {
-  const accent = locked ? '#ffb347' : '#7dd3fc';
+  const [hitActive, setHitActive] = useState(false);
+
+  useEffect(() => {
+    if (!lastHitTime) return;
+    setHitActive(true);
+    const timer = setTimeout(() => setHitActive(false), 200);
+    return () => clearTimeout(timer);
+  }, [lastHitTime]);
+
+  const accent = locked ? '#ef4444' : '#38bdf8';
 
   const bracket = (style: React.CSSProperties) => (
     <div
@@ -86,8 +99,8 @@ const TargetReticle = ({
           position: 'relative',
           width: locked ? 132 : 92,
           height: locked ? 132 : 92,
-          transform: locked ? 'scale(1.02)' : 'scale(1)',
-          transition: 'all 180ms ease',
+          transform: isFiring ? 'scale(1.12)' : locked ? 'scale(1.04)' : 'scale(1)',
+          transition: 'all 120ms ease-out',
         }}
       >
         {bracket({ top: 0, left: 0, borderTopWidth: 2, borderLeftWidth: 2 })}
@@ -99,7 +112,7 @@ const TargetReticle = ({
           style={{
             position: 'absolute',
             inset: locked ? 22 : 26,
-            border: `1px solid ${locked ? 'rgba(255,179,71,0.32)' : 'rgba(125,211,252,0.2)'}`,
+            border: `1px solid ${locked ? 'rgba(239,68,68,0.35)' : 'rgba(56,189,248,0.22)'}`,
             borderRadius: '9999px',
             opacity: locked ? 0.55 : 0.35,
           }}
@@ -112,7 +125,7 @@ const TargetReticle = ({
             width: 18,
             height: 18,
             transform: 'translate(-50%, -50%)',
-            border: `1px solid ${locked ? 'rgba(255,244,221,0.85)' : 'rgba(255,255,255,0.5)'}`,
+            border: `1px solid ${locked ? 'rgba(239,68,68,0.85)' : 'rgba(255,255,255,0.5)'}`,
             borderRadius: '9999px',
           }}
         />
@@ -121,10 +134,22 @@ const TargetReticle = ({
         <div style={{ position: 'absolute', top: '50%', left: 8, width: 14, height: 1, background: 'rgba(255,255,255,0.5)', transform: 'translateY(-50%)' }} />
         <div style={{ position: 'absolute', top: '50%', right: 8, width: 14, height: 1, background: 'rgba(255,255,255,0.5)', transform: 'translateY(-50%)' }} />
 
+        {/* Hitmarker X ticks */}
+        {hitActive && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+            <div className="relative w-8 h-8 scale-110 transition-transform">
+              <div className="absolute top-1 left-1 w-2.5 h-0.5 bg-[#ef4444] rotate-45 origin-center shadow-[0_0_8px_#ef4444]" />
+              <div className="absolute top-1 right-1 w-2.5 h-0.5 bg-[#ef4444] -rotate-45 origin-center shadow-[0_0_8px_#ef4444]" />
+              <div className="absolute bottom-1 left-1 w-2.5 h-0.5 bg-[#ef4444] -rotate-45 origin-center shadow-[0_0_8px_#ef4444]" />
+              <div className="absolute bottom-1 right-1 w-2.5 h-0.5 bg-[#ef4444] rotate-45 origin-center shadow-[0_0_8px_#ef4444]" />
+            </div>
+          </div>
+        )}
+
         <div className="absolute left-1/2 top-full mt-5 -translate-x-1/2 flex flex-col items-center gap-1">
           <div
-            className={`text-[10px] font-bold tracking-[0.28em] uppercase ${locked ? 'text-amber-300' : 'text-cyan-300'}`}
-            style={{ textShadow: '0 0 12px rgba(255,179,71,0.35)' }}
+            className={`text-[10px] font-bold tracking-[0.28em] uppercase ${locked ? 'text-[#ef4444]' : 'text-[#38bdf8]'}`}
+            style={{ textShadow: locked ? '0 0 12px rgba(239,68,68,0.45)' : '0 0 12px rgba(56,189,248,0.45)' }}
           >
             {locked ? 'Target Locked' : 'Tracking'}
           </div>
@@ -240,7 +265,10 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
     shield,
     boostEnergy,
     isJumping,
+    lastHitTime,
   } = useShipStore();
+
+  const isFiring = (Date.now() - lastMgFire < 130) || (Date.now() - lastMissileFire < 180);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -354,53 +382,53 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
           </button>
 
           {/* Bottom Left */}
-          <div className="absolute bottom-8 left-8 flex flex-col gap-5 w-64 pointer-events-none">
+          <div className="absolute bottom-8 left-8 flex flex-col gap-5 w-64 pointer-events-none glass-panel p-5 rounded-2xl border-l-4 border-l-[#38bdf8]">
             <div>
-              <div className="text-zinc-400 text-xs font-bold tracking-wider mb-3">
-                FLIGHT
+              <div className="text-[#94a3b8] text-xs font-bold font-display tracking-widest mb-3">
+                FLIGHT SYSTEMS
               </div>
 
               <div className="flex flex-col gap-3">
-                <div>
-                  <div className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mb-1">
+                <div className="flex justify-between items-baseline border-b border-white/5 pb-2">
+                  <div className="text-[10px] text-[#64748b] font-bold tracking-widest uppercase">
                     Velocity
                   </div>
                   <div className="flex items-baseline gap-1">
-                    <div className="text-3xl font-black text-white font-mono">
+                    <div className="text-2xl font-black text-white font-mono">
                       {velocity.toFixed(0)}
                     </div>
-                    <div className="text-xs text-zinc-500">m/s</div>
+                    <div className="text-[10px] text-[#64748b]">m/s</div>
                   </div>
                 </div>
 
-                <div>
-                  <div className="text-[10px] text-zinc-500 font-bold tracking-widest uppercase mb-1">
+                <div className="flex justify-between items-baseline">
+                  <div className="text-[10px] text-[#64748b] font-bold tracking-widest uppercase">
                     Altitude
                   </div>
                   <div className="flex items-baseline gap-1">
-                    <div className="text-3xl font-black text-white font-mono">
+                    <div className="text-2xl font-black text-white font-mono">
                       {altitude.toFixed(0)}
                     </div>
-                    <div className="text-xs text-zinc-500">m</div>
+                    <div className="text-[10px] text-[#64748b]">m</div>
                   </div>
                 </div>
               </div>
             </div>
 
             {lockedTarget && (
-              <div>
+              <div className="mt-2 pt-4 border-t border-white/10">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs font-bold text-zinc-500 tracking-widest uppercase">
+                  <div className="text-xs font-bold text-[#ef4444] font-display tracking-widest uppercase animate-pulse">
                     Target Locked
                   </div>
-                  <Target size={14} className="text-cyan-400" />
+                  <Target size={14} className="text-[#ef4444]" />
                 </div>
 
-                <div className="text-lg font-bold text-white mb-1">
+                <div className="text-lg font-bold text-white mb-2">
                   {(lockedTarget.id || lockedTarget.name || '').toUpperCase()}
                 </div>
 
-                <div className="flex items-center justify-between text-[10px] text-zinc-400">
+                <div className="flex items-center justify-between text-[10px] text-[#94a3b8]">
                   <span>DISTANCE</span>
                   <span className="text-white font-mono">
                     {targetDistance !== null ? `${targetDistance.toFixed(1)}m` : '—'}
@@ -409,18 +437,18 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
 
                 {lockedTarget.health !== undefined && (
                   <div className="mt-3">
-                    <div className="flex justify-between text-[8px] text-zinc-500 mb-1">
+                    <div className="flex justify-between text-[9px] text-[#94a3b8] mb-1 font-bold">
                       <span>INTEGRITY</span>
                       <span>{lockedTarget.health}%</span>
                     </div>
-                    <div className="h-1 bg-white/10 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-black/40 rounded-full overflow-hidden border border-white/5">
                       <div
                         className={`h-full transition-all duration-300 ${
                           lockedTarget.health > 50
-                            ? 'bg-emerald-500'
+                            ? 'bg-[#10b981] shadow-[0_0_8px_#10b981]'
                             : lockedTarget.health > 20
-                            ? 'bg-amber-500'
-                            : 'bg-red-500'
+                            ? 'bg-[#fbbf24] shadow-[0_0_8px_#fbbf24]'
+                            : 'bg-[#ef4444] shadow-[0_0_8px_#ef4444]'
                         }`}
                         style={{ width: `${lockedTarget.health}%` }}
                       />
@@ -431,45 +459,45 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             )}
 
             {isJumping && (
-              <div className="text-cyan-400 text-xs font-bold tracking-[0.25em] uppercase animate-pulse">
-                Jumping
+              <div className="mt-2 text-[#38bdf8] text-xs font-bold font-display tracking-[0.25em] uppercase animate-pulse">
+                Hyperspace Jump Initiated
               </div>
             )}
           </div>
 
           {/* Bottom Center */}
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-8 pointer-events-none">
-            <div className="flex flex-col items-center gap-1">
-              <div className="text-[8px] text-cyan-500 font-bold tracking-widest uppercase">
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex gap-6 pointer-events-none glass-panel px-6 py-4 rounded-3xl">
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-[9px] text-[#38bdf8] font-bold font-display tracking-[0.2em] uppercase">
                 Shield
               </div>
-              <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
+              <div className="w-32 h-2 bg-black/40 rounded-full overflow-hidden border border-white/10 shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
                 <div
-                  className="h-full bg-cyan-400 transition-all duration-300"
+                  className="h-full bg-[#38bdf8] transition-all duration-300 shadow-[0_0_10px_#38bdf8]"
                   style={{ width: `${shield}%` }}
                 />
               </div>
             </div>
 
-            <div className="flex flex-col items-center gap-1">
-              <div className="text-[8px] text-amber-500 font-bold tracking-widest uppercase">
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-[9px] text-[#fbbf24] font-bold font-display tracking-[0.2em] uppercase">
                 Boost
               </div>
-              <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
+              <div className="w-32 h-2 bg-black/40 rounded-full overflow-hidden border border-white/10 shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
                 <div
-                  className="h-full bg-amber-500 transition-all duration-300"
+                  className="h-full bg-[#fbbf24] transition-all duration-300 shadow-[0_0_10px_#fbbf24]"
                   style={{ width: `${boostEnergy}%` }}
                 />
               </div>
             </div>
 
-            <div className="flex flex-col items-center gap-1">
-              <div className="text-[8px] text-red-500 font-bold tracking-widest uppercase">
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-[9px] text-[#ef4444] font-bold font-display tracking-[0.2em] uppercase">
                 Hull
               </div>
-              <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden border border-white/5">
+              <div className="w-32 h-2 bg-black/40 rounded-full overflow-hidden border border-white/10 shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
                 <div
-                  className="h-full bg-red-500 transition-all duration-300"
+                  className="h-full bg-[#ef4444] transition-all duration-300 shadow-[0_0_10px_#ef4444]"
                   style={{ width: `${health}%` }}
                 />
               </div>
@@ -477,90 +505,68 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
           </div>
 
           {/* Bottom Right */}
-          <div className="absolute bottom-8 right-8 flex flex-col gap-3 text-right w-52 pointer-events-auto">
-            <div className="text-zinc-400 text-xs font-bold tracking-wider">
-              RESOURCES
+          <div className="absolute bottom-8 right-8 flex flex-col gap-4 text-right w-60 pointer-events-auto glass-panel p-5 rounded-2xl border-r-4 border-r-[#fbbf24]">
+            <div className="text-[#94a3b8] text-xs font-bold font-display tracking-widest">
+              CARGO & ARMAMENT
             </div>
 
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2 justify-end">
-                <span className="text-zinc-300 font-mono text-sm">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-white text-[11px] font-bold uppercase tracking-wider">Common</span>
+                <span className="text-[#cbd5e1] font-mono text-sm bg-white/5 px-2 py-0.5 rounded border border-white/10">
                   {userData ? userData.commonResources : 0}
                 </span>
-                <span className="text-white text-xs">Common</span>
               </div>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2 justify-end">
-                <span className="text-fuchsia-400 font-mono text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-white text-[11px] font-bold uppercase tracking-wider">Aetherium</span>
+                <span className="text-[#c084fc] font-mono text-sm bg-[#c084fc]/10 px-2 py-0.5 rounded border border-[#c084fc]/20">
                   {userData ? userData.rareResources : 0}
                 </span>
-                <span className="text-white text-xs">Aetherium</span>
               </div>
             </div>
 
-            <div className="text-zinc-400 text-xs font-bold tracking-wider mt-2">
-              WEAPONS
-            </div>
+            <div className="h-px bg-white/10 w-full my-1" />
 
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2 justify-end">
-                <span className="text-yellow-500 font-mono text-sm">∞</span>
-                <span className="text-white text-xs">MG (L-Click)</span>
+            <div className="flex flex-col gap-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-white text-[10px] font-bold uppercase tracking-wider">Machine Gun</span>
+                  <span className="text-[#fbbf24] font-mono text-sm font-bold">∞</span>
+                </div>
+                <WeaponCooldown
+                  lastFireTime={lastMgFire}
+                  cooldownDuration={100}
+                  color="bg-[#fbbf24] shadow-[0_0_8px_#fbbf24]"
+                />
               </div>
-              <WeaponCooldown
-                lastFireTime={lastMgFire}
-                cooldownDuration={100}
-                color="bg-yellow-500"
-              />
-            </div>
 
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2 justify-end">
-                <span className="text-red-500 font-mono text-sm">∞</span>
-                <span className="text-white text-xs">MSL (R-Click)</span>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-white text-[10px] font-bold uppercase tracking-wider">Missiles</span>
+                  <span className="text-[#ef4444] font-mono text-sm font-bold">∞</span>
+                </div>
+                <WeaponCooldown
+                  lastFireTime={lastMissileFire}
+                  cooldownDuration={250}
+                  color="bg-[#ef4444] shadow-[0_0_8px_#ef4444]"
+                />
               </div>
-              <WeaponCooldown
-                lastFireTime={lastMissileFire}
-                cooldownDuration={250}
-                color="bg-red-500"
-              />
             </div>
 
-            <div className="text-zinc-500 text-[10px] mt-1">
-              Press T to Lock Target
+            <div className="text-[#64748b] text-[9px] mt-1 font-bold uppercase tracking-widest">
+              [T] to Lock Target
             </div>
           </div>
 
           {/* Targeting Reticle */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="relative h-16 w-16">
-              <div className="absolute left-1/2 top-1/2 h-3 w-px -translate-x-1/2 -translate-y-1/2 bg-white/70" />
-              <div className="absolute left-1/2 top-1/2 h-px w-3 -translate-x-1/2 -translate-y-1/2 bg-white/70" />
-              <div className="absolute left-0 top-0 h-4 w-4 border-l border-t border-white/45" />
-              <div className="absolute right-0 top-0 h-4 w-4 border-r border-t border-white/45" />
-              <div className="absolute bottom-0 left-0 h-4 w-4 border-b border-l border-white/45" />
-              <div className="absolute bottom-0 right-0 h-4 w-4 border-b border-r border-white/45" />
-              {lockedTarget && (
-                <>
-                  <div className="absolute inset-0 animate-pulse rounded-full border border-cyan-400/35" />
-                  <div className="absolute left-1/2 top-[calc(100%+20px)] min-w-52 -translate-x-1/2 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-center backdrop-blur-md">
-                    <div className="text-[10px] font-bold uppercase tracking-[0.32em] text-cyan-400">
-                      Target Locked
-                    </div>
-                    <div className="mt-1 text-xs font-mono text-white">
-                      {(lockedTarget.id || lockedTarget.name || '').toUpperCase()}
-                    </div>
-                    <div className="mt-2 flex items-center justify-center gap-4 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
-                      <span>{targetDistance !== null ? `${targetDistance.toFixed(0)} m` : 'NO RANGE'}</span>
-                      {lockedTarget.health !== undefined && <span>{lockedTarget.health}% integrity</span>}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+          <TargetReticle
+            locked={Boolean(lockedTarget)}
+            label={lockedTarget ? (lockedTarget.id || lockedTarget.name || '').toUpperCase() : undefined}
+            distance={targetDistance}
+            health={lockedTarget?.health}
+            lastHitTime={lastHitTime}
+            isFiring={isFiring}
+          />
         </div>
       )}
 
@@ -727,6 +733,8 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
             label={lockedTarget ? (lockedTarget.id || lockedTarget.name || '').toUpperCase() : undefined}
             distance={targetDistance}
             health={lockedTarget?.health}
+            lastHitTime={lastHitTime}
+            isFiring={isFiring}
           />
         </>
       )}

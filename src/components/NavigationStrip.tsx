@@ -97,20 +97,22 @@ export function NavigationStrip({ solarSystem, currentPlanetId, active }: Naviga
   return (
     <Html fullscreen style={{ pointerEvents: 'none' }}>
       <div className="absolute top-5 left-1/2 -translate-x-1/2 z-[55] w-[min(70vw,620px)]">
-        <div className="relative h-10">
-          <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px bg-cyan-400/30" />
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 rounded-full border border-cyan-300/70 shadow-[0_0_18px_rgba(34,211,238,0.18)]" />
-          {markers.map((marker) => (
-            <div
-              key={marker.id}
-              className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${marker.active ? 'bg-cyan-200 shadow-[0_0_12px_rgba(165,243,252,0.55)]' : 'bg-white/80'}`}
-              style={{
-                left: `${marker.xPercent}%`,
-                width: `${marker.size}px`,
-                height: `${marker.size}px`,
-              }}
-            />
-          ))}
+        <div className="glass-panel rounded-full px-8 py-2 border-b-2 border-b-[#38bdf8]">
+          <div className="relative h-4">
+            <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-px bg-white/10" />
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-[2px] border-[#38bdf8] shadow-[0_0_8px_#38bdf8]" />
+            {markers.map((marker) => (
+              <div
+                key={marker.id}
+                className={`absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${marker.active ? 'bg-[#38bdf8] shadow-[0_0_10px_#38bdf8]' : 'bg-white/80'}`}
+                style={{
+                  left: `${marker.xPercent}%`,
+                  width: `${marker.size}px`,
+                  height: `${marker.size}px`,
+                }}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </Html>

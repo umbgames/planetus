@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { SolarSystemData, PlanetData, AsteroidBeltData, MoonData } from './solarSystem';
 
 export const VISUAL_SCALE = {
-  STAR_RADIUS_MULTIPLIER: 60,
-  PLANET_RADIUS_MULTIPLIER: 20,
+  STAR_RADIUS_MULTIPLIER: 30,
+  PLANET_RADIUS_MULTIPLIER: 6,
   ORBIT_DISTANCE_MULTIPLIER: 40,
   MIN_ORBIT_GAP: 800,
   ASTEROID_DISTANCE_MULTIPLIER: 40,
