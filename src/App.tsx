@@ -402,7 +402,7 @@ export default function App() {
   });
   const [systemRenderNonce, setSystemRenderNonce] = useState(0);
 
-  // Dynamic Tab Title Switcher (Viral Attention & Retention Hook)
+  // Dynamic Tab Titl Switcher (Viral Attention & Retention Hook)
   useEffect(() => {
     const originalTitle = '🪐 Planet:Us - Free 3D Space MMO | UMB Games and Technology Ltd';
     let intervalId: number | null = null;
