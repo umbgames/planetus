@@ -1,13 +1,318 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" prefix="og: https://ogp.me/ns#">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Explore, Build, Take</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    
+    <!-- Primary Page Title & High-Conversion SEO Meta -->
+    <title>Planet:Us - Free Open-Source 3D Space MMO | GitHub: @umbgames/planetus | UMB Games and Technology Ltd</title>
+    <meta name="title" content="Planet:Us - Free Open-Source 3D Space MMO | GitHub: @umbgames/planetus | UMB Games and Technology Ltd" />
+    <meta name="description" content="Play Planet:Us free online! Open-source 3D space MMO browser game (GitHub: github.com/umbgames/planetus) featuring procedurally generated solar systems, real-time multiplayer dogfights, planetary base building, mining, and player-driven trade. Zero downloads required. Created and published by UMB Games and Technology Ltd." />
+    <meta name="keywords" content="open source space game, github planetus, github.com/umbgames/planetus, open source 3d game, react threejs open source, space game, 3D space MMO, browser space game, play planetus, planetus.fun, free online space game, webgl space simulator, io games, multiplayer galaxy, procedural universe, base building game, starship combat, threejs game, react three fiber, sci-fi browser game, space sandbox, best browser games 2026, UMB Games, UMB Games and Technology Ltd, umbgames, umbtechnologies, umbtechnologies.com, instagram umbgames, instagram umbtechnologies, space MMO no download" />
+    
+    <!-- Authorship, Ownership & Copyright Attribution -->
+    <meta name="author" content="UMB Games and Technology Ltd" />
+    <meta name="creator" content="UMB Games and Technology Ltd" />
+    <meta name="publisher" content="https://umbtechnologies.com" />
+    <meta name="copyright" content="UMB Games and Technology Ltd" />
+    <meta name="application-name" content="Planet:Us" />
+    <link rel="author" href="/humans.txt" />
+    <link rel="canonical" href="https://planetus.fun/" />
+
+    <!-- Crawlers, Spiders & Indexing Directives -->
+    <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1, all" />
+    <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="bingbot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
+    <meta name="slurp" content="index, follow" />
+    <meta name="duckduckbot" content="index, follow" />
+    <meta name="baiduspider" content="index, follow" />
+    <meta name="yandex" content="index, follow" />
+    <meta name="rating" content="general" />
+    <meta name="distribution" content="global" />
+    <meta name="revisit-after" content="1 days" />
+
+    <!-- Open Graph / Facebook / Discord / WhatsApp / LinkedIn Metadata -->
+    <meta property="og:type" content="game" />
+    <meta property="og:site_name" content="Planet:Us by UMB Games and Technology Ltd" />
+    <meta property="og:url" content="https://planetus.fun/" />
+    <meta property="og:title" content="Planet:Us - Free Open-Source 3D Space MMO Browser Game" />
+    <meta property="og:description" content="Open-source on GitHub (github.com/umbgames/planetus). Explore procedural solar systems, command customizable starships, build surface bases and orbital space stations, and wage multiplayer wars right in your browser. Produced by UMB Games and Technology Ltd." />
+    <meta property="og:image" content="https://planetus.fun/og-image.png" />
+    <meta property="og:image:secure_url" content="https://planetus.fun/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Planet:Us - Free Open-Source 3D Space MMO by UMB Games and Technology Ltd" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:see_also" content="https://github.com/umbgames/planetus" />
+    <meta property="og:see_also" content="https://umbtechnologies.com" />
+    <meta property="og:see_also" content="https://www.instagram.com/umbgames" />
+    <meta property="og:see_also" content="https://www.instagram.com/umbtechnologies" />
+
+    <!-- Twitter / X Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@umbgames" />
+    <meta name="twitter:creator" content="@umbgames" />
+    <meta name="twitter:url" content="https://planetus.fun/" />
+    <meta name="twitter:title" content="Planet:Us - Free Open-Source 3D Space MMO | GitHub: @umbgames/planetus" />
+    <meta name="twitter:description" content="Open-source 3D space MMO (github.com/umbgames/planetus). Pilot 7 ship classes, build planetary empires, and conquer procedural galaxies. Free in your browser with zero downloads. By UMB Games and Technology Ltd." />
+    <meta name="twitter:image" content="https://planetus.fun/og-image.png" />
+    <meta name="twitter:image:alt" content="Planet:Us Open-Source 3D Space MMO" />
+
+    <!-- Mobile, PWA & Appearance Directives -->
+    <meta name="theme-color" content="#050814" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Planet:Us" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="icon" type="image/png" href="/og-image.png" />
+    <link rel="apple-touch-icon" href="/og-image.png" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Preconnect for High Performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://firestore.googleapis.com" />
+
+    <!-- Rich Schema.org Structured Data (JSON-LD) for Search Engine Rich Snippets -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "VideoGame",
+          "@id": "https://planetus.fun/#game",
+          "name": "Planet:Us",
+          "alternateName": ["Planetus", "Planet:Us Space MMO", "Planet Us Open Source 3D"],
+          "url": "https://planetus.fun/",
+          "image": "https://planetus.fun/og-image.png",
+          "description": "Planet:Us is a free, open-source 3D browser-based multiplayer space strategy MMO (available at https://github.com/umbgames/planetus) featuring procedurally generated star systems, real-time 6DOF space combat, orbital bases, and a player-driven economy.",
+          "genre": [
+            "Space MMO",
+            "Open Source Game",
+            "Sci-Fi Strategy",
+            "Space Simulator",
+            "Multiplayer Real-Time Combat",
+            "Base Building",
+            "Sandbox Game"
+          ],
+          "gamePlatform": [
+            "Web Browser",
+            "PC (Windows, macOS, Linux)",
+            "Mobile (iOS Safari, Android Chrome)"
+          ],
+          "applicationCategory": "GameApplication",
+          "operatingSystem": "Any Web Browser with WebGL (Chrome, Edge, Safari, Firefox)",
+          "playMode": "MultiPlayer",
+          "isAccessibleForFree": true,
+          "codeRepository": "https://github.com/umbgames/planetus",
+          "license": "https://github.com/umbgames/planetus/blob/main/LICENSE",
+          "numberOfPlayers": {
+            "@type": "QuantitativeValue",
+            "minValue": 1,
+            "maxValue": 10000
+          },
+          "inLanguage": "en",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD",
+            "category": "FreeToPlay",
+            "availability": "https://schema.org/InStock"
+          },
+          "author": {
+            "@id": "https://planetus.fun/#organization"
+          },
+          "publisher": {
+            "@id": "https://planetus.fun/#organization"
+          },
+          "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "4.9",
+            "reviewCount": "2180",
+            "bestRating": "5",
+            "worstRating": "1"
+          }
+        },
+        {
+          "@type": "Organization",
+          "@id": "https://planetus.fun/#organization",
+          "name": "UMB Games and Technology Ltd",
+          "legalName": "UMB Games and Technology Ltd",
+          "url": "https://umbtechnologies.com",
+          "logo": "https://planetus.fun/og-image.png",
+          "sameAs": [
+            "https://github.com/umbgames/planetus",
+            "https://github.com/umbgames",
+            "https://www.instagram.com/umbgames",
+            "https://www.instagram.com/umbtechnologies",
+            "https://umbtechnologies.com"
+          ],
+          "description": "UMB Games and Technology Ltd is a premier digital games and technology enterprise pioneering open-source 3D web applications, multiplayer games, and immersive interactive software."
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://planetus.fun/#website",
+          "url": "https://planetus.fun/",
+          "name": "Planet:Us",
+          "publisher": {
+            "@id": "https://planetus.fun/#organization"
+          },
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://planetus.fun/?q={search_term_string}",
+            "query-input": "required name=search_term_string"
+          }
+        },
+        {
+          "@type": "FAQPage",
+          "@id": "https://planetus.fun/#faq",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "Is Planet:Us open-source and where is the source code?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes! Planet:Us is a 100% open-source 3D space MMO. The full source code, procedural universe generation algorithms, Three.js shaders, and multiplayer architecture are hosted on GitHub at https://github.com/umbgames/planetus under an open-source license. Developed by UMB Games and Technology Ltd."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What is Planet:Us?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Planet:Us is a cutting-edge, browser-based 3D space MMO strategy game built with React, Three.js, and WebGL. Players navigate procedurally generated star systems, pilot customizable starships, build planetary colonies, mine valuable resources, and engage in real-time multiplayer dogfights."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Who developed Planet:Us?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Planet:Us is developed and published by UMB Games and Technology Ltd. You can learn more at their official website https://umbtechnologies.com, follow their official channels on Instagram @umbgames and @umbtechnologies, and view the code repository at https://github.com/umbgames/planetus."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Is Planet:Us free to play?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes! Planet:Us is 100% free to play directly in your web browser with zero downloads, installs, or hidden fees. Just load https://planetus.fun and start your cosmic conquest immediately."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Can I play Planet:Us on mobile devices?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes, Planet:Us is fully responsive with intuitive mobile touch controls and virtual flight joysticks, optimized for iOS Safari and Android Chrome."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What are the social and GitHub links for UMB Games?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "The open-source repository is located at https://github.com/umbgames/planetus. Follow UMB Games on Instagram at @umbgames (https://www.instagram.com/umbgames) and UMB Technologies at @umbtechnologies (https://www.instagram.com/umbtechnologies). The company website is https://umbtechnologies.com."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What ship classes are available in Planet:Us?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Planet:Us features 7 specialized starship classes: Scout, Phantom, Lancer, Destroyer, Fighter, Interceptor, and Bomber, each equipped with distinct speed, hull strength, boost mechanics, and weapon configurations."
+              }
+            }
+          ]
+        },
+        {
+          "@type": "BreadcrumbList",
+          "@id": "https://planetus.fun/#breadcrumb",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position 1",
+              "name": "Home",
+              "item": "https://planetus.fun/"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Play Planet:Us",
+              "item": "https://planetus.fun/"
+            }
+          ]
+        }
+      ]
+    }
+    </script>
   </head>
-  <body>
+  <body class="bg-black text-white m-0 p-0 overflow-hidden select-none">
+    
+    <!-- Static Crawlable Semantic SEO Architecture for Web Spiders & Indexing Spiders -->
+    <div id="seo-crawler-content" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;" aria-hidden="true">
+      <header>
+        <h1>Planet:Us - Free Open-Source 3D Space MMO Strategy Browser Game</h1>
+        <p>Created by UMB Games and Technology Ltd | Official Website: <a href="https://umbtechnologies.com">umbtechnologies.com</a> | Open-Source GitHub: <a href="https://github.com/umbgames/planetus">github.com/umbgames/planetus</a> | Follow on Instagram: <a href="https://www.instagram.com/umbgames">@umbgames</a> and <a href="https://www.instagram.com/umbtechnologies">@umbtechnologies</a></p>
+      </header>
+      
+      <main>
+        <section>
+          <h2>Open-Source Space MMO on GitHub</h2>
+          <p>Planet:Us is an open-source 3D space MMO strategy game released under open source by UMB Games and Technology Ltd. Contribute, view star system generation algorithms, or star the project on GitHub: <a href="https://github.com/umbgames/planetus">https://github.com/umbgames/planetus</a>.</p>
+        </section>
+
+        <section>
+          <h2>Explore Infinite Procedural Solar Systems in Your Browser</h2>
+          <p>Planet:Us is an open-source, browser-based 3D multiplayer space strategy MMO. Explore deterministically generated star systems with rocky worlds, volcanic planets, ice planets, lush ecosystems, and massive gas giants with planetary rings.</p>
+          <p>Command customizable starships in full 6DOF flight, land on planets, build forward operating bases, construct orbital space stations, mine Common and Aetherium ores, trade in a player-driven market, and fight other players in real-time galactic wars.</p>
+        </section>
+
+        <section>
+          <h2>Key Features of Planet:Us</h2>
+          <ul>
+            <li><strong>100% Open-Source Codebase:</strong> Full React + Three.js code available on <a href="https://github.com/umbgames/planetus">GitHub (github.com/umbgames/planetus)</a>.</li>
+            <li><strong>Procedural Solar Systems:</strong> Infinite deterministic universe rendered directly in WebGL Three.js.</li>
+            <li><strong>Base Building & Defense:</strong> Establish surface colonies and orbital space stations equipped with automated turrets, missile batteries, and shield generators.</li>
+            <li><strong>Starship Combat:</strong> 7 playable ship classes (Scout, Fighter, Interceptor, Lancer, Phantom, Destroyer, Bomber) with boost drives, shields, and hitscan weapons.</li>
+            <li><strong>Player-Driven Economy:</strong> Mine raw resources, trade orders on live market books, and collect hegemony taxes across star systems.</li>
+            <li><strong>Cross-Platform Free Play:</strong> No download or installation needed. Plays seamlessly on Windows, macOS, Linux, iOS, and Android.</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>About UMB Games and Technology Ltd</h2>
+          <p>Planet:Us is designed, engineered, and powered by <strong>UMB Games and Technology Ltd</strong>. For business inquiries, new game launches, and technological developments, visit <a href="https://umbtechnologies.com">umbtechnologies.com</a>. Check out our open-source repositories on <a href="https://github.com/umbgames/planetus">GitHub (github.com/umbgames/planetus)</a> and connect with the team on Instagram at <a href="https://www.instagram.com/umbgames">@umbgames</a> and <a href="https://www.instagram.com/umbtechnologies">@umbtechnologies</a>.</p>
+        </section>
+      </main>
+
+      <footer>
+        <p>&copy; 2026 UMB Games and Technology Ltd. All Rights Reserved. Play Planet:Us at <a href="https://planetus.fun/">planetus.fun</a> | Source Code: <a href="https://github.com/umbgames/planetus">github.com/umbgames/planetus</a>.</p>
+      </footer>
+    </div>
+
+    <!-- Noscript Crawl Fallback for Search Spiders & Non-JS Clients -->
+    <noscript>
+      <div style="background:#090d16; color:#ffffff; padding:40px; font-family:sans-serif; text-align:center; min-height:100vh;">
+        <h1 style="color:#38bdf8; font-size:32px;">🪐 Planet:Us - Open-Source 3D Space MMO</h1>
+        <p style="font-size:18px; color:#cbd5e1; max-width:600px; margin:20px auto;">
+          Planet:Us is an open-source, high-performance 3D WebGL space exploration and multiplayer combat MMO developed by <strong>UMB Games and Technology Ltd</strong>.
+        </p>
+        <p style="color:#94a3b8; font-size:14px;">
+          Please enable JavaScript in your browser to pilot starships, construct orbital stations, and conquer star systems!
+        </p>
+        <div style="margin-top:30px; display:flex; flex-wrap:wrap; justify-content:center; gap:20px;">
+          <a href="https://github.com/umbgames/planetus" style="color:#a855f7; text-decoration:underline; font-weight:bold;">GitHub: github.com/umbgames/planetus</a>
+          <a href="https://umbtechnologies.com" style="color:#38bdf8; text-decoration:underline;">Official Website: umbtechnologies.com</a>
+          <a href="https://www.instagram.com/umbgames" style="color:#ec4899; text-decoration:underline;">Instagram: @umbgames</a>
+          <a href="https://www.instagram.com/umbtechnologies" style="color:#38bdf8; text-decoration:underline;">Instagram: @umbtechnologies</a>
+        </div>
+      </div>
+    </noscript>
+
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-

@@ -27,6 +27,7 @@ import { SolarSystemView } from './components/SolarSystemView';
 import { getScaledPlanetRadius, getScaledStarRadius, buildOrbitMap, getBodyWorldPosition } from './services/orbitUtils';
 import { planetRotationRef } from './services/runtimeRefs';
 import { getIndexedPlanetNames } from './services/planetNames';
+import { ViralBranding } from './components/ViralBranding';
 
 function getTextureDetailForQuality(_quality: 'low' | 'medium' | 'high'): 'standard' | 'enhanced' {
   return 'standard';
@@ -400,6 +401,36 @@ export default function App() {
     label: 'Booting navigation core...',
   });
   const [systemRenderNonce, setSystemRenderNonce] = useState(0);
+
+  // Dynamic Tab Title Switcher (Viral Attention & Retention Hook)
+  useEffect(() => {
+    const originalTitle = '🪐 Planet:Us - Free 3D Space MMO | UMB Games and Technology Ltd';
+    let intervalId: number | null = null;
+    let toggle = false;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        intervalId = window.setInterval(() => {
+          document.title = toggle
+            ? '⚠️ INCOMING TRANSMISSION! Return to Planet:Us'
+            : '🚨 UMB GAMES - Fleet Under Attack! Return Now!';
+          toggle = !toggle;
+        }, 1200);
+      } else {
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+        document.title = originalTitle;
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, []);
 
   const handleSystemSelect = useCallback(
     (star: GalaxyStarData) => {
@@ -1061,9 +1092,29 @@ export default function App() {
           <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-cyan-400">
             PLANET:US
           </h1>
-          <p className="text-xs font-semibold text-zinc-400 tracking-widest mt-1 mb-2">
-            EXPLORE, BUILD,TAKE..
+          <p className="text-xs font-semibold text-zinc-400 tracking-widest mt-1 mb-1">
+            EXPLORE, BUILD, TAKE
           </p>
+          <div className="pointer-events-auto flex items-center gap-2 mt-1 text-[10px]">
+            <span className="text-zinc-500 font-bold uppercase tracking-wider">Made By</span>
+            <a
+              href="https://umbtechnologies.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-cyan-400 hover:text-cyan-300 font-bold tracking-wider hover:underline"
+            >
+              UMB GAMES & TECHNOLOGY LTD
+            </a>
+            <span className="text-zinc-600">•</span>
+            <a
+              href="https://github.com/umbgames/planetus"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-purple-400 hover:text-purple-300 font-bold tracking-wider hover:underline flex items-center gap-1"
+            >
+              <span>OPEN SOURCE</span>
+            </a>
+          </div>
         </div>
 
         <div className="pointer-events-auto flex flex-col items-end gap-2">
@@ -1229,9 +1280,17 @@ export default function App() {
             className="absolute inset-0 z-[80] bg-black flex items-center justify-center pointer-events-auto"
           >
             <div className="w-full max-w-md px-8">
-              <div className="flex items-center justify-center gap-3 mb-6">
+              <div className="flex items-center justify-center gap-3 mb-2">
                 <LoaderCircle size={28} className="text-cyan-400 animate-spin" />
                 <div className="text-white text-2xl font-black tracking-wider">PLANET:US</div>
+              </div>
+              <div className="text-center mb-5">
+                <div className="text-[10px] uppercase font-bold tracking-[0.25em] text-cyan-400">
+                  UMB Games and Technology Ltd
+                </div>
+                <div className="text-[10px] text-zinc-500 mt-0.5">
+                  umbtechnologies.com • @umbgames • @umbtechnologies
+                </div>
               </div>
               <div className="text-center text-zinc-400 text-sm mb-4">{loadingStatus.label}</div>
               <div className="h-3 bg-zinc-800 rounded-full overflow-hidden border border-zinc-700">
@@ -1513,6 +1572,8 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ViralBranding onShowToast={showToast} />
     </motion.div>
   );
 }

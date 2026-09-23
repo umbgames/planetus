@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://planetus.fun/</loc>
+    <lastmod>2026-09-23</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://planetus.fun/og-image.png</image:loc>
+      <image:title>Planet:Us - Free 3D Space MMO Strategy Game by UMB Games and Technology Ltd</image:title>
+      <image:caption>Procedural solar systems, base building, and multiplayer space battles in Planet:Us</image:caption>
+    </image:image>
+  </url>
+</urlset>

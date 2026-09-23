@@ -1,0 +1,32 @@
+{
+  "name": "Planet:Us - 3D Space MMO Strategy Game",
+  "short_name": "Planet:Us",
+  "description": "Play Planet:Us free online. Procedural solar systems, real-time multiplayer space battles, base building, and player-driven economy in your browser. Created by UMB Games and Technology Ltd.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050814",
+  "theme_color": "#050814",
+  "orientation": "landscape-primary",
+  "categories": ["games", "action", "strategy", "entertainment", "simulation"],
+  "developer": {
+    "name": "UMB Games and Technology Ltd",
+    "url": "https://umbtechnologies.com"
+  },
+  "icons": [
+    {
+      "src": "/og-image.png",
+      "sizes": "1200x630",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/og-image.png",
+      "sizes": "1200x630",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Planet:Us Space MMO Universe"
+    }
+  ]
+}
