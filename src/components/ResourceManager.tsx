@@ -64,7 +64,7 @@ function Resource({ data, isMobile, geographyManager, planetRadius }: { data: Re
       const pos = new THREE.Vector3(data.position.x, data.position.y, data.position.z);
       const normal = pos.clone().normalize();
       
-      const displacementScale = planetRadius * (isMobile ? 0.12 : 0.19) * 1.08;
+      const displacementScale = planetRadius * 0.028;
       const height = geographyManager.getHeightAtPoint(pos.x, pos.y, pos.z, planetRadius, displacementScale);
       
       const adjustedPos = normal.clone().multiplyScalar(height);
@@ -72,7 +72,7 @@ function Resource({ data, isMobile, geographyManager, planetRadius }: { data: Re
       groupRef.current.position.copy(adjustedPos);
       groupRef.current.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
     }
-  }, [data.position, planetRadius, isMobile, geographyManager]);
+  }, [data.position, planetRadius, geographyManager]);
 
   useFrame((state) => {
     if (!groupRef.current || !meshRef.current) return;

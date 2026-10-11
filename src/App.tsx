@@ -1087,189 +1087,193 @@ export default function App() {
       )}
 
       {/* UI Overlay */}
-      <div className="absolute top-0 left-0 w-full p-6 pointer-events-none flex justify-between items-start z-40">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-cyan-400">
-            PLANET:US
-          </h1>
-          <p className="text-xs font-semibold text-zinc-400 tracking-widest mt-1 mb-1">
-            EXPLORE, BUILD, TAKE
-          </p>
-          <div className="pointer-events-auto flex items-center gap-2 mt-1 text-[10px]">
-            <span className="text-zinc-500 font-bold uppercase tracking-wider">Made By</span>
-            <a
-              href="https://umbtechnologies.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-cyan-400 hover:text-cyan-300 font-bold tracking-wider hover:underline"
-            >
-              UMB GAMES & TECHNOLOGY LTD
-            </a>
-            <span className="text-zinc-600">•</span>
-            <a
-              href="https://github.com/umbgames/planetus"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-purple-400 hover:text-purple-300 font-bold tracking-wider hover:underline flex items-center gap-1"
-            >
-              <span>OPEN SOURCE</span>
-            </a>
+      {!isShipMode && (
+        <div className="absolute top-0 left-0 w-full p-6 pointer-events-none flex justify-between items-start z-40">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-cyan-400">
+              PLANET:US
+            </h1>
+            <p className="text-xs font-semibold text-zinc-400 tracking-widest mt-1 mb-1">
+              EXPLORE, BUILD, TAKE
+            </p>
+            <div className="pointer-events-auto flex items-center gap-2 mt-1 text-[10px]">
+              <span className="text-zinc-500 font-bold uppercase tracking-wider">Made By</span>
+              <a
+                href="https://umbtechnologies.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-cyan-400 hover:text-cyan-300 font-bold tracking-wider hover:underline"
+              >
+                UMB GAMES & TECHNOLOGY LTD
+              </a>
+              <span className="text-zinc-600">•</span>
+              <a
+                href="https://github.com/umbgames/planetus"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-purple-400 hover:text-purple-300 font-bold tracking-wider hover:underline flex items-center gap-1"
+              >
+                <span>OPEN SOURCE</span>
+              </a>
+            </div>
+          </div>
+
+          <div className="pointer-events-auto flex flex-col items-end gap-2">
+            {!userData ? (
+              <button
+                onClick={handleLogin}
+                className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2"
+              >
+                <LogIn size={16} />
+                Login to Build
+              </button>
+            ) : (
+              <div className="bg-zinc-900/80 backdrop-blur border border-zinc-700 rounded-lg p-3 text-right">
+                <div className="text-sm font-bold text-white mb-1">{userData.displayName}</div>
+                <div className="flex gap-4 text-xs">
+                  <div className="text-zinc-300">
+                    Common: <span className="text-white font-mono">{userData.commonResources}</span>
+                  </div>
+                  <div className="text-fuchsia-400">
+                    Aetherium: <span className="text-white font-mono">{userData.rareResources}</span>
+                  </div>
+                </div>
+
+                {!userData.hasSatellite && (
+                  <button
+                    onClick={handleLaunchSatellite}
+                    disabled={userData.commonResources < 500 || userData.rareResources < 100}
+                    className="mt-2 w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+                  >
+                    <RadioTower size={12} />
+                    Launch Satellite (500C, 100A)
+                  </button>
+                )}
+
+                <button
+                  onClick={() => setShowMarket(true)}
+                  className="mt-2 w-full bg-cyan-600 hover:bg-cyan-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+                >
+                  <ArrowRightLeft size={12} />
+                  Market
+                </button>
+
+                <button
+                  onClick={() => setShowClanUI(true)}
+                  className="mt-2 w-full bg-blue-600 hover:bg-blue-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+                >
+                  <Users size={12} />
+                  Clans
+                </button>
+
+                <button
+                  onClick={() => setShowShipyardUI(true)}
+                  className="mt-2 w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+                >
+                  <Rocket size={12} />
+                  Shipyard
+                </button>
+
+                <button
+                  onClick={() => {
+                    showToast('Watching ad...');
+                    setTimeout(() => {
+                      gameManager.addCurrency(100);
+                      showToast('Earned 100 Common Resources!');
+                    }, 2000);
+                  }}
+                  className="mt-2 w-full bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+                >
+                  <MonitorPlay size={12} />
+                  Watch Ad
+                </button>
+              </div>
+            )}
           </div>
         </div>
+      )}
 
-        <div className="pointer-events-auto flex flex-col items-end gap-2">
-          {!userData ? (
-            <button
-              onClick={handleLogin}
-              className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2"
-            >
-              <LogIn size={16} />
-              Login to Build
-            </button>
-          ) : (
-            <div className="bg-zinc-900/80 backdrop-blur border border-zinc-700 rounded-lg p-3 text-right">
-              <div className="text-sm font-bold text-white mb-1">{userData.displayName}</div>
-              <div className="flex gap-4 text-xs">
-                <div className="text-zinc-300">
-                  Common: <span className="text-white font-mono">{userData.commonResources}</span>
-                </div>
-                <div className="text-fuchsia-400">
-                  Aetherium: <span className="text-white font-mono">{userData.rareResources}</span>
-                </div>
-              </div>
+      {!isShipMode && (
+        <div className="absolute top-24 left-6 z-40 pointer-events-auto">
+          <button
+            onClick={() => setShowSettingsPanel((v) => !v)}
+            className="bg-zinc-900/80 hover:bg-zinc-800 text-white border border-zinc-700 rounded-2xl px-4 py-3 shadow-2xl flex items-center gap-3"
+          >
+            {showSettingsPanel ? <X size={18} /> : <Settings size={18} />}
+          </button>
 
-              {!userData.hasSatellite && (
-                <button
-                  onClick={handleLaunchSatellite}
-                  disabled={userData.commonResources < 500 || userData.rareResources < 100}
-                  className="mt-2 w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
-                >
-                  <RadioTower size={12} />
-                  Launch Satellite (500C, 100A)
-                </button>
-              )}
-
-              <button
-                onClick={() => setShowMarket(true)}
-                className="mt-2 w-full bg-cyan-600 hover:bg-cyan-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+          <AnimatePresence>
+            {showSettingsPanel && (
+              <motion.div
+                initial={{ opacity: 0, y: -12, scale: 0.96 }}
+                animate={{ opacity: 1, y: 10, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                className="mt-3 glass-panel-light rounded-2xl p-4 w-[280px]"
               >
-                <ArrowRightLeft size={12} />
-                Market
-              </button>
-
-              <button
-                onClick={() => setShowClanUI(true)}
-                className="mt-2 w-full bg-blue-600 hover:bg-blue-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
-              >
-                <Users size={12} />
-                Clans
-              </button>
-
-              <button
-                onClick={() => setShowShipyardUI(true)}
-                className="mt-2 w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
-              >
-                <Rocket size={12} />
-                Shipyard
-              </button>
-
-              <button
-                onClick={() => {
-                  showToast('Watching ad...');
-                  setTimeout(() => {
-                    gameManager.addCurrency(100);
-                    showToast('Earned 100 Common Resources!');
-                  }, 2000);
-                }}
-                className="mt-2 w-full bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
-              >
-                <MonitorPlay size={12} />
-                Watch Ad
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="absolute top-24 left-6 z-40 pointer-events-auto">
-        <button
-          onClick={() => setShowSettingsPanel((v) => !v)}
-          className="bg-zinc-900/80 hover:bg-zinc-800 text-white border border-zinc-700 rounded-2xl px-4 py-3 shadow-2xl flex items-center gap-3"
-        >
-          {showSettingsPanel ? <X size={18} /> : <Settings size={18} />}
-        </button>
-
-        <AnimatePresence>
-          {showSettingsPanel && (
-            <motion.div
-              initial={{ opacity: 0, y: -12, scale: 0.96 }}
-              animate={{ opacity: 1, y: 10, scale: 1 }}
-              exit={{ opacity: 0, y: -8, scale: 0.96 }}
-              className="mt-3 glass-panel-light rounded-2xl p-4 w-[280px]"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <div className="text-[10px] uppercase font-display tracking-[0.25em] text-[#38bdf8] font-bold">
-                    System Control
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <div className="text-[10px] uppercase font-display tracking-[0.25em] text-[#38bdf8] font-bold">
+                      System Control
+                    </div>
+                    <div className="text-sm text-white font-bold">Performance + Navigation</div>
                   </div>
-                  <div className="text-sm text-white font-bold">Performance + Navigation</div>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between bg-black/40 rounded-xl px-3 py-2 border border-white/5 shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
-                <div>
-                  <div className="text-sm text-white font-bold">Orbit Rings</div>
-                  <div className="text-[11px] text-[#94a3b8]">Better navigation in solar view</div>
-                </div>
-                <button
-                  onClick={() => setShowOrbitRings((v) => !v)}
-                  className={`w-14 h-8 rounded-full transition-colors relative ${
-                    showOrbitRings ? 'bg-[#38bdf8] shadow-[0_0_8px_#38bdf8]' : 'bg-[#334155]'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-1 h-6 w-6 rounded-full bg-white transition-all ${
-                      showOrbitRings ? 'left-7' : 'left-1'
+                <div className="flex items-center justify-between bg-black/40 rounded-xl px-3 py-2 border border-white/5 shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]">
+                  <div>
+                    <div className="text-sm text-white font-bold">Orbit Rings</div>
+                    <div className="text-[11px] text-[#94a3b8]">Better navigation in solar view</div>
+                  </div>
+                  <button
+                    onClick={() => setShowOrbitRings((v) => !v)}
+                    className={`w-14 h-8 rounded-full transition-colors relative ${
+                      showOrbitRings ? 'bg-[#38bdf8] shadow-[0_0_8px_#38bdf8]' : 'bg-[#334155]'
                     }`}
-                  />
-                </button>
-              </div>
+                  >
+                    <span
+                      className={`absolute top-1 h-6 w-6 rounded-full bg-white transition-all ${
+                        showOrbitRings ? 'left-7' : 'left-1'
+                      }`}
+                    />
+                  </button>
+                </div>
 
-              <div className="mt-3 space-y-2">
-                <div className="text-sm text-white font-bold">Graphics Level</div>
-                <div className="grid grid-cols-2 gap-2">
-                  {([
-                    { key: 'medium', label: 'Mid', detail: 'Balanced visuals' },
-                    { key: 'high', label: 'High', detail: 'Best visuals' },
-                  ] as const).map((option) => {
-                    const active = qualityPreset === option.key;
-                    return (
-                      <button
-                        key={option.key}
-                        onClick={() => setQualityPreset(option.key)}
-                        className={`rounded-xl border px-3 py-3 text-left transition-all ${
-                          active
-                            ? 'border-[#38bdf8] bg-[#38bdf8]/15 shadow-[0_0_8px_rgba(56,189,248,0.35)]'
-                            : 'border-white/10 bg-black/40 hover:bg-black/60 shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="text-sm font-bold text-white">{option.label}</div>
-                          {active && <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#38bdf8]">Active</div>}
-                        </div>
-                        <div className="mt-1 text-[10px] text-[#94a3b8]">{option.detail}</div>
-                      </button>
-                    );
-                  })}
+                <div className="mt-3 space-y-2">
+                  <div className="text-sm text-white font-bold">Graphics Level</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { key: 'medium', label: 'Mid', detail: 'Balanced visuals' },
+                      { key: 'high', label: 'High', detail: 'Best visuals' },
+                    ] as const).map((option) => {
+                      const active = qualityPreset === option.key;
+                      return (
+                        <button
+                          key={option.key}
+                          onClick={() => setQualityPreset(option.key)}
+                          className={`rounded-xl border px-3 py-3 text-left transition-all ${
+                            active
+                              ? 'border-[#38bdf8] bg-[#38bdf8]/15 shadow-[0_0_8px_rgba(56,189,248,0.35)]'
+                              : 'border-white/10 bg-black/40 hover:bg-black/60 shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="text-sm font-bold text-white">{option.label}</div>
+                            {active && <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#38bdf8]">Active</div>}
+                          </div>
+                          <div className="mt-1 text-[10px] text-[#94a3b8]">{option.detail}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="text-[10px] text-[#64748b] leading-relaxed mt-2 font-medium">
+                    Mid keeps post-processing lighter. High enables the full visual pass with stronger nebula depth, bloom, and scene grading.
+                  </div>
                 </div>
-                <div className="text-[10px] text-[#64748b] leading-relaxed mt-2 font-medium">
-                  Mid keeps post-processing lighter. High enables the full visual pass with stronger nebula depth, bloom, and scene grading.
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
 
       <AnimatePresence>
         {loadingStatus.active && (

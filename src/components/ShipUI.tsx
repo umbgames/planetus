@@ -272,17 +272,17 @@ export function ShipUI({ onExit, userData }: ShipUIProps) {
 
   useEffect(() => {
     const checkMobile = () => {
-      const isMobileUserAgent =
+      const isMobileUA =
         /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
           navigator.userAgent
         );
+      const isSmallTouchScreen =
+        window.innerWidth <= 768 &&
+        ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+      const isPureTouchDevice =
+        window.matchMedia('(pointer: coarse) and (hover: none)').matches;
 
-      setIsMobile(
-        window.innerWidth <= 768 ||
-          isMobileUserAgent ||
-          window.matchMedia('(pointer: coarse)').matches ||
-          'ontouchstart' in window
-      );
+      setIsMobile(Boolean(isMobileUA || isSmallTouchScreen || isPureTouchDevice));
     };
 
     checkMobile();

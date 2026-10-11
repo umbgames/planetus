@@ -407,8 +407,10 @@ export function Ship({
 
   useEffect(() => {
     const checkMobile = () => {
-      const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      setIsMobile(window.innerWidth <= 768 || isMobileUserAgent || window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window);
+      const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isSmallTouchScreen = window.innerWidth <= 768 && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+      const isPureTouchDevice = window.matchMedia('(pointer: coarse) and (hover: none)').matches;
+      setIsMobile(Boolean(isMobileUA || isSmallTouchScreen || isPureTouchDevice));
     };
     checkMobile();
 
@@ -576,7 +578,11 @@ export function Ship({
     for (const base of bases) {
       if (!base.position) continue;
       const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
-      const hit = testPointOnRay(basePos, hitRadiusBase);
+      const normal = basePos.clone().normalize();
+      const displacementScale = planetRadius * 0.028;
+      const height = geographyManager.getHeightAtPoint(basePos.x, basePos.y, basePos.z, planetRadius, displacementScale);
+      const actualBasePos = normal.multiplyScalar(height);
+      const hit = testPointOnRay(actualBasePos, hitRadiusBase * 1.5);
       if (hit && hit.along < bestDist) {
         bestDist = hit.along;
         bestHit = { kind: 'base', base, pos: hit.closestPoint };
@@ -599,7 +605,11 @@ export function Ship({
     for (const res of gameManager.resources) {
       if (!res.active) continue;
       const resPos = new THREE.Vector3(res.position.x, res.position.y, res.position.z);
-      const hit = testPointOnRay(resPos, 0.8);
+      const normal = resPos.clone().normalize();
+      const displacementScale = planetRadius * 0.028;
+      const height = geographyManager.getHeightAtPoint(resPos.x, resPos.y, resPos.z, planetRadius, displacementScale);
+      const actualResPos = normal.multiplyScalar(height);
+      const hit = testPointOnRay(actualResPos, 1.8);
       if (hit && hit.along < bestDist) {
         bestDist = hit.along;
         bestHit = { kind: 'resource', res, pos: hit.closestPoint };
@@ -762,8 +772,10 @@ export function Ship({
 
     const fog = scene.fog as THREE.Fog;
     fog.color.copy(skyColor.current);
-    fog.near = THREE.MathUtils.lerp(8000, 0.5, Math.pow(tiltFactor, 4));
-    fog.far = THREE.MathUtils.lerp(3000000, 4.0, Math.pow(tiltFactor, 4));
+    const minFogFar = Math.max(R * 3.5, 240);
+    const minFogNear = Math.max(R * 0.1, 8);
+    fog.near = THREE.MathUtils.lerp(8000, minFogNear, Math.pow(tiltFactor, 3));
+    fog.far = THREE.MathUtils.lerp(3000000, minFogFar, Math.pow(tiltFactor, 3));
 
     if (isLaunching) {
       launchProgress.current += delta;

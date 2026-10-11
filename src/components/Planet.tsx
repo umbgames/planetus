@@ -300,16 +300,17 @@ export const Planet = memo(function Planet({
 
   const displacementScale = useMemo(() => {
     if (isMoon) return radius * 0.005;
-    const base = isMobile ? 0.12 : 0.19;
-    const detailBoost = textureDetail === 'enhanced' ? 1.08 : 1;
+    // Calibrated natural relief (2.8% of radius) for dramatic yet grounded mountain ranges
+    const base = 0.028;
+    const detailBoost = textureDetail === 'enhanced' ? 1.12 : 1;
     return radius * base * detailBoost;
-  }, [isMobile, textureDetail, radius, isMoon]);
+  }, [textureDetail, radius, isMoon]);
 
   const bumpScale = useMemo(() => {
     if (isMoon) return radius * 0.002;
-    const base = isMobile ? 0.012 : 0.018;
+    const base = 0.005;
     return radius * base;
-  }, [isMobile, radius, isMoon]);
+  }, [radius, isMoon]);
 
   const baseCloudRotation = useMemo(() => serverTime * 0.00006, [serverTime]);
 
@@ -358,7 +359,7 @@ export const Planet = memo(function Planet({
           map={texture}
           displacementMap={displacementMap}
           displacementScale={displacementScale}
-          displacementBias={-displacementScale * 0.18}
+          displacementBias={-displacementScale * 0.15}
           bumpMap={displacementMap}
           bumpScale={bumpScale}
           roughness={0.78}
@@ -376,7 +377,7 @@ export const Planet = memo(function Planet({
           color={atmosphereColors.inner}
           opacity={0.38}
           power={2.9}
-          width={1.25}
+          width={1.065}
           segments={atmosphereSegments}
         />
       </group>
@@ -387,17 +388,17 @@ export const Planet = memo(function Planet({
           color={atmosphereColors.outer}
           opacity={0.22}
           power={3.8}
-          width={1.40}
+          width={1.12}
           segments={atmosphereSegments}
         />
       </group>
 
       <mesh frustumCulled>
-        <sphereGeometry args={[radius * 1.24, atmosphereSegments, atmosphereSegments]} />
+        <sphereGeometry args={[radius * 1.055, atmosphereSegments, atmosphereSegments]} />
         <meshLambertMaterial
           color={atmosphereColors.inner}
           transparent
-          opacity={0.35}
+          opacity={0.32}
           side={THREE.FrontSide}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
@@ -408,12 +409,12 @@ export const Planet = memo(function Planet({
       {showClouds && cloudTexture1 && cloudTexture2 && cloudTexture3 && (
         <>
           <mesh ref={cloudLayer1Ref} frustumCulled>
-            <sphereGeometry args={[radius * 1.21, cloudSegments, cloudSegments]} />
+            <sphereGeometry args={[radius * 1.032, cloudSegments, cloudSegments]} />
             <meshStandardMaterial
               map={cloudTexture1}
               color={cloudColor}
               transparent
-              opacity={0.85}
+              opacity={0.82}
               roughness={0.95}
               metalness={0}
               depthWrite={false}
@@ -423,12 +424,12 @@ export const Planet = memo(function Planet({
           </mesh>
 
           <mesh ref={cloudLayer2Ref} frustumCulled>
-            <sphereGeometry args={[radius * 1.26, cloudSegments, cloudSegments]} />
+            <sphereGeometry args={[radius * 1.038, cloudSegments, cloudSegments]} />
             <meshStandardMaterial
               map={cloudTexture2}
               color={cloudColor}
               transparent
-              opacity={0.65}
+              opacity={0.62}
               roughness={0.9}
               metalness={0}
               depthWrite={false}
@@ -438,12 +439,12 @@ export const Planet = memo(function Planet({
           </mesh>
 
           <mesh ref={cloudLayer3Ref} frustumCulled>
-            <sphereGeometry args={[radius * 1.30, cloudSegments, cloudSegments]} />
+            <sphereGeometry args={[radius * 1.044, cloudSegments, cloudSegments]} />
             <meshStandardMaterial
               map={cloudTexture3}
               color={cloudColor}
               transparent
-              opacity={0.55}
+              opacity={0.52}
               roughness={0.92}
               metalness={0}
               depthWrite={false}

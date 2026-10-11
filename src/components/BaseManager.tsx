@@ -73,7 +73,7 @@ function Base({ data, isMobile, geographyManager, planetRadius }: { data: BaseDa
     )
 
     const normal = pos.clone().normalize()
-    const displacementScale = planetRadius * (isMobile ? 0.12 : 0.19) * 1.08;
+    const displacementScale = planetRadius * 0.028;
     const height = geographyManager.getHeightAtPoint(pos.x, pos.y, pos.z, planetRadius, displacementScale);
     
     const adjustedPos = normal.clone().multiplyScalar(height);
@@ -87,7 +87,7 @@ function Base({ data, isMobile, geographyManager, planetRadius }: { data: BaseDa
       normal
     )
 
-  },[data.position, planetRadius, isMobile, geographyManager])
+  },[data.position, planetRadius, geographyManager])
 
   useFrame((state)=>{
 
