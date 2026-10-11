@@ -70,7 +70,13 @@ export function Sun({ radius = 2, distance = 30, speed = 0.1, onClick, color = '
       <directionalLight
         ref={lightRef}
         color="#ffddaa"
-        intensity={6}
+        intensity={4}
+      />
+      <pointLight
+        color={color || '#fff1b8'}
+        intensity={3.5}
+        distance={0}
+        decay={0}
       />
     </group>
   );

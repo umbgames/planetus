@@ -538,8 +538,9 @@ export function Ship({
       const perspectiveCamera = camera as THREE.PerspectiveCamera;
       perspectiveCamera.fov = 42;
       perspectiveCamera.updateProjectionMatrix();
+      scene.fog = null;
     };
-  }, [camera, gl]);
+  }, [camera, gl, scene]);
 
   const fireHitscan = useCallback((
     type: 'mg' | 'missile',
@@ -746,8 +747,6 @@ export function Ship({
       }
     }
 
-    if (!isLocked && !isLaunching && !isMobile) return;
-
     const distForAtmosphere = position.current.length();
     const R = planetRadius;
     const altitude = distForAtmosphere - R;
@@ -772,10 +771,12 @@ export function Ship({
 
     const fog = scene.fog as THREE.Fog;
     fog.color.copy(skyColor.current);
-    const minFogFar = Math.max(R * 3.5, 240);
-    const minFogNear = Math.max(R * 0.1, 8);
+    const minFogFar = Math.max(R * 4.0, 300);
+    const minFogNear = Math.max(R * 0.5, 20);
     fog.near = THREE.MathUtils.lerp(8000, minFogNear, Math.pow(tiltFactor, 3));
     fog.far = THREE.MathUtils.lerp(3000000, minFogFar, Math.pow(tiltFactor, 3));
+
+    if (!isLocked && !isLaunching && !isMobile) return;
 
     if (isLaunching) {
       launchProgress.current += delta;

@@ -956,7 +956,7 @@ export default function App() {
       : qualityPreset === 'medium'
         ? ([1, 1.4] as [number, number])
         : ([1, 1.85] as [number, number]);
-  const enableEnvironment = !isShipMode && ((!isMobile && qualityPreset !== 'low') || qualityPreset === 'high');
+  const enableEnvironment = (!isMobile && qualityPreset !== 'low') || qualityPreset === 'high';
   const bodyCount = solarSystem?.bodies.filter((b) => b.type === 'planet').length ?? 0;
   const activePlanetName = currentPlanetId ? (planetNameMap[currentPlanetId] || currentPlanetId.replace('planet_', 'PLANET-')) : 'SOL';
 
@@ -986,8 +986,8 @@ export default function App() {
         gl={{ antialias: false, powerPreference: 'high-performance' }}
       >
         <color attach="background" args={[isShipMode ? '#02040a' : '#04060d']} />
-        <ambientLight intensity={isShipMode ? 0.18 : 0.12} />
-        <hemisphereLight args={['#89c5ff', '#130b08', isShipMode ? 0.26 : 0.38]} />
+        <ambientLight intensity={isShipMode ? 0.24 : 0.18} />
+        <hemisphereLight args={['#89c5ff', '#130b08', isShipMode ? 0.35 : 0.38]} />
         {qualityPreset !== 'low' && <NebulaBackdrop qualityPreset={qualityPreset} />}
 
         <Stars
@@ -1015,7 +1015,7 @@ export default function App() {
 
         {solarSystem && (
           <SolarSystemView
-            key={`${currentSystemSeed}:${systemRenderNonce}:${isShipMode ? 'ship' : 'orbit'}`}
+            key={`${currentSystemSeed}:${systemRenderNonce}`}
             data={solarSystem}
             isMobile={isMobile}
             currentPlanetId={currentPlanetId}

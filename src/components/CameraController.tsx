@@ -1,4 +1,4 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -19,6 +19,12 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 0, 0), []);
   const spaceColor = useMemo(() => new THREE.Color('#000000'), []);
   const skyColor = useMemo(() => new THREE.Color('#cda077'), []);
+
+  useEffect(() => {
+    return () => {
+      scene.fog = null;
+    };
+  }, [scene]);
   
   useFrame((state) => {
     const dist = camera.position.length();
@@ -53,9 +59,11 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
     const fog = scene.fog as THREE.Fog;
     fog.color.copy(skyColor);
     
-    // Use exponential curve for fog distances so it only comes in near the surface
-    const fogNear = THREE.MathUtils.lerp(5000000, 0.5, Math.pow(tiltFactor, 4));
-    const fogFar = THREE.MathUtils.lerp(10000000, 4.0, Math.pow(tiltFactor, 4));
+    // Balanced atmosphere fog distances so planets are never blinded or untextured
+    const minFogFar = Math.max(R * 4.0, 300);
+    const minFogNear = Math.max(R * 0.5, 20);
+    const fogNear = THREE.MathUtils.lerp(5000000, minFogNear, Math.pow(tiltFactor, 4));
+    const fogFar = THREE.MathUtils.lerp(10000000, minFogFar, Math.pow(tiltFactor, 4));
     fog.near = fogNear;
     fog.far = fogFar;
 

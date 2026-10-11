@@ -11,14 +11,14 @@ export interface Region {
   resourceZone: 'high' | 'mid' | 'low';
 }
 
-interface CachedGeographyData {
+export interface CachedGeographyData {
   regions: Region[];
   texture: THREE.CanvasTexture;
   displacementMap: THREE.CanvasTexture;
   detailTexture: THREE.CanvasTexture;
 }
 
-type TextureDetail = 'standard' | 'enhanced';
+export type TextureDetail = 'standard' | 'enhanced';
 export type BiomeName = 'rocky' | 'dry_arid' | 'desert' | 'red' | 'volcanic' | 'lush_green' | 'ice' | 'gas_giant';
 
 const geometryCache = new Map<string, CachedGeographyData>();
@@ -120,6 +120,11 @@ export class GeographyManager {
     manager.setSeed(seed, noiseScale, landThreshold, textureDetail, visualClass);
     await manager.initializeTopicRegions();
     return manager;
+  }
+
+  static getCached(seed: string, noiseScale: number, landThreshold: number, textureDetail: TextureDetail = 'standard', visualClass: BiomeName = 'rocky'): CachedGeographyData | null {
+    const key = `flat-v3|${seed}|${noiseScale}|${landThreshold}|${textureDetail}|${visualClass}`;
+    return geometryCache.get(key) ?? null;
   }
 
   getTerrain(x: number, y: number, z: number) {

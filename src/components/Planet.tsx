@@ -130,9 +130,23 @@ export const Planet = memo(function Planet({
   const cloudLayer2Ref = useRef<THREE.Mesh>(null);
   const cloudLayer3Ref = useRef<THREE.Mesh>(null);
 
-  const [texture, setTexture] = useState<THREE.CanvasTexture | null>(null);
-  const [displacementMap, setDisplacementMap] = useState<THREE.CanvasTexture | null>(null);
-  const [geographyManager] = useState(() => new GeographyManager());
+  const cachedData = useMemo(() => {
+    return GeographyManager.getCached(seed, noiseScale, landThreshold, textureDetail, visualClass);
+  }, [seed, noiseScale, landThreshold, textureDetail, visualClass]);
+
+  const [texture, setTexture] = useState<THREE.CanvasTexture | null>(() => cachedData?.texture ?? null);
+  const [displacementMap, setDisplacementMap] = useState<THREE.CanvasTexture | null>(() => cachedData?.displacementMap ?? null);
+  const [geographyManager] = useState(() => {
+    const mgr = new GeographyManager();
+    mgr.setSeed(seed, noiseScale, landThreshold, textureDetail, visualClass);
+    if (cachedData) {
+      mgr.regions = cachedData.regions.map((r) => ({ ...r, center: r.center.clone(), color: r.color.clone() }));
+      mgr.texture = cachedData.texture;
+      mgr.displacementMap = cachedData.displacementMap;
+      mgr.detailTexture = cachedData.detailTexture;
+    }
+    return mgr;
+  });
   const { gl } = useThree();
 
   const segments = useMemo(() => (isMobile ? 72 : 160), [isMobile]);
@@ -281,6 +295,10 @@ export const Planet = memo(function Planet({
 
       setTexture(nextTexture);
       setDisplacementMap(nextDisplacementMap);
+      if (planetRef.current) {
+        const mat = planetRef.current.material as THREE.MeshStandardMaterial;
+        if (mat) mat.needsUpdate = true;
+      }
     };
 
     void run();
