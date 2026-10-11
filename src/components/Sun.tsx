@@ -70,11 +70,11 @@ export function Sun({ radius = 2, distance = 30, speed = 0.1, onClick, color = '
       <directionalLight
         ref={lightRef}
         color="#ffddaa"
-        intensity={4}
+        intensity={2.2}
       />
       <pointLight
         color={color || '#fff1b8'}
-        intensity={3.5}
+        intensity={2.2}
         distance={0}
         decay={0}
       />

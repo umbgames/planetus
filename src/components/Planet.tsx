@@ -416,11 +416,11 @@ export const Planet = memo(function Planet({
         <meshLambertMaterial
           color={atmosphereColors.inner}
           transparent
-          opacity={0.32}
+          opacity={0.16}
           side={THREE.FrontSide}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
-          toneMapped={false}
+          toneMapped={true}
         />
       </mesh>
 

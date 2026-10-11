@@ -2,6 +2,7 @@ import { collection, doc, setDoc, getDoc, updateDoc, onSnapshot, query, getDocs,
 import { db, auth } from '../firebase';
 import * as THREE from 'three';
 import { geographyManager } from './geography';
+import { createPRNG, hashCombine } from '../utils/random';
 
 export enum OperationType {
   CREATE = 'create',
@@ -515,10 +516,58 @@ class GameManager {
     if (this.unsubscribeResources) this.unsubscribeResources();
     
     this.unsubscribeResources = onSnapshot(collection(db, 'resources'), (snapshot) => {
-      this.resources = snapshot.docs.map(doc => doc.data() as ResourceNode);
-      this.resourceListeners.forEach(listener => listener(this.resources));
-      if (this.onResourcesUpdate) this.onResourcesUpdate(this.resources);
+      const remote = snapshot.docs.map(doc => doc.data() as ResourceNode);
+      if (remote.length > 0) {
+        this.resources = remote;
+        this.resourceListeners.forEach(listener => listener(this.resources));
+        if (this.onResourcesUpdate) this.onResourcesUpdate(this.resources);
+      }
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'resources'));
+  }
+
+  ensurePlanetResources(planetId: string, seed: string, radius: number, geographyManagerInstance?: any) {
+    if (this.resources.some(r => r.planetId === planetId && r.active)) {
+      return;
+    }
+
+    const prng = createPRNG(hashCombine(seed, 'planet_resources', planetId));
+    const count = Math.floor(28 + prng() * 16);
+    const generated: ResourceNode[] = [];
+    const geo = geographyManagerInstance || geographyManager;
+
+    for (let i = 0; i < count; i++) {
+      const type: 'common' | 'rare' = prng() < 0.28 ? 'rare' : 'common';
+      
+      let x = 1, y = 0, z = 0;
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const u = prng();
+        const v = prng();
+        const theta = 2 * Math.PI * u;
+        const phi = Math.acos(2 * v - 1);
+        const px = Math.sin(phi) * Math.cos(theta);
+        const py = Math.cos(phi);
+        const pz = Math.sin(phi) * Math.sin(theta);
+        if (geo && geo.isLand && geo.isLand(px, py, pz)) {
+          x = px; y = py; z = pz;
+          break;
+        } else if (attempt === 29) {
+          x = px; y = py; z = pz;
+        }
+      }
+
+      generated.push({
+        id: `res_${planetId}_${i}`,
+        planetId,
+        type,
+        position: { x: x * radius, y: y * radius, z: z * radius },
+        active: true,
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    this.resources = [...this.resources.filter(r => r.planetId !== planetId), ...generated];
+    this.resourceListeners.forEach(listener => listener(this.resources));
+    if (this.onResourcesUpdate) this.onResourcesUpdate(this.resources);
   }
 
   async initializeNPCBases() {
@@ -640,21 +689,41 @@ class GameManager {
   }
 
   async gatherResource(resourceId: string) {
-    if (!auth.currentUser || !this.userData) throw new Error("Not logged in.");
     const resource = this.resources.find(r => r.id === resourceId);
-    if (!resource || !resource.active) throw new Error("Resource not found or already gathered.");
+    if (!resource || !resource.active) return;
     
-    // Mark resource as inactive
-    await updateDoc(doc(db, 'resources', resourceId), {
-      active: false
-    });
-    
-    // Give resources to user
+    // Mark resource as inactive in memory immediately
+    resource.active = false;
+    this.resourceListeners.forEach(listener => listener(this.resources));
+    if (this.onResourcesUpdate) this.onResourcesUpdate(this.resources);
+
     const amount = resource.type === 'common' ? 50 : 10;
-    await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-      commonResources: this.userData.commonResources + (resource.type === 'common' ? amount : 0),
-      rareResources: this.userData.rareResources + (resource.type === 'rare' ? amount : 0)
-    });
+    
+    if (auth.currentUser && this.userData) {
+      try {
+        await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+          commonResources: (this.userData.commonResources ?? 0) + (resource.type === 'common' ? amount : 0),
+          rareResources: (this.userData.rareResources ?? 0) + (resource.type === 'rare' ? amount : 0)
+        });
+      } catch (e) {
+        console.warn("Failed to update user resources in Firestore", e);
+      }
+      
+      try {
+        await updateDoc(doc(db, 'resources', resourceId), {
+          active: false
+        });
+      } catch {
+        // Procedural node not in remote DB
+      }
+    } else if (this.userData) {
+      if (resource.type === 'common') {
+        this.userData.commonResources = (this.userData.commonResources ?? 0) + amount;
+      } else {
+        this.userData.rareResources = (this.userData.rareResources ?? 0) + amount;
+      }
+      if (this.onUserDataUpdate) this.onUserDataUpdate(this.userData);
+    }
   }
 
   async mineBase(baseId: string) {

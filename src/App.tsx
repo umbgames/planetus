@@ -132,14 +132,14 @@ function SceneGrade({ isShipMode, qualityPreset }: { isShipMode: boolean; qualit
   return (
     <EffectComposer multisampling={0} disableNormalPass>
       <Bloom
-        intensity={isShipMode ? 0.72 : qualityPreset === 'high' ? 0.92 : 0.8}
+        intensity={isShipMode ? 0.32 : qualityPreset === 'high' ? 0.42 : 0.36}
         mipmapBlur
-        luminanceThreshold={0.64}
-        luminanceSmoothing={0.24}
-        radius={0.7}
+        luminanceThreshold={0.88}
+        luminanceSmoothing={0.15}
+        radius={0.6}
       />
-      <ToneMapping adaptive={false} resolution={256} middleGrey={0.68} maxLuminance={14} averageLuminance={0.88} adaptationRate={1} />
-      <Vignette eskil={false} offset={0.16} darkness={qualityPreset === 'high' ? 0.5 : 0.4} />
+      <ToneMapping adaptive={false} resolution={256} middleGrey={0.6} maxLuminance={12} averageLuminance={0.8} adaptationRate={1} />
+      <Vignette eskil={false} offset={0.16} darkness={qualityPreset === 'high' ? 0.4 : 0.3} />
     </EffectComposer>
   );
 }
@@ -986,8 +986,8 @@ export default function App() {
         gl={{ antialias: false, powerPreference: 'high-performance' }}
       >
         <color attach="background" args={[isShipMode ? '#02040a' : '#04060d']} />
-        <ambientLight intensity={isShipMode ? 0.24 : 0.18} />
-        <hemisphereLight args={['#89c5ff', '#130b08', isShipMode ? 0.35 : 0.38]} />
+        <ambientLight intensity={isShipMode ? 0.16 : 0.14} />
+        <hemisphereLight args={['#89c5ff', '#130b08', isShipMode ? 0.24 : 0.26]} />
         {qualityPreset !== 'low' && <NebulaBackdrop qualityPreset={qualityPreset} />}
 
         <Stars
