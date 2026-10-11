@@ -4,6 +4,7 @@ import { Text, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
 import { UserData } from '../services/gameManager';
 import { SolarSystemData, PlanetData } from '../services/solarSystem';
+import { SharedShipModel } from './SharedShipModels';
 
 interface OtherPlayersProps {
   players: UserData[];
@@ -79,22 +80,8 @@ function OtherPlayerShip({
 
   return (
     <group ref={groupRef}>
-      <group ref={shipRef} scale={0.001}>
-        {/* Simple Ship Model */}
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <coneGeometry args={[0.3, 1, 8]} />
-          <meshStandardMaterial color="#3b82f6" metalness={0.8} roughness={0.2} />
-        </mesh>
-        <mesh position={[0, -0.2, 0]}>
-          <boxGeometry args={[0.8, 0.1, 0.4]} />
-          <meshStandardMaterial color="#1e40af" metalness={0.8} />
-        </mesh>
-        
-        {/* Engine Glow */}
-        <mesh position={[0, -0.5, 0]} rotation={[Math.PI, 0, 0]}>
-          <cylinderGeometry args={[0.1, 0.05, 0.2]} />
-          <meshStandardMaterial color="#60a5fa" emissive="#60a5fa" emissiveIntensity={2} />
-        </mesh>
+      <group ref={shipRef} scale={0.01}>
+        <SharedShipModel type={player.shipConfig?.type || 'scout'} />
       </group>
 
       {/* Player Name Tag */}

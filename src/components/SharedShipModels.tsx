@@ -23,53 +23,961 @@ export function normalizeShipType(type: RawShipType): DeployableShipType {
   }
 }
 
-function GlowCore({ position, scale = [1,1,1], color = '#00f0ff', intensity = 4, opacity = 0.9 }:{ position:[number,number,number]; scale?:[number,number,number]; color?:string; intensity?:number; opacity?:number }) {
-  return <mesh position={position} scale={scale}><sphereGeometry args={[0.2,20,20]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} toneMapped={false} transparent opacity={opacity} /></mesh>;
-}
-function StripLight({ position, rotation=[0,0,0], size=[0.1,0.05,0.7], color='#00f0ff', intensity=5 }:{ position:[number,number,number]; rotation?:[number,number,number]; size?:[number,number,number]; color?:string; intensity?:number }) {
-  return <mesh position={position} rotation={rotation}><boxGeometry args={size} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={intensity} toneMapped={false} /></mesh>;
-}
-function HullMaterial({ color='#1a1f2a', emissive='#000000', emissiveIntensity=0, metalness=0.88, roughness=0.24 }:{ color?:string; emissive?:string; emissiveIntensity?:number; metalness?:number; roughness?:number }) {
-  return <meshStandardMaterial color={color} metalness={metalness} roughness={roughness} emissive={emissive} emissiveIntensity={emissiveIntensity} />;
-}
-function PanelLine({ position, rotation=[0,0,0], size=[0.02,0.01,0.3], color='#38404f' }:{ position:[number,number,number]; rotation?:[number,number,number]; size?:[number,number,number]; color?:string }) {
-  return <mesh position={position} rotation={rotation} castShadow><boxGeometry args={size} /><meshStandardMaterial color={color} metalness={0.72} roughness={0.46} /></mesh>;
-}
-function GreebleCluster({ positions, scale=[1,1,1], color='#222834' }:{ positions:[number,number,number][]; scale?:[number,number,number]; color?:string }) {
-  return <group scale={scale}>{positions.map((p,i)=><mesh key={i} position={p} castShadow><boxGeometry args={[0.08,0.05+(i%3)*0.02,0.08+(i%2)*0.05]} /><meshStandardMaterial color={color} metalness={0.85} roughness={0.34} /></mesh>)}</group>;
-}
-function EngineBell({ position, rotation=[0,0,0], scale=[1,1,1], color='#111318' }:{ position:[number,number,number]; rotation?:[number,number,number]; scale?:[number,number,number]; color?:string }) {
-  return <group position={position} rotation={rotation} scale={scale}><mesh castShadow rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[0.12,0.2,0.22,20,1,true]} /><meshStandardMaterial color={color} metalness={0.95} roughness={0.28} side={THREE.DoubleSide} /></mesh><mesh position={[0,0,0.11]} rotation={[Math.PI/2,0,0]}><ringGeometry args={[0.06,0.12,24]} /><meshStandardMaterial color="#3b4659" metalness={0.9} roughness={0.2} emissive="#0c1625" emissiveIntensity={0.4} /></mesh></group>;
-}
-function EngineFX({ position, color='#00f0ff', radius=0.16, length=1, flickerOffset=0 }:{ position:[number,number,number]; color?:string; radius?:number; length?:number; flickerOffset?:number }) {
-  const coreRef = useRef<THREE.Mesh>(null!); const plumeRef = useRef<THREE.Mesh>(null!); const ringRef = useRef<THREE.Mesh>(null!);
-  useFrame((state)=>{ const t=state.clock.elapsedTime*3+flickerOffset; const pulse=0.9+Math.sin(t*2.7)*0.08+Math.sin(t*5.1)*0.04; if(coreRef.current) coreRef.current.scale.setScalar(pulse); if(plumeRef.current){ plumeRef.current.scale.x=pulse; plumeRef.current.scale.y=pulse; plumeRef.current.scale.z=0.9+Math.sin(t*3.3)*0.14; plumeRef.current.position.z=0.18+Math.sin(t*2.2)*0.02; } if(ringRef.current){ ringRef.current.rotation.z += 0.05; (ringRef.current.material as THREE.MeshBasicMaterial).opacity = 0.11 + Math.sin(t*2.4)*0.03; }});
-  return <group position={position}><GlowCore position={[0,0,0]} scale={[radius*3.2,radius*2.3,radius*2.3]} color={color} intensity={6} /><mesh ref={coreRef}><sphereGeometry args={[radius,20,20]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={8} toneMapped={false} /></mesh><mesh ref={plumeRef} position={[0,0,0.18]} rotation={[Math.PI/2,0,0]}><coneGeometry args={[radius*0.95,length,18,1,true]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={5} transparent opacity={0.38} toneMapped={false} side={THREE.DoubleSide} /></mesh><mesh ref={ringRef} rotation={[Math.PI/2,0,0]} position={[0,0,0.18+length*0.45]}><ringGeometry args={[radius*0.9,radius*1.6,28]} /><meshBasicMaterial color={color} transparent opacity={0.12} side={THREE.DoubleSide} toneMapped={false} /></mesh></group>;
-}
-function ExhaustTrail({ position, color='#00f0ff', radius=0.2, length=2.2, flickerOffset=0 }:{ position:[number,number,number]; color?:string; radius?:number; length?:number; flickerOffset?:number }) {
-  const trailRef = useRef<THREE.Mesh>(null!); const haloRef = useRef<THREE.Mesh>(null!);
-  useFrame((state)=>{ const t=state.clock.elapsedTime*2.1+flickerOffset; if(trailRef.current){ trailRef.current.scale.x=1+Math.sin(t*3.2)*0.06; trailRef.current.scale.y=1+Math.sin(t*2.8)*0.08; trailRef.current.scale.z=1+Math.sin(t*4.1)*0.1; trailRef.current.position.z=length*0.5+Math.sin(t*1.5)*0.04; } if(haloRef.current){ haloRef.current.rotation.z += 0.015; (haloRef.current.material as THREE.MeshBasicMaterial).opacity = 0.05 + Math.sin(t*2.4)*0.015; }});
-  return <group position={position}><mesh ref={trailRef} position={[0,0,length*0.5]} rotation={[Math.PI/2,0,0]}><cylinderGeometry args={[radius*0.42,radius,length,18,1,true]} /><meshStandardMaterial color={color} emissive={color} emissiveIntensity={3} transparent opacity={0.18} toneMapped={false} side={THREE.DoubleSide} /></mesh><mesh ref={haloRef} rotation={[Math.PI/2,0,0]} position={[0,0,length*0.75]}><ringGeometry args={[radius*0.7,radius*1.4,28]} /><meshBasicMaterial color={color} transparent opacity={0.06} side={THREE.DoubleSide} toneMapped={false} /></mesh></group>;
-}
-function ShieldField({ radius=1, color='#3bcfff', opacity=0.08, scale=[1,1,1] }:{ radius?:number; color?:string; opacity?:number; scale?:[number,number,number] }) {
-  return null;
-}
-function SurfacePanels({ rows=2, cols=4, width=1, depth=2, y=0.12, inset=0.02, color='#2a3240' }:{ rows?:number; cols?:number; width?:number; depth?:number; y?:number; inset?:number; color?:string }) {
-  const panels = useMemo(()=>{ const items:[number,number,number,number,number,number][]=[]; const stepX=width/cols; const stepZ=depth/rows; for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){ const w=stepX-inset; const d=stepZ-inset; const x=-width/2+stepX*c+stepX/2; const z=-depth/2+stepZ*r+stepZ/2; items.push([x,y,z,w,0.012,d]); } return items; },[rows,cols,width,depth,y,inset]);
-  return <group>{panels.map((panel,i)=><mesh key={i} position={[panel[0],panel[1],panel[2]]} castShadow><boxGeometry args={[panel[3],panel[4],panel[5]]} /><meshStandardMaterial color={color} metalness={0.92} roughness={0.28} /></mesh>)}</group>;
-}
-function ScoutClassic(){ return <group rotation={[0.1,0,0]} position={[0,-0.08,0]}><mesh castShadow><boxGeometry args={[0.38,0.28,2.25]} /><HullMaterial color="#1f232b" roughness={0.21} /></mesh><SurfacePanels rows={5} cols={2} width={0.34} depth={2.0} y={0.145} color="#2a313d" /><mesh position={[0.02,0.01,0.2]} castShadow><boxGeometry args={[2.35,0.05,0.58]} /><HullMaterial color="#11151c" roughness={0.16} metalness={0.96} /></mesh><mesh position={[-0.03,-0.02,-0.55]} castShadow rotation={[0,0.04,0]}><boxGeometry args={[1.24,0.05,0.42]} /><HullMaterial color="#12161e" roughness={0.17} metalness={0.95} /></mesh><mesh position={[0.08,0.2,-0.22]} rotation={[0.08,0,0]} castShadow><boxGeometry args={[0.22,0.14,0.72]} /><meshStandardMaterial color="#04070c" metalness={1} roughness={0.06} emissive="#0b2340" emissiveIntensity={0.7} /></mesh><mesh position={[-0.48,0.06,0.4]} rotation={[0,0.18,0]} castShadow><boxGeometry args={[0.14,0.12,0.58]} /><HullMaterial color="#202734" roughness={0.34} /></mesh><mesh position={[0.42,-0.03,-0.4]} rotation={[0,-0.14,0]} castShadow><boxGeometry args={[0.1,0.08,0.42]} /><HullMaterial color="#272d39" roughness={0.36} /></mesh><mesh position={[-0.72,0.0,0.3]} castShadow rotation={[0,0.15,0]}><boxGeometry args={[0.42,0.08,0.18]} /><HullMaterial color="#1d2330" roughness={0.28} /></mesh><mesh position={[0.75,0.0,0.12]} castShadow rotation={[0,-0.12,0]}><boxGeometry args={[0.36,0.08,0.16]} /><HullMaterial color="#1d2330" roughness={0.28} /></mesh><GreebleCluster positions={[[-0.09,0.16,0.78],[0.09,0.15,0.92],[-0.08,-0.11,0.65],[0.1,-0.12,0.76],[0.02,0.12,-0.9]]} color="#2d3441" /><PanelLine position={[0,0.145,0.65]} size={[0.22,0.014,0.03]} color="#4b576d" /><PanelLine position={[0,0.145,0.05]} size={[0.18,0.014,0.03]} color="#4b576d" /><StripLight position={[-0.12,0.13,0.45]} size={[0.02,0.02,0.42]} color="#00d7ff" intensity={3.6} /><StripLight position={[0.12,0.13,0.4]} size={[0.02,0.02,0.35]} color="#5be0ff" intensity={3.2} /><EngineBell position={[0,0,1.02]} scale={[1.4,1.2,1.2]} /><EngineFX position={[0,0,1.15]} color="#00f0ff" radius={0.15} length={0.8} /><ExhaustTrail position={[0,0,1.23]} color="#5beeff" radius={0.2} length={1.7} /><ShieldField radius={1.42} opacity={0.06} color="#49d7ff" scale={[1.2,0.72,1.62]} /></group>; }
-function PhantomShip(){ return <group rotation={[0.1,0,0]} position={[0,-0.1,0]}><mesh castShadow><boxGeometry args={[0.95,0.12,2.9]} /><HullMaterial color="#07090d" metalness={0.83} roughness={0.38} /></mesh><SurfacePanels rows={6} cols={2} width={0.84} depth={2.46} y={0.07} color="#141923" /><mesh position={[-1.2,0,-0.18]} rotation={[0,-0.62,0]} castShadow><boxGeometry args={[1.9,0.08,0.62]} /><HullMaterial color="#0a0d14" metalness={0.93} roughness={0.29} /></mesh><mesh position={[1.2,0,-0.18]} rotation={[0,0.58,0]} castShadow><boxGeometry args={[1.72,0.08,0.56]} /><HullMaterial color="#0a0d14" metalness={0.93} roughness={0.29} /></mesh><mesh position={[0.03,0.085,0.84]} castShadow><boxGeometry args={[0.42,0.08,0.66]} /><HullMaterial color="#181d26" metalness={0.73} roughness={0.5} /></mesh><mesh position={[-0.56,0.02,0.54]} rotation={[0,0.14,0]} castShadow><boxGeometry args={[0.34,0.06,0.92]} /><HullMaterial color="#121721" metalness={0.88} roughness={0.35} /></mesh><mesh position={[0.63,-0.01,0.2]} rotation={[0,-0.11,0]} castShadow><boxGeometry args={[0.28,0.05,0.78]} /><HullMaterial color="#121721" metalness={0.88} roughness={0.35} /></mesh><GreebleCluster positions={[[-0.22,0.07,0.7],[0.22,0.07,0.76],[-0.14,0.06,-0.42],[0.16,0.06,-0.66],[0.0,0.07,1.08]]} scale={[0.9,0.8,1]} color="#1e2530" /><StripLight position={[-0.4,0.065,0.02]} size={[0.022,0.018,1.7]} color="#ff003c" intensity={4.6} /><StripLight position={[0.4,0.065,-0.04]} size={[0.022,0.018,1.55]} color="#ff003c" intensity={4.6} /><StripLight position={[0,0.078,1.05]} size={[0.18,0.016,0.28]} color="#7c1737" intensity={2.4} /><PanelLine position={[0,0.072,-0.95]} size={[0.44,0.01,0.02]} color="#31394a" /><EngineBell position={[-0.25,0,1.28]} scale={[1,0.9,0.9]} /><EngineBell position={[0.25,0,1.28]} scale={[1,0.9,0.9]} /><EngineFX position={[-0.25,0,1.45]} color="#ff1d55" radius={0.09} length={0.62} flickerOffset={0.4} /><EngineFX position={[0.25,0,1.45]} color="#ff1d55" radius={0.09} length={0.62} flickerOffset={1.2} /><ExhaustTrail position={[-0.25,0,1.52]} color="#ff4a72" radius={0.12} length={1.35} flickerOffset={0.2} /><ExhaustTrail position={[0.25,0,1.52]} color="#ff4a72" radius={0.12} length={1.35} flickerOffset={1.1} /><ShieldField radius={1.7} opacity={0.055} color="#ff3d8d" scale={[1.45,0.48,1.92]} /></group>; }
-function LancerShip(){ return <group rotation={[0.1,0,0]} position={[0,-0.1,0]}><mesh castShadow><boxGeometry args={[0.36,0.36,3.9]} /><HullMaterial color="#181c24" roughness={0.19} /></mesh><SurfacePanels rows={7} cols={2} width={0.3} depth={3.4} y={0.19} color="#2b3240" /><mesh position={[-0.31,0,-1.2]} castShadow rotation={[0.02,0.03,0]}><boxGeometry args={[0.16,0.46,2.24]} /><HullMaterial color="#252938" roughness={0.27} metalness={0.82} /></mesh><mesh position={[0.3,0,-1.14]} castShadow rotation={[-0.01,-0.02,0]}><boxGeometry args={[0.14,0.42,2.08]} /><HullMaterial color="#262b39" roughness={0.29} metalness={0.82} /></mesh><mesh position={[0,0.02,-1.18]} castShadow><boxGeometry args={[0.1,0.1,2.3]} /><meshStandardMaterial color="#6f3cff" emissive="#b026ff" emissiveIntensity={2.8} metalness={0.72} roughness={0.2} toneMapped={false} /></mesh><mesh position={[-0.62,0,1.24]} rotation={[0,0.08,0]} castShadow><boxGeometry args={[1.22,0.05,0.82]} /><HullMaterial color="#10141b" roughness={0.18} metalness={0.94} /></mesh><mesh position={[0.63,0.01,1.16]} rotation={[0,-0.05,0]} castShadow><boxGeometry args={[1.1,0.05,0.76]} /><HullMaterial color="#10141b" roughness={0.18} metalness={0.94} /></mesh><mesh position={[-0.1,0.24,0.94]} castShadow rotation={[0.08,0,0]}><boxGeometry args={[0.18,0.1,0.86]} /><HullMaterial color="#202633" roughness={0.25} /></mesh><GreebleCluster positions={[[-0.09,0.22,1.32],[0.11,0.21,1.1],[-0.08,0.18,0.54],[0.08,0.18,0.25],[0.0,-0.11,1.5]]} color="#2e3544" /><StripLight position={[0,0.2,0.85]} size={[0.06,0.05,1.24]} color="#b026ff" intensity={4.2} /><StripLight position={[-0.18,0.13,-0.3]} size={[0.018,0.018,0.82]} color="#8a5fff" intensity={3.2} /><StripLight position={[0.18,0.13,-0.18]} size={[0.018,0.018,0.7]} color="#d6a9ff" intensity={3.2} /><PanelLine position={[0,0.19,-0.52]} size={[0.12,0.014,0.02]} color="#5b4ea5" /><EngineBell position={[0,0,1.8]} scale={[1.5,1.4,1.4]} /><EngineFX position={[0,0,1.98]} color="#d6a9ff" radius={0.16} length={0.98} flickerOffset={0.3} /><ExhaustTrail position={[0,0,2.08]} color="#c99eff" radius={0.22} length={2.0} flickerOffset={0.8} /><ShieldField radius={1.58} opacity={0.06} color="#b17cff" scale={[0.95,0.72,2.22]} /></group>; }
-function DestroyerShip(){ return <group rotation={[0.1,0,0]} position={[0,-0.2,0]}><mesh castShadow><boxGeometry args={[1.62,0.82,3.88]} /><HullMaterial color="#1a1d24" metalness={0.84} roughness={0.37} /></mesh><SurfacePanels rows={6} cols={4} width={1.38} depth={3.28} y={0.42} color="#252c38" /><mesh position={[-1.2,0,0.24]} castShadow rotation={[0.01,0.02,0]}><boxGeometry args={[0.82,0.62,2.86]} /><HullMaterial color="#13161d" metalness={0.87} roughness={0.29} /></mesh><mesh position={[1.22,0.02,0.14]} castShadow rotation={[-0.01,-0.03,0]}><boxGeometry args={[0.74,0.58,2.72]} /><HullMaterial color="#14171e" metalness={0.87} roughness={0.29} /></mesh><mesh position={[0,0.68,-0.84]} castShadow rotation={[0.04,0,0]}><boxGeometry args={[0.92,0.52,1.24]} /><HullMaterial color="#0d1016" metalness={0.93} roughness={0.19} /></mesh><mesh position={[-0.55,0.18,-1.32]} castShadow><boxGeometry args={[0.28,0.16,0.7]} /><HullMaterial color="#202733" roughness={0.31} /></mesh><mesh position={[0.54,0.14,-1.1]} castShadow><boxGeometry args={[0.34,0.2,0.86]} /><HullMaterial color="#202733" roughness={0.31} /></mesh><mesh position={[-1.68,0.14,-0.2]} castShadow rotation={[0,0,-0.08]}><boxGeometry args={[0.26,0.18,1.64]} /><HullMaterial color="#212733" roughness={0.32} /></mesh><mesh position={[1.66,0.08,0.35]} castShadow rotation={[0,0,0.06]}><boxGeometry args={[0.24,0.16,1.46]} /><HullMaterial color="#212733" roughness={0.32} /></mesh><mesh position={[-0.84,0.52,0.54]} castShadow><boxGeometry args={[0.14,0.18,1.86]} /><HullMaterial color="#262d38" roughness={0.32} /></mesh><mesh position={[0.82,0.48,0.36]} castShadow><boxGeometry args={[0.12,0.16,1.7]} /><HullMaterial color="#262d38" roughness={0.32} /></mesh><GreebleCluster positions={[[-0.42,0.44,1.15],[0.3,0.44,1.32],[-0.2,0.43,0.38],[0.52,0.43,-0.1],[-0.08,-0.28,1.48],[0.1,-0.3,1.2]]} scale={[1.2,1.1,1.1]} color="#303846" /><StripLight position={[0,0.72,-1.46]} size={[0.64,0.05,0.05]} color="#ffaa00" intensity={4.6} /><StripLight position={[-0.82,0.42,0.55]} size={[0.05,0.05,2.02]} color="#ff5500" intensity={3.6} /><StripLight position={[0.82,0.41,0.45]} size={[0.05,0.05,1.92]} color="#ff5500" intensity={3.6} /><StripLight position={[0.0,-0.16,1.1]} size={[0.5,0.03,1.2]} color="#5d1d0f" intensity={1.8} /><PanelLine position={[0,0.42,1.38]} size={[0.88,0.02,0.03]} color="#465160" /><EngineBell position={[-1.2,0,1.45]} scale={[1.45,1.2,1.2]} /><EngineBell position={[1.2,0,1.45]} scale={[1.45,1.2,1.2]} /><EngineBell position={[0,0,1.78]} scale={[1.8,1.35,1.35]} /><EngineFX position={[0,0,1.96]} color="#ff661a" radius={0.18} length={1.05} flickerOffset={0.8} /><ExhaustTrail position={[0,0,2.1]} color="#ffb066" radius={0.24} length={2.25} flickerOffset={1.7} /><ShieldField radius={2.28} opacity={0.05} color="#ff8b4d" scale={[1.28,0.78,1.72]} /></group>; }
+// ============================================================================
+// SHARED MATERIALS & REUSABLE SCI-FI SUBCOMPONENTS
+// ============================================================================
 
-export function SharedMegaShipModel(){
-  const radarRef = useRef<THREE.Group>(null!); const leftDoorRef = useRef<THREE.Group>(null!); const rightDoorRef = useRef<THREE.Group>(null!); const hangarGlowRef = useRef<THREE.Mesh>(null!);
-  useFrame((state)=>{ const t=state.clock.elapsedTime; if(radarRef.current) radarRef.current.rotation.y = t*0.45; if(leftDoorRef.current) leftDoorRef.current.position.x = -0.55 - Math.sin(t*0.6)*0.08; if(rightDoorRef.current) rightDoorRef.current.position.x = 0.55 + Math.sin(t*0.6)*0.08; if(hangarGlowRef.current) (hangarGlowRef.current.material as THREE.MeshStandardMaterial).emissiveIntensity = 1.2 + Math.sin(t*1.4)*0.45; });
-  return <group rotation={[0.05,0,0]} position={[0,-0.2,0]}><mesh castShadow><boxGeometry args={[3.9,0.72,6.1]} /><HullMaterial color="#101318" metalness={0.88} roughness={0.28} /></mesh><SurfacePanels rows={8} cols={5} width={3.25} depth={5.5} y={0.37} color="#1f2733" /><mesh position={[0,0.02,-1.3]} castShadow><boxGeometry args={[2.8,0.24,2.2]} /><HullMaterial color="#161b23" metalness={0.86} roughness={0.42} /></mesh><mesh position={[-1.65,0.24,0.25]} castShadow rotation={[0,0.04,0]}><boxGeometry args={[0.42,0.34,3.68]} /><HullMaterial color="#171d27" roughness={0.32} /></mesh><mesh position={[1.58,0.2,-0.12]} castShadow rotation={[0,-0.03,0]}><boxGeometry args={[0.5,0.32,3.95]} /><HullMaterial color="#171d27" roughness={0.32} /></mesh><mesh position={[-0.94,0.52,-0.55]} castShadow><boxGeometry args={[0.58,0.18,4.72]} /><HullMaterial color="#0d1218" metalness={0.93} roughness={0.5} /></mesh><mesh position={[0.94,0.52,-0.55]} castShadow><boxGeometry args={[0.58,0.18,4.72]} /><HullMaterial color="#0d1218" metalness={0.93} roughness={0.5} /></mesh><mesh position={[0,0.52,-0.55]} castShadow><boxGeometry args={[0.18,0.12,4.72]} /><meshStandardMaterial color="#0d1015" metalness={0.94} roughness={0.5} emissive="#032436" emissiveIntensity={0.25} /></mesh><group position={[0,0.46,-1.44]}><mesh castShadow><boxGeometry args={[1.58,0.08,0.76]} /><HullMaterial color="#0a0d12" metalness={0.9} roughness={0.48} /></mesh><group ref={leftDoorRef} position={[-0.55,0.02,0]}><mesh castShadow><boxGeometry args={[0.5,0.06,0.72]} /><HullMaterial color="#1a202a" metalness={0.86} roughness={0.26} /></mesh><StripLight position={[0,0.04,0]} size={[0.03,0.01,0.56]} color="#00f0ff" intensity={2.8} /></group><group ref={rightDoorRef} position={[0.55,0.02,0]}><mesh castShadow><boxGeometry args={[0.5,0.06,0.72]} /><HullMaterial color="#1a202a" metalness={0.86} roughness={0.26} /></mesh><StripLight position={[0,0.04,0]} size={[0.03,0.01,0.56]} color="#00f0ff" intensity={2.8} /></group><mesh ref={hangarGlowRef} position={[0,-0.03,0]} rotation={[-Math.PI/2,0,0]}><planeGeometry args={[0.7,0.44]} /><meshStandardMaterial color="#082f46" emissive="#00cfff" emissiveIntensity={1.6} transparent opacity={0.48} toneMapped={false} side={THREE.DoubleSide} /></mesh></group><group ref={radarRef} position={[1.95,1.55,0.55]}><mesh castShadow rotation={[0.1,0,0]}><cylinderGeometry args={[0.03,0.03,0.36,12]} /><meshStandardMaterial color="#3b4659" metalness={0.88} roughness={0.22} /></mesh><mesh position={[0,0.12,0]} rotation={[0,0,Math.PI/2]} castShadow><torusGeometry args={[0.18,0.02,10,28,Math.PI]} /><meshStandardMaterial color="#8894aa" metalness={0.9} roughness={0.18} emissive="#113355" emissiveIntensity={0.4} /></mesh></group><StripLight position={[-0.92,0.58,-0.55]} size={[0.06,0.02,4.22]} color="#00f0ff" intensity={3.4} /><StripLight position={[0.92,0.58,-0.55]} size={[0.06,0.02,4.22]} color="#00f0ff" intensity={3.4} /><StripLight position={[0,0.58,-0.55]} size={[0.024,0.02,4.22]} color="#00f0ff" intensity={2.8} /><EngineBell position={[-1.3,0,2.86]} scale={[1.65,1.2,1.2]} /><EngineBell position={[0,0,2.86]} scale={[2,1.45,1.45]} /><EngineBell position={[1.3,0,2.86]} scale={[1.65,1.2,1.2]} /><EngineFX position={[0,0,3.12]} color="#00f0ff" radius={0.22} length={1.4} flickerOffset={1.2} /><ExhaustTrail position={[0,0,3.32]} color="#8df6ff" radius={0.32} length={2.9} flickerOffset={1.1} /><ShieldField radius={3.48} opacity={0.04} color="#4fd6ff" scale={[1.12,0.54,1.38]} /></group>;
+function HullMaterial({
+  color = '#1f242d',
+  metalness = 0.88,
+  roughness = 0.24,
+  emissive = '#000000',
+  emissiveIntensity = 0,
+}: {
+  color?: string;
+  metalness?: number;
+  roughness?: number;
+  emissive?: string;
+  emissiveIntensity?: number;
+}) {
+  return (
+    <meshStandardMaterial
+      color={color}
+      metalness={metalness}
+      roughness={roughness}
+      emissive={emissive}
+      emissiveIntensity={emissiveIntensity}
+    />
+  );
 }
 
-export function SharedShipModel({ type }:{ type: RawShipType }) {
+function CockpitGlass({
+  color = '#0a233a',
+  emissive = '#00c3ff',
+  emissiveIntensity = 0.6,
+  opacity = 0.85,
+}: {
+  color?: string;
+  emissive?: string;
+  emissiveIntensity?: number;
+  opacity?: number;
+}) {
+  return (
+    <meshStandardMaterial
+      color={color}
+      metalness={0.95}
+      roughness={0.06}
+      emissive={emissive}
+      emissiveIntensity={emissiveIntensity}
+      transparent
+      opacity={opacity}
+      toneMapped={false}
+    />
+  );
+}
+
+/**
+ * Mirror helper: renders a child at both +X and -X with mirrored rotation
+ */
+function SymmetricPair({
+  position,
+  rotation = [0, 0, 0],
+  scale = [1, 1, 1],
+  children,
+}: {
+  position: [number, number, number];
+  rotation?: [number, number, number];
+  scale?: [number, number, number];
+  children: React.ReactNode;
+}) {
+  const [x, y, z] = position;
+  const [rx, ry, rz] = rotation;
+  const [sx, sy, sz] = scale;
+
+  return (
+    <>
+      <group position={[x, y, z]} rotation={[rx, ry, rz]} scale={[sx, sy, sz]}>
+        {children}
+      </group>
+      <group position={[-x, y, z]} rotation={[rx, -ry, -rz]} scale={[sx, sy, sz]}>
+        {children}
+      </group>
+    </>
+  );
+}
+
+/**
+ * High-performance sci-fi engine thruster with bell nozzle, glowing inner turbine,
+ * pulsating plasma flame cone, and dynamic ion halo ring.
+ */
+function EngineThruster({
+  position,
+  rotation = [0, 0, 0],
+  bellRadius = 0.16,
+  bellLength = 0.28,
+  color = '#00f0ff',
+  flameRadius = 0.14,
+  flameLength = 1.1,
+  flickerOffset = 0,
+}: {
+  position: [number, number, number];
+  rotation?: [number, number, number];
+  bellRadius?: number;
+  bellLength?: number;
+  color?: string;
+  flameRadius?: number;
+  flameLength?: number;
+  flickerOffset?: number;
+}) {
+  const flameRef = useRef<THREE.Mesh>(null!);
+  const haloRef = useRef<THREE.Mesh>(null!);
+  const innerCoreRef = useRef<THREE.Mesh>(null!);
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime * 4.2 + flickerOffset;
+    const pulse = 0.94 + Math.sin(t * 2.8) * 0.08 + Math.sin(t * 5.3) * 0.04;
+    if (flameRef.current) {
+      flameRef.current.scale.set(pulse, pulse, 0.92 + Math.sin(t * 3.4) * 0.15);
+    }
+    if (innerCoreRef.current) {
+      innerCoreRef.current.scale.setScalar(0.9 + Math.sin(t * 4.1) * 0.12);
+    }
+    if (haloRef.current) {
+      haloRef.current.rotation.z += 0.03;
+      const mat = haloRef.current.material as THREE.MeshBasicMaterial;
+      mat.opacity = 0.12 + Math.sin(t * 2.2) * 0.04;
+    }
+  });
+
+  return (
+    <group position={position} rotation={rotation}>
+      {/* Outer Titanium Nozzle Bell */}
+      <mesh castShadow rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[bellRadius * 0.72, bellRadius, bellLength, 20, 1, true]} />
+        <meshStandardMaterial color="#14171d" metalness={0.96} roughness={0.22} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* Titanium Collar Rim */}
+      <mesh position={[0, 0, bellLength * 0.5]} rotation={[Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[bellRadius * 0.98, 0.02, 10, 24]} />
+        <meshStandardMaterial color="#2d3340" metalness={0.92} roughness={0.28} />
+      </mesh>
+
+      {/* Glowing Turbine Injector Plate */}
+      <mesh position={[0, 0, -bellLength * 0.4]} rotation={[Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[bellRadius * 0.65, 18]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={6} toneMapped={false} />
+      </mesh>
+
+      {/* Inner Glowing Core Sphere */}
+      <mesh ref={innerCoreRef} position={[0, 0, bellLength * 0.1]}>
+        <sphereGeometry args={[bellRadius * 0.55, 16, 16]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={8} toneMapped={false} />
+      </mesh>
+
+      {/* Pulsing Plasma Flame Cone (shoots backwards toward +Z) */}
+      <mesh ref={flameRef} position={[0, 0, bellLength * 0.5 + flameLength * 0.48]} rotation={[Math.PI / 2, 0, 0]}>
+        <coneGeometry args={[flameRadius, flameLength, 18, 1, true]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={4.5}
+          transparent
+          opacity={0.42}
+          toneMapped={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      {/* Rotating Ion Halo Ring */}
+      <mesh ref={haloRef} position={[0, 0, bellLength * 0.5 + flameLength * 0.35]} rotation={[Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[flameRadius * 0.8, flameRadius * 1.5, 24]} />
+        <meshBasicMaterial color={color} transparent opacity={0.12} side={THREE.DoubleSide} toneMapped={false} />
+      </mesh>
+    </group>
+  );
+}
+
+/**
+ * Heavy Weapon Hardpoint / Cannon Barrel (aligned at X = ±0.65 to match Ship.tsx fire points)
+ */
+function WeaponBarrel({
+  position,
+  barrelRadius = 0.034,
+  barrelLength = 0.82,
+  glowColor = '#00f0ff',
+}: {
+  position: [number, number, number];
+  barrelRadius?: number;
+  barrelLength?: number;
+  glowColor?: string;
+}) {
+  return (
+    <group position={position}>
+      {/* Heavy Mounting Pylon */}
+      <mesh position={[0, 0.04, 0]} castShadow>
+        <boxGeometry args={[0.07, 0.06, barrelLength * 0.55]} />
+        <HullMaterial color="#12161f" roughness={0.3} />
+      </mesh>
+
+      {/* Fluted Barrel Shroud */}
+      <mesh position={[0, 0, -barrelLength * 0.15]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <cylinderGeometry args={[barrelRadius * 1.35, barrelRadius * 1.45, barrelLength * 0.45, 12]} />
+        <HullMaterial color="#1a202c" metalness={0.92} roughness={0.25} />
+      </mesh>
+
+      {/* Main Forward Barrel Tube */}
+      <mesh position={[0, 0, -barrelLength * 0.45]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <cylinderGeometry args={[barrelRadius, barrelRadius, barrelLength * 0.9, 14]} />
+        <meshStandardMaterial color="#0c0e13" metalness={0.96} roughness={0.18} />
+      </mesh>
+
+      {/* Glowing Muzzle Collimator Ring */}
+      <mesh position={[0, 0, -barrelLength * 0.9]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[barrelRadius * 1.1, barrelRadius * 1.1, 0.035, 14]} />
+        <meshStandardMaterial color={glowColor} emissive={glowColor} emissiveIntensity={5} toneMapped={false} />
+      </mesh>
+    </group>
+  );
+}
+
+// ============================================================================
+// SHIP 1: SCOUT ("Agile Razor Atmospheric / Orbital Interceptor")
+// ============================================================================
+function ScoutClassic() {
+  return (
+    <group position={[0, 0, 0]}>
+      {/* --- CENTRAL STREAMLINED FUSELAGE --- */}
+      {/* Needle-sharp Aerodynamic Prow Cone */}
+      <mesh position={[0, 0.02, -1.82]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <coneGeometry args={[0.22, 0.85, 16]} />
+        <HullMaterial color="#1e2430" roughness={0.2} metalness={0.92} />
+      </mesh>
+
+      {/* Forward Main Fuselage Core */}
+      <mesh position={[0, 0.04, -1.05]} castShadow>
+        <boxGeometry args={[0.42, 0.24, 0.9]} />
+        <HullMaterial color="#242b38" roughness={0.22} metalness={0.88} />
+      </mesh>
+
+      {/* Mid/Aft Main Hull Keel */}
+      <mesh position={[0, 0.02, 0.05]} castShadow>
+        <boxGeometry args={[0.54, 0.28, 1.45]} />
+        <HullMaterial color="#1c212b" roughness={0.24} metalness={0.9} />
+      </mesh>
+
+      {/* Ventral Keel Sponson (Bottom Stabilizer) */}
+      <mesh position={[0, -0.14, 0.1]} castShadow>
+        <boxGeometry args={[0.26, 0.12, 1.25]} />
+        <HullMaterial color="#12161f" roughness={0.3} metalness={0.94} />
+      </mesh>
+
+      {/* --- HIGH-TECH COCKPIT CANOPY --- */}
+      {/* Sleek Elongated Glass Dome */}
+      <mesh position={[0, 0.16, -0.65]} scale={[0.88, 0.65, 2.3]}>
+        <sphereGeometry args={[0.22, 20, 20]} />
+        <CockpitGlass color="#051c2e" emissive="#00d4ff" emissiveIntensity={0.7} opacity={0.88} />
+      </mesh>
+
+      {/* Canopy Structural Titanium Arch */}
+      <mesh position={[0, 0.18, -0.6]} castShadow>
+        <boxGeometry args={[0.28, 0.06, 0.05]} />
+        <HullMaterial color="#10141b" metalness={0.96} roughness={0.15} />
+      </mesh>
+
+      {/* Internal Holographic HUD Display Plate */}
+      <mesh position={[0, 0.13, -0.82]} rotation={[0.4, 0, 0]}>
+        <planeGeometry args={[0.15, 0.08]} />
+        <meshBasicMaterial color="#00f0ff" transparent opacity={0.85} toneMapped={false} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* --- FORWARD CANARDS --- */}
+      <SymmetricPair position={[0.34, 0.03, -1.35]} rotation={[0, 0.42, -0.05]}>
+        <mesh castShadow>
+          <boxGeometry args={[0.42, 0.028, 0.32]} />
+          <HullMaterial color="#161a22" metalness={0.94} roughness={0.22} />
+        </mesh>
+      </SymmetricPair>
+
+      {/* --- MAIN SWEPT-DELTA WINGS & WINGLETS --- */}
+      {/* Swept Main Delta Wing Assembly (thickness 0.038 for razor-sharp aerospace look) */}
+      <SymmetricPair position={[0.96, 0.01, 0.38]} rotation={[0, -0.32, 0.04]}>
+        {/* Main Wing Plate */}
+        <mesh castShadow>
+          <boxGeometry args={[1.32, 0.038, 1.22]} />
+          <HullMaterial color="#252c3a" roughness={0.22} metalness={0.88} />
+        </mesh>
+        {/* Dark Armor Leading-Edge Slat */}
+        <mesh position={[-0.2, 0.012, -0.45]} castShadow>
+          <boxGeometry args={[0.88, 0.042, 0.18]} />
+          <HullMaterial color="#141821" roughness={0.18} metalness={0.95} />
+        </mesh>
+        {/* Wing Energy Conduit Line */}
+        <mesh position={[0.02, 0.022, 0.08]}>
+          <boxGeometry args={[0.95, 0.015, 0.04]} />
+          <meshStandardMaterial color="#00f0ff" emissive="#00f0ff" emissiveIntensity={3.5} toneMapped={false} />
+        </mesh>
+      </SymmetricPair>
+
+      {/* Canted Vertical Winglets at Wingtips */}
+      <SymmetricPair position={[1.64, 0.18, 0.72]} rotation={[0, -0.08, 0.38]}>
+        <mesh castShadow>
+          <boxGeometry args={[0.035, 0.36, 0.58]} />
+          <HullMaterial color="#181d26" metalness={0.92} roughness={0.25} />
+        </mesh>
+        {/* Winglet Strobe Light */}
+        <mesh position={[0.02, 0.16, 0.22]}>
+          <sphereGeometry args={[0.025, 8, 8]} />
+          <meshBasicMaterial color="#00f0ff" toneMapped={false} />
+        </mesh>
+      </SymmetricPair>
+
+      {/* --- WING ROOT AIR/RAM INTAKES --- */}
+      <SymmetricPair position={[0.34, -0.01, -0.22]} rotation={[0, 0.08, 0]}>
+        <mesh castShadow>
+          <boxGeometry args={[0.18, 0.14, 0.58]} />
+          <HullMaterial color="#151921" metalness={0.92} roughness={0.28} />
+        </mesh>
+        {/* Glowing Compressor Grid */}
+        <mesh position={[0, 0, -0.29]} rotation={[0, 0, 0]}>
+          <planeGeometry args={[0.12, 0.09]} />
+          <meshStandardMaterial color="#00f0ff" emissive="#00f0ff" emissiveIntensity={3} toneMapped={false} />
+        </mesh>
+      </SymmetricPair>
+
+      {/* --- WING-MOUNTED PULSE CANNONS (Exact Ship.tsx Blaster Coords X=±0.65) --- */}
+      <SymmetricPair position={[0.65, -0.04, -0.4]}>
+        <WeaponBarrel position={[0, 0, 0]} barrelRadius={0.032} barrelLength={0.78} glowColor="#00f0ff" />
+      </SymmetricPair>
+
+      {/* --- DORSAL TAIL FIN --- */}
+      <mesh position={[0, 0.26, 0.62]} rotation={[-0.24, 0, 0]} castShadow>
+        <boxGeometry args={[0.04, 0.34, 0.72]} />
+        <HullMaterial color="#1a1f29" metalness={0.9} roughness={0.24} />
+      </mesh>
+      {/* Dorsal Spine Cyan Strip */}
+      <mesh position={[0, 0.42, 0.58]}>
+        <boxGeometry args={[0.018, 0.02, 0.54]} />
+        <meshStandardMaterial color="#00d4ff" emissive="#00d4ff" emissiveIntensity={4} toneMapped={false} />
+      </mesh>
+
+      {/* --- TWIN PROPULSION ENGINES (Exact Ship.tsx Trail Coords X=±0.8, Z=1.2) --- */}
+      <SymmetricPair position={[0.78, 0.0, 1.22]}>
+        <EngineThruster
+          position={[0, 0, 0]}
+          bellRadius={0.16}
+          bellLength={0.3}
+          color="#00f0ff"
+          flameRadius={0.14}
+          flameLength={1.25}
+          flickerOffset={0}
+        />
+      </SymmetricPair>
+
+      {/* Starboard Green & Port Red Navigation Lights */}
+      <mesh position={[1.68, 0.03, 0.5]}>
+        <sphereGeometry args={[0.024, 8, 8]} />
+        <meshBasicMaterial color="#00ff66" toneMapped={false} />
+      </mesh>
+      <mesh position={[-1.68, 0.03, 0.5]}>
+        <sphereGeometry args={[0.024, 8, 8]} />
+        <meshBasicMaterial color="#ff1133" toneMapped={false} />
+      </mesh>
+    </group>
+  );
+}
+
+// ============================================================================
+// SHIP 2: PHANTOM ("Black-Ops Forward-Swept Blade Stealth Interceptor")
+// ============================================================================
+function PhantomShip() {
+  const pulseRef = useRef<THREE.Mesh>(null!);
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime * 2.5;
+    if (pulseRef.current) {
+      const mat = pulseRef.current.material as THREE.MeshStandardMaterial;
+      mat.emissiveIntensity = 2.4 + Math.sin(t) * 1.2;
+    }
+  });
+
+  return (
+    <group position={[0, 0, 0]}>
+      {/* --- FACETED RADAR-ABSORBENT STEALTH FUSELAGE --- */}
+      {/* Razor Chisel Nose Cone */}
+      <mesh position={[0, 0.01, -1.95]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <coneGeometry args={[0.26, 0.95, 4]} />
+        <HullMaterial color="#080a0f" metalness={0.84} roughness={0.36} />
+      </mesh>
+
+      {/* Faceted Main Diamond Hull Body */}
+      <mesh position={[0, 0.02, -0.95]} castShadow>
+        <boxGeometry args={[0.62, 0.18, 1.15]} />
+        <HullMaterial color="#0c0f16" metalness={0.88} roughness={0.32} />
+      </mesh>
+
+      {/* Aft Stealth Chassis */}
+      <mesh position={[0, 0.02, 0.22]} castShadow>
+        <boxGeometry args={[0.88, 0.22, 1.35]} />
+        <HullMaterial color="#0a0d13" metalness={0.86} roughness={0.34} />
+      </mesh>
+
+      {/* --- FLUSH LOW-OBSERVABLE STEALTH COCKPIT --- */}
+      <mesh position={[0, 0.14, -0.6]} scale={[0.82, 0.48, 2.2]}>
+        <sphereGeometry args={[0.24, 16, 16]} />
+        <CockpitGlass color="#18040a" emissive="#ff003c" emissiveIntensity={0.65} opacity={0.92} />
+      </mesh>
+
+      {/* --- AGGRESSIVE FORWARD-SWEPT KNIFE WINGS --- */}
+      {/* Forward-swept wing sweeps out to X=±1.82 and forward from Z=0.6 to Z=-0.5 */}
+      <SymmetricPair position={[1.1, 0.01, 0.12]} rotation={[0, 0.34, -0.03]}>
+        {/* Main Forward-Swept Blade Wing */}
+        <mesh castShadow>
+          <boxGeometry args={[1.42, 0.034, 0.95]} />
+          <HullMaterial color="#0d1118" metalness={0.88} roughness={0.3} />
+        </mesh>
+        {/* Knife-Edge Leading Edge */}
+        <mesh position={[0.15, 0.01, -0.38]} castShadow>
+          <boxGeometry args={[1.05, 0.038, 0.14]} />
+          <HullMaterial color="#05070a" metalness={0.96} roughness={0.16} />
+        </mesh>
+        {/* Crimson Stealth Formation Glow Ribbon */}
+        <mesh position={[-0.04, 0.02, 0.25]}>
+          <boxGeometry args={[1.12, 0.015, 0.03]} />
+          <meshStandardMaterial color="#ff003c" emissive="#ff003c" emissiveIntensity={4.2} toneMapped={false} />
+        </mesh>
+      </SymmetricPair>
+
+      {/* Outward-Canted Stealth Twin Vertical Stabilizers */}
+      <SymmetricPair position={[0.55, 0.24, 0.75]} rotation={[0, 0.08, -0.58]}>
+        <mesh castShadow>
+          <boxGeometry args={[0.032, 0.42, 0.65]} />
+          <HullMaterial color="#0b0e14" metalness={0.9} roughness={0.28} />
+        </mesh>
+        {/* Stabilizer Glowing Crimson Fin Tip */}
+        <mesh position={[0.018, 0.19, 0.1]}>
+          <boxGeometry args={[0.02, 0.04, 0.38]} />
+          <meshStandardMaterial color="#ff1e56" emissive="#ff1e56" emissiveIntensity={4.5} toneMapped={false} />
+        </mesh>
+      </SymmetricPair>
+
+      {/* --- RECESSED WING HARDPOINTS (Exact Ship.tsx Blaster Coords X=±0.65) --- */}
+      <SymmetricPair position={[0.65, -0.03, -0.55]}>
+        <WeaponBarrel position={[0, 0, 0]} barrelRadius={0.03} barrelLength={0.72} glowColor="#ff003c" />
+      </SymmetricPair>
+
+      {/* --- BREATHING CRIMSON THERMAL DISSIPATION VENTS --- */}
+      <mesh ref={pulseRef} position={[0, 0.125, 0.35]}>
+        <boxGeometry args={[0.26, 0.02, 0.72]} />
+        <meshStandardMaterial color="#ff003c" emissive="#ff003c" emissiveIntensity={2.8} toneMapped={false} />
+      </mesh>
+
+      {/* Vent Shield Louvers */}
+      {[-0.2, -0.05, 0.1, 0.25].map((zOffset, i) => (
+        <mesh key={i} position={[0, 0.138, 0.35 + zOffset]} castShadow>
+          <boxGeometry args={[0.3, 0.016, 0.05]} />
+          <HullMaterial color="#080a0f" metalness={0.92} roughness={0.2} />
+        </mesh>
+      ))}
+
+      {/* --- TWIN STEALTH VECTORING EXHAUSTS (X=±0.65, Z=1.3) --- */}
+      <SymmetricPair position={[0.65, 0.0, 1.25]}>
+        {/* Stealth Angular Shroud */}
+        <mesh position={[0, 0, -0.08]} castShadow>
+          <boxGeometry args={[0.34, 0.24, 0.28]} />
+          <HullMaterial color="#080a0f" metalness={0.94} roughness={0.22} />
+        </mesh>
+        <EngineThruster
+          position={[0, 0, 0.08]}
+          bellRadius={0.13}
+          bellLength={0.25}
+          color="#ff0055"
+          flameRadius={0.12}
+          flameLength={1.15}
+          flickerOffset={1.4}
+        />
+      </SymmetricPair>
+    </group>
+  );
+}
+
+// ============================================================================
+// SHIP 3: LANCER ("High-Velocity Orbital Railgun Accelerator Sniper")
+// ============================================================================
+function LancerShip() {
+  const coilRef = useRef<THREE.Group>(null!);
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime * 6;
+    if (coilRef.current) {
+      coilRef.current.children.forEach((child, i) => {
+        const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+        mat.emissiveIntensity = 2.5 + Math.sin(t + i * 1.4) * 2.0;
+      });
+    }
+  });
+
+  return (
+    <group position={[0, 0, 0]}>
+      {/* --- MASSIVE CENTERLINE ACCELERATOR RAIL TUBE --- */}
+      {/* Long central electromagnetic spine (from Z=-2.8 to Z=1.4) */}
+      <mesh position={[0, 0.01, -0.8]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <cylinderGeometry args={[0.075, 0.085, 3.8, 16]} />
+        <HullMaterial color="#1a1e27" metalness={0.94} roughness={0.18} />
+      </mesh>
+
+      {/* Needle-sharp Twin Charging Prongs at Bow */}
+      <SymmetricPair position={[0.11, 0.01, -2.75]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.016, 0.024, 0.65, 10]} />
+          <meshStandardMaterial color="#2d3342" metalness={0.95} roughness={0.16} />
+        </mesh>
+        <mesh position={[0, 0, -0.32]}>
+          <sphereGeometry args={[0.022, 8, 8]} />
+          <meshStandardMaterial color="#c084fc" emissive="#c084fc" emissiveIntensity={6} toneMapped={false} />
+        </mesh>
+      </SymmetricPair>
+
+      {/* Central Rail Arc Glow Core */}
+      <mesh position={[0, 0.01, -2.6]}>
+        <sphereGeometry args={[0.065, 12, 12]} />
+        <meshStandardMaterial color="#a855f7" emissive="#a855f7" emissiveIntensity={8} toneMapped={false} />
+      </mesh>
+
+      {/* 4 Segmented Magnetic Acceleration Coils */}
+      <group ref={coilRef}>
+        {[-2.1, -1.5, -0.9, -0.3].map((zPos, i) => (
+          <mesh key={i} position={[0, 0.01, zPos]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.12, 0.022, 12, 24]} />
+            <meshStandardMaterial color="#c084fc" emissive="#c084fc" emissiveIntensity={3.5} toneMapped={false} />
+          </mesh>
+        ))}
+      </group>
+
+      {/* High-Aspect Ratio Slender Fuselage */}
+      <mesh position={[0, 0.04, 0.35]} castShadow>
+        <boxGeometry args={[0.42, 0.3, 1.8]} />
+        <HullMaterial color="#e2e8f0" metalness={0.72} roughness={0.28} />
+      </mesh>
+
+      {/* Elevated Long Tandem Sniper Cockpit */}
+      <mesh position={[0, 0.22, -0.05]} scale={[0.65, 0.52, 2.1]}>
+        <sphereGeometry args={[0.2, 16, 16]} />
+        <CockpitGlass color="#1e0a38" emissive="#a855f7" emissiveIntensity={0.8} opacity={0.86} />
+      </mesh>
+
+      {/* --- SWEPT STABILIZER LANCE BLADES --- */}
+      <SymmetricPair position={[0.82, 0.02, 0.65]} rotation={[0, -0.42, 0.06]}>
+        <mesh castShadow>
+          <boxGeometry args={[1.05, 0.035, 1.15]} />
+          <HullMaterial color="#222834" metalness={0.9} roughness={0.22} />
+        </mesh>
+        {/* Arctic White Wing Armor Shell */}
+        <mesh position={[-0.1, 0.022, -0.2]} castShadow>
+          <boxGeometry args={[0.68, 0.038, 0.55]} />
+          <HullMaterial color="#cbd5e1" metalness={0.65} roughness={0.32} />
+        </mesh>
+        {/* Violet Energy Conduit */}
+        <mesh position={[0.08, 0.024, 0.12]}>
+          <boxGeometry args={[0.85, 0.015, 0.035]} />
+          <meshStandardMaterial color="#c084fc" emissive="#c084fc" emissiveIntensity={4.5} toneMapped={false} />
+        </mesh>
+      </SymmetricPair>
+
+      {/* Sensor Outrigger Telemetry Booms */}
+      <SymmetricPair position={[1.35, 0.08, 1.1]} rotation={[0, 0.05, 0.2]}>
+        <mesh castShadow>
+          <boxGeometry args={[0.04, 0.24, 0.42]} />
+          <HullMaterial color="#1a202c" metalness={0.92} roughness={0.2} />
+        </mesh>
+      </SymmetricPair>
+
+      {/* --- FORWARD WEAPON HARDPOINTS (Exact Ship.tsx Blaster Coords X=±0.65) --- */}
+      <SymmetricPair position={[0.65, -0.04, -0.5]}>
+        <WeaponBarrel position={[0, 0, 0]} barrelRadius={0.028} barrelLength={0.85} glowColor="#c084fc" />
+      </SymmetricPair>
+
+      {/* --- HEAVY PARTICLE ACCELERATOR ENGINE (Center) + TWIN VERNIER THRUSTERS --- */}
+      {/* Primary Heavy Engine (Center) */}
+      <EngineThruster
+        position={[0, 0.02, 1.45]}
+        bellRadius={0.2}
+        bellLength={0.34}
+        color="#c084fc"
+        flameRadius={0.17}
+        flameLength={1.4}
+        flickerOffset={0.5}
+      />
+
+      {/* Auxiliary Vernier Thrusters (X=±0.78, Z=1.3) */}
+      <SymmetricPair position={[0.78, 0.0, 1.3]}>
+        <EngineThruster
+          position={[0, 0, 0]}
+          bellRadius={0.11}
+          bellLength={0.22}
+          color="#a855f7"
+          flameRadius={0.09}
+          flameLength={0.85}
+          flickerOffset={2.2}
+        />
+      </SymmetricPair>
+    </group>
+  );
+}
+
+// ============================================================================
+// SHIP 4: DESTROYER ("Heavy Armored Tactical Cruiser / Dreadnought Gunship")
+// ============================================================================
+function DestroyerShip() {
+  const reactorRef = useRef<THREE.Mesh>(null!);
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime * 3.2;
+    if (reactorRef.current) {
+      const mat = reactorRef.current.material as THREE.MeshStandardMaterial;
+      mat.emissiveIntensity = 3.0 + Math.sin(t) * 1.4;
+    }
+  });
+
+  return (
+    <group position={[0, 0, 0]}>
+      {/* --- HEAVY CHISELED ARMORED BOW --- */}
+      {/* Heavy Wedge Prow Bow */}
+      <mesh position={[0, 0.05, -1.75]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <coneGeometry args={[0.55, 1.15, 4]} />
+        <HullMaterial color="#1a1e26" metalness={0.86} roughness={0.34} />
+      </mesh>
+
+      {/* Dual Heavy Torpedo Launch Tubes at Nose */}
+      <SymmetricPair position={[0.26, -0.06, -2.0]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.07, 0.07, 0.35, 12]} />
+          <HullMaterial color="#0e1117" metalness={0.94} roughness={0.2} />
+        </mesh>
+        <mesh position={[0, 0, -0.18]} rotation={[Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[0.055, 12]} />
+          <meshStandardMaterial color="#ff5500" emissive="#ff5500" emissiveIntensity={4} toneMapped={false} />
+        </mesh>
+      </SymmetricPair>
+
+      {/* Massive Center Armored Citadel Chassis */}
+      <mesh position={[0, 0.12, -0.45]} castShadow>
+        <boxGeometry args={[1.25, 0.48, 1.7]} />
+        <HullMaterial color="#232a36" metalness={0.84} roughness={0.36} />
+      </mesh>
+
+      {/* Aft Engine Hull Bulkhead */}
+      <mesh position={[0, 0.1, 0.72]} castShadow>
+        <boxGeometry args={[1.55, 0.52, 1.2]} />
+        <HullMaterial color="#1c222c" metalness={0.88} roughness={0.32} />
+      </mesh>
+
+      {/* --- TIERED SUPERSTRUCTURE / COMMAND BRIDGE TOWER --- */}
+      <mesh position={[0, 0.46, 0.12]} castShadow>
+        <boxGeometry args={[0.62, 0.28, 0.85]} />
+        <HullMaterial color="#141820" metalness={0.92} roughness={0.25} />
+      </mesh>
+
+      {/* Armored Panoramic Command Bridge Visor */}
+      <mesh position={[0, 0.52, -0.32]} rotation={[0.2, 0, 0]}>
+        <boxGeometry args={[0.55, 0.07, 0.04]} />
+        <CockpitGlass color="#1f1406" emissive="#ffaa00" emissiveIntensity={1.8} opacity={0.95} />
+      </mesh>
+
+      {/* Command Bridge Sensor Mast */}
+      <mesh position={[0, 0.68, 0.3]} castShadow>
+        <cylinderGeometry args={[0.02, 0.035, 0.25, 8]} />
+        <HullMaterial color="#374151" metalness={0.9} roughness={0.2} />
+      </mesh>
+
+      {/* --- HEAVY FLANKING ARMOR SPONSONS & VLS MISSILE GRIDS --- */}
+      <SymmetricPair position={[1.15, 0.05, 0.05]}>
+        {/* Armored Outrigger Sponson Skirt */}
+        <mesh castShadow>
+          <boxGeometry args={[0.55, 0.38, 1.95]} />
+          <HullMaterial color="#1e2430" metalness={0.86} roughness={0.34} />
+        </mesh>
+        {/* Heavy Composite Armor Slat */}
+        <mesh position={[0.18, 0.08, -0.1]} castShadow>
+          <boxGeometry args={[0.15, 0.28, 1.55]} />
+          <HullMaterial color="#12161f" metalness={0.92} roughness={0.28} />
+        </mesh>
+        {/* VLS Missile Cell Silo Hatch Grid on Dorsal Sponson */}
+        {[-0.5, -0.25, 0.0, 0.25, 0.5].map((zOff, i) => (
+          <mesh key={i} position={[-0.05, 0.2, zOff]} castShadow>
+            <boxGeometry args={[0.18, 0.015, 0.16]} />
+            <meshStandardMaterial color="#0b0d12" metalness={0.94} roughness={0.22} />
+          </mesh>
+        ))}
+      </SymmetricPair>
+
+      {/* --- TWIN HEAVY AUTOCANNON TURRETS (X=±0.65, Z=-0.7) --- */}
+      <SymmetricPair position={[0.65, 0.24, -0.65]}>
+        {/* Armored Turret Base */}
+        <mesh castShadow>
+          <boxGeometry args={[0.22, 0.12, 0.28]} />
+          <HullMaterial color="#11141b" metalness={0.94} roughness={0.24} />
+        </mesh>
+        {/* Twin Rifled Heavy Barrels */}
+        {[-0.05, 0.05].map((xOff, i) => (
+          <mesh key={i} position={[xOff, 0.02, -0.32]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <cylinderGeometry args={[0.024, 0.028, 0.65, 12]} />
+            <HullMaterial color="#080a0e" metalness={0.96} roughness={0.16} />
+          </mesh>
+        ))}
+        {/* Muzzle Flash Rings */}
+        {[-0.05, 0.05].map((xOff, i) => (
+          <mesh key={i} position={[xOff, 0.02, -0.65]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.03, 0.008, 8, 16]} />
+            <meshStandardMaterial color="#ff7700" emissive="#ff7700" emissiveIntensity={4} toneMapped={false} />
+          </mesh>
+        ))}
+      </SymmetricPair>
+
+      {/* --- MOLTEN GLOWING REACTOR RADIATORS --- */}
+      <mesh ref={reactorRef} position={[0, 0.38, 0.72]}>
+        <boxGeometry args={[0.82, 0.04, 0.75]} />
+        <meshStandardMaterial color="#ff5500" emissive="#ff5500" emissiveIntensity={3} toneMapped={false} />
+      </mesh>
+      {/* Heavy Radiator Grilles */}
+      {[-0.25, -0.1, 0.05, 0.2].map((zOff, i) => (
+        <mesh key={i} position={[0, 0.41, 0.72 + zOff]} castShadow>
+          <boxGeometry args={[0.88, 0.02, 0.06]} />
+          <HullMaterial color="#12161f" metalness={0.92} roughness={0.25} />
+        </mesh>
+      ))}
+
+      {/* --- HEAVY INDUSTRIAL QUAD ENGINE CLUSTER --- */}
+      {/* Primary Heavy Thrusters (X=±0.8, Z=1.5) */}
+      <SymmetricPair position={[0.8, 0.05, 1.42]}>
+        <EngineThruster
+          position={[0, 0, 0]}
+          bellRadius={0.22}
+          bellLength={0.36}
+          color="#ff6600"
+          flameRadius={0.19}
+          flameLength={1.35}
+          flickerOffset={0.7}
+        />
+      </SymmetricPair>
+
+      {/* Secondary Center Booster Thruster */}
+      <EngineThruster
+        position={[0, 0.02, 1.55]}
+        bellRadius={0.26}
+        bellLength={0.4}
+        color="#ffaa00"
+        flameRadius={0.22}
+        flameLength={1.6}
+        flickerOffset={1.8}
+      />
+    </group>
+  );
+}
+
+// ============================================================================
+// CAPITAL SHIP: AEGIS COMMAND / MEGASHIP ("Mobile Starbase Carrier Fortress")
+// ============================================================================
+export function SharedMegaShipModel() {
+  const radarRef = useRef<THREE.Group>(null!);
+  const hangarDoorLRef = useRef<THREE.Mesh>(null!);
+  const hangarDoorRRef = useRef<THREE.Mesh>(null!);
+  const runwayGlowRef = useRef<THREE.Group>(null!);
+
+  useFrame((state) => {
+    const t = state.clock.elapsedTime;
+    if (radarRef.current) {
+      radarRef.current.rotation.y = t * 0.8;
+    }
+    // Animated hangar bay doors that gently slide
+    const doorSlide = Math.sin(t * 0.7) * 0.12;
+    if (hangarDoorLRef.current) {
+      hangarDoorLRef.current.position.x = -0.58 - Math.max(0, doorSlide);
+    }
+    if (hangarDoorRRef.current) {
+      hangarDoorRRef.current.position.x = 0.58 + Math.max(0, doorSlide);
+    }
+    // Animated airport runway approach strobe sequencing
+    if (runwayGlowRef.current) {
+      runwayGlowRef.current.children.forEach((child, i) => {
+        const mat = (child as THREE.Mesh).material as THREE.MeshBasicMaterial;
+        const wave = Math.sin(t * 5.0 - i * 0.6);
+        mat.opacity = wave > 0.2 ? 0.95 : 0.2;
+      });
+    }
+  });
+
+  return (
+    <group position={[0, 0, 0]}>
+      {/* --- MASSIVE CAPITAL HULL FRAME --- */}
+      {/* Main Armored Chassis Hull */}
+      <mesh position={[0, 0.08, 0.2]} castShadow>
+        <boxGeometry args={[3.8, 0.65, 5.6]} />
+        <HullMaterial color="#161b24" metalness={0.88} roughness={0.3} />
+      </mesh>
+
+      {/* Reinforced Heavy Prow Armor Ram */}
+      <mesh position={[0, 0.08, -2.85]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+        <coneGeometry args={[1.75, 1.2, 4]} />
+        <HullMaterial color="#11151d" metalness={0.92} roughness={0.25} />
+      </mesh>
+
+      {/* Ventral Keel Hull Superstructure */}
+      <mesh position={[0, -0.38, 0.3]} castShadow>
+        <boxGeometry args={[2.5, 0.42, 4.2]} />
+        <HullMaterial color="#10141c" metalness={0.9} roughness={0.32} />
+      </mesh>
+
+      {/* --- THROUGH-DECK FLIGHT RUNWAY & INTERNAL HANGAR DECK --- */}
+      {/* Recessed Flight Deck Runway Surface */}
+      <mesh position={[0, 0.42, 0.0]} receiveShadow>
+        <boxGeometry args={[1.45, 0.04, 4.6]} />
+        <HullMaterial color="#0c1017" metalness={0.94} roughness={0.38} />
+      </mesh>
+
+      {/* Animated Centerline Runway Approach Strobes */}
+      <group ref={runwayGlowRef}>
+        {[-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0].map((zPos, i) => (
+          <mesh key={i} position={[0, 0.45, zPos]} rotation={[-Math.PI / 2, 0, 0]}>
+            <planeGeometry args={[0.09, 0.25]} />
+            <meshBasicMaterial color="#00f0ff" transparent opacity={0.8} toneMapped={false} />
+          </mesh>
+        ))}
+      </group>
+
+      {/* Runway Perimeter Green Landing Guidance Lines */}
+      {[-0.68, 0.68].map((xPos, i) => (
+        <mesh key={i} position={[xPos, 0.45, 0.0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.04, 4.4]} />
+          <meshBasicMaterial color="#00ff66" transparent opacity={0.65} toneMapped={false} />
+        </mesh>
+      ))}
+
+      {/* Internal Illuminated Hangar Bay Cavity */}
+      <mesh position={[0, 0.36, -1.45]}>
+        <boxGeometry args={[1.35, 0.16, 0.95]} />
+        <meshStandardMaterial color="#051524" emissive="#0088cc" emissiveIntensity={1.8} toneMapped={false} />
+      </mesh>
+
+      {/* Miniature Parked Scout Fighters Inside Hangar Bay */}
+      {[-0.32, 0.32].map((xPos, i) => (
+        <mesh key={i} position={[xPos, 0.32, -1.45]} scale={0.12} castShadow>
+          <coneGeometry args={[0.3, 1.0, 6]} />
+          <meshStandardMaterial color="#7dd3fc" metalness={0.8} />
+        </mesh>
+      ))}
+
+      {/* Sliding Armored Hangar Bay Doors */}
+      <mesh ref={hangarDoorLRef} position={[-0.58, 0.46, -1.92]} castShadow>
+        <boxGeometry args={[0.48, 0.06, 0.65]} />
+        <HullMaterial color="#222a38" metalness={0.9} roughness={0.25} />
+      </mesh>
+      <mesh ref={hangarDoorRRef} position={[0.58, 0.46, -1.92]} castShadow>
+        <boxGeometry args={[0.48, 0.06, 0.65]} />
+        <HullMaterial color="#222a38" metalness={0.9} roughness={0.25} />
+      </mesh>
+
+      {/* --- DUAL ISLAND COMMAND BRIDGES & COMMUNICATIONS --- */}
+      <SymmetricPair position={[1.42, 0.58, 0.65]}>
+        {/* Island Bridge Superstructure */}
+        <mesh castShadow>
+          <boxGeometry args={[0.62, 0.52, 1.65]} />
+          <HullMaterial color="#1a202c" metalness={0.92} roughness={0.24} />
+        </mesh>
+        {/* Observation Windows Visor */}
+        <mesh position={[-0.24, 0.16, -0.35]} rotation={[0, -0.4, 0]}>
+          <boxGeometry args={[0.04, 0.08, 0.85]} />
+          <CockpitGlass color="#082b45" emissive="#00f0ff" emissiveIntensity={2.0} opacity={0.9} />
+        </mesh>
+      </SymmetricPair>
+
+      {/* Rotating Orbital Radar Array Mast on Starboard Island */}
+      <group ref={radarRef} position={[1.45, 1.05, 0.3]}>
+        <mesh castShadow>
+          <cylinderGeometry args={[0.035, 0.035, 0.45, 10]} />
+          <HullMaterial color="#475569" metalness={0.9} roughness={0.2} />
+        </mesh>
+        <mesh position={[0, 0.22, 0]} rotation={[0.3, 0, Math.PI / 2]} castShadow>
+          <torusGeometry args={[0.24, 0.024, 10, 24, Math.PI * 1.5]} />
+          <meshStandardMaterial color="#94a3b8" metalness={0.94} roughness={0.16} emissive="#00f0ff" emissiveIntensity={0.6} />
+        </mesh>
+      </group>
+
+      {/* --- OUTRIGGER DOCKING CATWALKS & FLANK SPONSONS --- */}
+      <SymmetricPair position={[2.15, 0.08, 0.4]}>
+        <mesh castShadow>
+          <boxGeometry args={[0.52, 0.32, 3.4]} />
+          <HullMaterial color="#141822" metalness={0.88} roughness={0.32} />
+        </mesh>
+        {/* Docking Ring Clamp */}
+        <mesh position={[0.26, 0.0, -0.4]} rotation={[0, 0, Math.PI / 2]}>
+          <torusGeometry args={[0.28, 0.04, 12, 24]} />
+          <HullMaterial color="#f59e0b" metalness={0.85} roughness={0.28} />
+        </mesh>
+      </SymmetricPair>
+
+      {/* --- CAPITAL DEFENSIVE POINT-DEFENSE TURRETS --- */}
+      {[
+        [-1.15, 0.48, -0.9],
+        [1.15, 0.48, -0.9],
+        [-1.15, 0.48, 1.4],
+        [1.15, 0.48, 1.4],
+      ].map(([tx, ty, tz], i) => (
+        <group key={i} position={[tx, ty, tz]}>
+          <mesh castShadow>
+            <cylinderGeometry args={[0.12, 0.15, 0.08, 12]} />
+            <HullMaterial color="#0f131a" metalness={0.95} roughness={0.2} />
+          </mesh>
+          <mesh position={[0, 0.06, -0.1]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+            <cylinderGeometry args={[0.018, 0.018, 0.28, 8]} />
+            <HullMaterial color="#2d3748" metalness={0.96} roughness={0.15} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* --- GIANT 5-ENGINE CAPITAL PROPULSION BANK --- */}
+      {/* Center Grand Thruster */}
+      <EngineThruster
+        position={[0, 0.08, 3.05]}
+        bellRadius={0.34}
+        bellLength={0.48}
+        color="#00f0ff"
+        flameRadius={0.3}
+        flameLength={2.1}
+        flickerOffset={0.2}
+      />
+      {/* Mid Thrusters */}
+      <SymmetricPair position={[0.95, 0.08, 3.0]}>
+        <EngineThruster
+          position={[0, 0, 0]}
+          bellRadius={0.26}
+          bellLength={0.42}
+          color="#00d4ff"
+          flameRadius={0.22}
+          flameLength={1.75}
+          flickerOffset={1.1}
+        />
+      </SymmetricPair>
+      {/* Outer Thrusters */}
+      <SymmetricPair position={[1.75, 0.08, 2.92]}>
+        <EngineThruster
+          position={[0, 0, 0]}
+          bellRadius={0.2}
+          bellLength={0.36}
+          color="#38bdf8"
+          flameRadius={0.16}
+          flameLength={1.4}
+          flickerOffset={2.3}
+        />
+      </SymmetricPair>
+    </group>
+  );
+}
+
+// ============================================================================
+// SHARED SHIP MODEL DISPATCHER
+// ============================================================================
+export function SharedShipModel({ type }: { type: RawShipType }) {
   const normalized = normalizeShipType(type);
   if (normalized === 'phantom') return <PhantomShip />;
   if (normalized === 'lancer') return <LancerShip />;

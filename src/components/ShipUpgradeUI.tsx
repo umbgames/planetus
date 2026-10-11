@@ -972,7 +972,7 @@ function ShipShowcase({ ship }: { ship: ShipEntry }) {
         <StarField />
 
         <Float speed={1.4} rotationIntensity={0.16} floatIntensity={0.3}>
-          <group position={[0, 0.04, 0]}>
+          <group position={[0, 0.04, 0]} rotation={[0.06, Math.PI - 0.38, 0]}>
             {ship.category === 'station' ? <SharedMegaShipModel /> : <SharedShipModel type={ship.id} />}
           </group>
         </Float>
