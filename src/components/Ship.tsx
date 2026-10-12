@@ -295,7 +295,7 @@ export function Ship({
   const [keys, setKeys] = useState<Record<string, boolean>>({});
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
   const [isLocked, setIsLocked] = useState(false);
-  const [isLaunching, setIsLaunching] = useState(!initialPosition);
+  const [isLaunching, setIsLaunching] = useState(true);
 
   const [isMobile, setIsMobile] = useState(false);
   const {
@@ -325,15 +325,15 @@ export function Ship({
 
   const velocity = useRef(new THREE.Vector3());
   const rotation = useRef(new THREE.Euler(
-    initialRotation ? initialRotation.x : 0,
-    initialRotation ? initialRotation.y : 0,
-    initialRotation ? initialRotation.z : 0,
+    initialRotation && typeof initialRotation.x === 'number' ? initialRotation.x : 0,
+    initialRotation && typeof initialRotation.y === 'number' ? initialRotation.y : 0,
+    initialRotation && typeof initialRotation.z === 'number' ? initialRotation.z : 0,
     'YXZ'
   ));
   const position = useRef(new THREE.Vector3(
-    initialPosition ? initialPosition.x : 0,
-    initialPosition ? initialPosition.y : 0,
-    initialPosition ? initialPosition.z : planetRadius + 5
+    initialPosition && typeof initialPosition.x === 'number' ? initialPosition.x : 0,
+    initialPosition && typeof initialPosition.y === 'number' ? initialPosition.y : 0,
+    initialPosition && typeof initialPosition.z === 'number' ? initialPosition.z : planetRadius + 5
   ));
 
   const launchProgress = useRef(0);
@@ -478,7 +478,12 @@ export function Ship({
           setKeys(k => ({ ...k, MouseRight: true }));
         }
       } else {
-        gl.domElement.requestPointerLock();
+        try {
+          const lockPromise = gl.domElement.requestPointerLock() as any;
+          if (lockPromise && typeof lockPromise.catch === 'function') {
+            lockPromise.catch(() => {});
+          }
+        } catch {}
       }
     };
 
@@ -505,17 +510,33 @@ export function Ship({
     canvas.addEventListener('touchend', handleTouchEnd);
     canvas.addEventListener('touchcancel', handleTouchEnd);
 
-    position.current.copy(camera.position);
-    velocity.current.copy(camera.position).normalize().multiplyScalar(20);
-    setMouse({ x: 0, y: -Math.PI / 2 });
-    rotation.current.set(-Math.PI / 2, 0, 0);
+    if (initialPosition && typeof initialPosition.x === 'number') {
+      position.current.set(initialPosition.x, initialPosition.y, initialPosition.z);
+      velocity.current.set(0, 0, -2);
+      setMouse({ x: 0, y: 0 });
+      rotation.current.set(
+        initialRotation && typeof initialRotation.x === 'number' ? initialRotation.x : 0,
+        initialRotation && typeof initialRotation.y === 'number' ? initialRotation.y : 0,
+        initialRotation && typeof initialRotation.z === 'number' ? initialRotation.z : 0
+      );
+    } else {
+      position.current.copy(camera.position);
+      velocity.current.copy(camera.position).normalize().multiplyScalar(20);
+      setMouse({ x: 0, y: -Math.PI / 2 });
+      rotation.current.set(-Math.PI / 2, 0, 0);
+    }
 
     if (cameraRigRef.current) {
-      cameraRigRef.current.position.copy(camera.position);
+      cameraRigRef.current.position.copy(position.current);
     }
 
     if (!window.matchMedia('(pointer: coarse)').matches && !('ontouchstart' in window)) {
-      gl.domElement.requestPointerLock();
+      try {
+        const lockPromise = gl.domElement.requestPointerLock() as any;
+        if (lockPromise && typeof lockPromise.catch === 'function') {
+          lockPromise.catch(() => {});
+        }
+      } catch {}
     }
 
     return () => {
@@ -577,7 +598,7 @@ export function Ship({
     };
 
     for (const base of bases) {
-      if (!base.position) continue;
+      if (!base.position || typeof base.position.x !== 'number') continue;
       const basePos = new THREE.Vector3(base.position.x, base.position.y, base.position.z);
       const normal = basePos.clone().normalize();
       const displacementScale = planetRadius * 0.028;
@@ -604,7 +625,7 @@ export function Ship({
     }
 
     for (const res of gameManager.resources) {
-      if (!res.active) continue;
+      if (!res.active || !res.position || typeof res.position.x !== 'number') continue;
       const resPos = new THREE.Vector3(res.position.x, res.position.y, res.position.z);
       const normal = resPos.clone().normalize();
       const displacementScale = planetRadius * 0.028;
@@ -1331,7 +1352,7 @@ export function Ship({
       ))}
 
       {(() => {
-        if (!lockedTarget) return null;
+        if (!lockedTarget || !lockedTarget.position || typeof lockedTarget.position.x !== 'number') return null;
         const isOwnBase = lockedTarget.type === 'base' && userData && lockedTarget.ownerId === userData.uid;
         const color = isOwnBase ? '#38bdf8' : '#ef4444';
         const colorClass = isOwnBase ? 'text-sky-400 border-sky-400/50' : 'text-red-500 border-red-500/50';

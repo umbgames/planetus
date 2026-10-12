@@ -496,6 +496,31 @@ export default function App() {
     return planet?.visualClass || 'rocky';
   }, [solarSystem, currentPlanetId]);
 
+  const shipSpawnPosition = useMemo(() => {
+    if (
+      userData?.playerSave?.position &&
+      typeof userData.playerSave.position.x === 'number' &&
+      typeof userData.playerSave.position.y === 'number' &&
+      typeof userData.playerSave.position.z === 'number'
+    ) {
+      return userData.playerSave.position;
+    }
+    const starbasePos = getStarbaseSpawnPosition(currentPlanetRadius);
+    return { x: starbasePos.x, y: starbasePos.y, z: starbasePos.z };
+  }, [userData?.playerSave?.position, currentPlanetRadius]);
+
+  const shipSpawnRotation = useMemo(() => {
+    if (
+      userData?.playerSave?.rotation &&
+      typeof userData.playerSave.rotation.x === 'number' &&
+      typeof userData.playerSave.rotation.y === 'number' &&
+      typeof userData.playerSave.rotation.z === 'number'
+    ) {
+      return userData.playerSave.rotation;
+    }
+    return { x: 0, y: 0, z: 0 };
+  }, [userData?.playerSave?.rotation]);
+
   useEffect(() => {
     const system = generateSolarSystem(currentSystemSeed);
     setSolarSystem(system);
@@ -816,7 +841,7 @@ export default function App() {
 
   const handleAttack = async () => {
     const targetBase = lockedTarget?.type === 'base' ? lockedTarget : nearbyBase;
-    if (targetBase && shipPosition) {
+    if (targetBase && targetBase.position && typeof targetBase.position.x === 'number' && shipPosition && typeof shipPosition.x === 'number') {
       const targetPos = new THREE.Vector3(targetBase.position.x, targetBase.position.y, targetBase.position.z);
       if (shipPosition.distanceTo(targetPos) > 50) {
         showToast('Target out of range!');
@@ -1082,8 +1107,8 @@ export default function App() {
             userData={userData}
             satellites={topSatellites}
             onSatelliteDamaged={handleSatelliteDamaged}
-            initialPosition={userData?.playerSave?.position || getStarbaseSpawnPosition(currentPlanetRadius)}
-            initialRotation={userData?.playerSave?.rotation}
+            initialPosition={shipSpawnPosition}
+            initialRotation={shipSpawnRotation}
             currentPlanetId={currentPlanetId}
             setCurrentPlanetId={setCurrentPlanetId}
             solarSystem={solarSystem}
@@ -1485,7 +1510,7 @@ export default function App() {
               const targetBase = lockedTarget?.type === 'base' ? lockedTarget : nearbyBase;
               let inRange = false;
 
-              if (targetBase && shipPosition) {
+              if (targetBase && targetBase.position && typeof targetBase.position.x === 'number' && shipPosition && typeof shipPosition.x === 'number') {
                 const targetPos = new THREE.Vector3(targetBase.position.x, targetBase.position.y, targetBase.position.z);
                 inRange = shipPosition.distanceTo(targetPos) < 50;
               }

@@ -166,7 +166,7 @@ export const Minimap: React.FC<MinimapProps> = ({ solarSystem, currentPlanetId, 
 
       // Draw other players
       activePlayers.forEach(player => {
-        if (player.playerSave?.position) {
+        if (player.playerSave?.position && typeof player.playerSave.position.x === 'number') {
           const px = cx + player.playerSave.position.x * mapData.scale;
           const py = cy + player.playerSave.position.z * mapData.scale * tilt;
           
@@ -181,7 +181,7 @@ export const Minimap: React.FC<MinimapProps> = ({ solarSystem, currentPlanetId, 
       });
 
       // Draw player ship
-      if (shipPosition) {
+      if (shipPosition && typeof shipPosition.x === 'number') {
         const sx = cx + shipPosition.x * mapData.scale;
         const sy = cy + shipPosition.z * mapData.scale * tilt;
         
