@@ -28,6 +28,7 @@ interface OrbitingPlanetProps {
   setCurrentPlanetId: (id: string | null) => void;
   scaledOrbitDistance: number;
   quality?: 'low' | 'medium' | 'high';
+  currentPlanetPosRef: React.MutableRefObject<THREE.Vector3>;
 }
 
 const RingMesh = memo(function RingMesh({ innerRadius, outerRadius, color, opacity }: { innerRadius: number; outerRadius: number; color: string; opacity: number }) {
@@ -140,18 +141,41 @@ const OrbitingMoon = memo(function OrbitingMoon({ moon, parentPlanet, isMobile, 
   );
 });
 
-const OrbitingPlanet = memo(function OrbitingPlanet({ planet, isMobile, currentPlanetId, setCurrentPlanetId, scaledOrbitDistance, quality = 'medium' }: OrbitingPlanetProps) {
+const OrbitingPlanet = memo(function OrbitingPlanet({
+  planet,
+  isMobile,
+  currentPlanetId,
+  setCurrentPlanetId,
+  scaledOrbitDistance,
+  quality = 'medium',
+  currentPlanetPosRef,
+}: OrbitingPlanetProps) {
   const groupRef = useRef<THREE.Group>(null);
   const spinRef = useRef<THREE.Group>(null);
 
   useFrame((state, delta) => {
     if (!groupRef.current) return;
-    const time = state.clock.getElapsedTime();
-    const angle = planet.initialAngle + time * planet.orbitSpeed;
-    const x = Math.cos(angle) * scaledOrbitDistance;
-    const z = Math.sin(angle) * scaledOrbitDistance;
-    const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
-    groupRef.current.position.set(x, y, z);
+
+    if (currentPlanetId === planet.id) {
+      // Anchored solidly at origin - eliminates coordinate precision loss & jitter!
+      groupRef.current.position.set(0, 0, 0);
+    } else {
+      const time = state.clock.getElapsedTime();
+      const angle = planet.initialAngle + time * planet.orbitSpeed;
+      const x = Math.cos(angle) * scaledOrbitDistance;
+      const z = Math.sin(angle) * scaledOrbitDistance;
+      const y = x * Math.sin(planet.orbitTiltZ) + z * Math.sin(planet.orbitTiltX);
+
+      if (currentPlanetId) {
+        groupRef.current.position.set(
+          x - currentPlanetPosRef.current.x,
+          y - currentPlanetPosRef.current.y,
+          z - currentPlanetPosRef.current.z
+        );
+      } else {
+        groupRef.current.position.set(x, y, z);
+      }
+    }
 
     if (spinRef.current) {
       const effectiveSpinSpeed = currentPlanetId === planet.id ? 0.0002 : 0.005;
@@ -206,7 +230,22 @@ function OrbitRing({ radius, color = '#1e3a8a' }: { radius: number; color?: stri
   );
 }
 
-function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'medium', visible = true }: { belt: AsteroidBeltData; scaledOrbitDistance: number; scaledWidth: number; quality?: 'low' | 'medium' | 'high'; visible?: boolean; key?: string | number }) {
+function AsteroidBelt({
+  belt,
+  scaledOrbitDistance,
+  scaledWidth,
+  quality = 'medium',
+  visible = true,
+  currentPlanetPosRef,
+}: {
+  belt: AsteroidBeltData;
+  scaledOrbitDistance: number;
+  scaledWidth: number;
+  quality?: 'low' | 'medium' | 'high';
+  visible?: boolean;
+  key?: string | number;
+  currentPlanetPosRef: React.MutableRefObject<THREE.Vector3>;
+}) {
   const groupRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const asteroidCount = useMemo(() => {
@@ -245,6 +284,11 @@ function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'mediu
   useFrame((state) => {
     if (!groupRef.current) return;
     groupRef.current.rotation.y = belt.initialAngle + state.clock.getElapsedTime() * belt.orbitSpeed;
+    groupRef.current.position.set(
+      -currentPlanetPosRef.current.x,
+      -currentPlanetPosRef.current.y,
+      -currentPlanetPosRef.current.z
+    );
   });
 
   return (
@@ -258,18 +302,25 @@ function AsteroidBelt({ belt, scaledOrbitDistance, scaledWidth, quality = 'mediu
 }
 
 export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPlanetId, showOrbitRings = true, quality = 'medium' }: SolarSystemViewProps) {
-  const groupRef = useRef<THREE.Group>(null);
+  const sunGroupRef = useRef<THREE.Group>(null);
   const orbitMap = useMemo(() => buildOrbitMap(data.bodies), [data.bodies]);
   const scaledStarRadius = useMemo(() => getScaledStarRadius(data.starRadius), [data.starRadius]);
-
+  const currentPlanetPosRef = useRef<THREE.Vector3>(new THREE.Vector3());
 
   useFrame((state) => {
-    if (!groupRef.current) return;
+    const elapsed = state.clock.getElapsedTime();
     if (currentPlanetId) {
-      const pos = getBodyWorldPosition(currentPlanetId, data, state.clock.getElapsedTime(), orbitMap);
-      groupRef.current.position.set(-pos.x, -pos.y, -pos.z);
+      getBodyWorldPosition(currentPlanetId, data, elapsed, orbitMap, currentPlanetPosRef.current);
     } else {
-      groupRef.current.position.set(0, 0, 0);
+      currentPlanetPosRef.current.set(0, 0, 0);
+    }
+
+    if (sunGroupRef.current) {
+      sunGroupRef.current.position.set(
+        -currentPlanetPosRef.current.x,
+        -currentPlanetPosRef.current.y,
+        -currentPlanetPosRef.current.z
+      );
     }
   });
 
@@ -277,23 +328,46 @@ export function SolarSystemView({ data, isMobile, currentPlanetId, setCurrentPla
     <>
       <NavigationStrip solarSystem={data} currentPlanetId={currentPlanetId} active={true} />
 
-      <group ref={groupRef}>
-        <Sun radius={scaledStarRadius} distance={0} speed={0} onClick={() => setCurrentPlanetId(null)} color={data.starColor} />
+      <group>
+        {/* Sun and central orbit rings shift relative to focused planet */}
+        <group ref={sunGroupRef}>
+          <Sun radius={scaledStarRadius} distance={0} speed={0} onClick={() => setCurrentPlanetId(null)} color={data.starColor} />
 
-        {showOrbitRings && data.bodies.map((body) => {
-          if (body.type !== 'planet') return null;
-          const orbitDistance = orbitMap.get(body.id) ?? body.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
-          return <OrbitRing key={`ring-${body.id}`} radius={orbitDistance} color={currentPlanetId === body.id ? '#38bdf8' : '#1d4ed8'} />;
-        })}
+          {showOrbitRings && data.bodies.map((body) => {
+            if (body.type !== 'planet') return null;
+            const orbitDistance = orbitMap.get(body.id) ?? body.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
+            return <OrbitRing key={`ring-${body.id}`} radius={orbitDistance} color={currentPlanetId === body.id ? '#38bdf8' : '#1d4ed8'} />;
+          })}
+        </group>
 
         {data.bodies.map((body) => {
           if (body.type === 'planet') {
             const scaledOrbitDistance = orbitMap.get(body.id) ?? body.orbitDistance * VISUAL_SCALE.ORBIT_DISTANCE_MULTIPLIER;
-            return <OrbitingPlanet key={body.id} planet={body} isMobile={isMobile} currentPlanetId={currentPlanetId} setCurrentPlanetId={setCurrentPlanetId} scaledOrbitDistance={scaledOrbitDistance} quality={quality} />;
+            return (
+              <OrbitingPlanet
+                key={body.id}
+                planet={body}
+                isMobile={isMobile}
+                currentPlanetId={currentPlanetId}
+                setCurrentPlanetId={setCurrentPlanetId}
+                scaledOrbitDistance={scaledOrbitDistance}
+                quality={quality}
+                currentPlanetPosRef={currentPlanetPosRef}
+              />
+            );
           }
           const scaledOrbitDistance = body.orbitDistance * VISUAL_SCALE.ASTEROID_DISTANCE_MULTIPLIER;
           const scaledWidth = body.width * VISUAL_SCALE.ASTEROID_WIDTH_MULTIPLIER;
-          return <AsteroidBelt key={body.id} belt={body} scaledOrbitDistance={scaledOrbitDistance} scaledWidth={scaledWidth} quality={quality} />;
+          return (
+            <AsteroidBelt
+              key={body.id}
+              belt={body}
+              scaledOrbitDistance={scaledOrbitDistance}
+              scaledWidth={scaledWidth}
+              quality={quality}
+              currentPlanetPosRef={currentPlanetPosRef}
+            />
+          );
         })}
       </group>
     </>

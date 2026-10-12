@@ -7,7 +7,7 @@ import { Sun } from './components/Sun';
 import { BaseManager } from './components/BaseManager';
 import { Satellite } from './components/Satellite';
 import { OtherPlayers } from './components/OtherPlayers';
-import { SpaceStations } from './components/SpaceStations';
+import { SpaceStations, getStarbaseSpawnPosition } from './components/SpaceStations';
 import { ClanUI } from './components/ClanUI';
 import { ShipUpgradeUI } from './components/ShipUpgradeUI';
 import { CameraController } from './components/CameraController';
@@ -477,11 +477,23 @@ export default function App() {
     return getIndexedPlanetNames(solarSystem.bodies.filter((b): b is PlanetData => b.type === 'planet'));
   }, [solarSystem]);
 
+  const planet1Id = useMemo(() => {
+    if (!solarSystem) return null;
+    const firstPlanet = solarSystem.bodies.find((b): b is PlanetData => b.type === 'planet');
+    return firstPlanet ? firstPlanet.id : null;
+  }, [solarSystem]);
+
   const currentPlanetRadius = useMemo(() => {
     if (!solarSystem) return PLANET_RADIUS;
     if (!currentPlanetId) return getScaledStarRadius(solarSystem.starRadius);
     const planet = solarSystem.bodies.find((b) => b.id === currentPlanetId) as PlanetData;
     return planet ? getScaledPlanetRadius(planet.radius) : PLANET_RADIUS;
+  }, [solarSystem, currentPlanetId]);
+
+  const currentVisualClass = useMemo(() => {
+    if (!solarSystem || !currentPlanetId) return 'rocky';
+    const planet = solarSystem.bodies.find((b) => b.id === currentPlanetId) as PlanetData;
+    return planet?.visualClass || 'rocky';
   }, [solarSystem, currentPlanetId]);
 
   useEffect(() => {
@@ -493,7 +505,7 @@ export default function App() {
 
     if (firstPlanet) {
       geographyManager.setSeed(firstPlanet.seed, firstPlanet.noiseScale, firstPlanet.landThreshold);
-      setCurrentPlanetId(null);
+      setCurrentPlanetId(firstPlanet.id);
     } else {
       setCurrentPlanetId(null);
     }
@@ -980,10 +992,10 @@ export default function App() {
 
       <Canvas
         shadows={false}
-        camera={{ position: [0, 0, 25], fov: 42, near: 0.0001, far: 10000000 }}
+        camera={{ position: [0, 0, 25], fov: 42, near: 0.1, far: 5000000 }}
         dpr={dpr}
         performance={{ min: 0.5 }}
-        gl={{ antialias: false, powerPreference: 'high-performance' }}
+        gl={{ antialias: true, logarithmicDepthBuffer: true, powerPreference: 'high-performance' }}
       >
         <color attach="background" args={[isShipMode ? '#02040a' : '#04060d']} />
         <ambientLight intensity={isShipMode ? 0.16 : 0.14} />
@@ -1044,6 +1056,12 @@ export default function App() {
         <SpaceStations
           stations={spaceStations}
           currentPlanetId={currentPlanetId}
+          planet1Id={planet1Id}
+          planetRadius={currentPlanetRadius}
+          onDockAtStarbase={() => {
+            setIsShipMode(false);
+            if (planet1Id) setCurrentPlanetId(planet1Id);
+          }}
         />
 
         {!isShipMode && !systemTransition && (
@@ -1052,6 +1070,7 @@ export default function App() {
             onInteract={() => setTrackedSatellite(null)}
             currentPlanetId={currentPlanetId}
             planetRadius={currentPlanetRadius}
+            visualClass={currentVisualClass}
           />
         )}
 
@@ -1063,7 +1082,7 @@ export default function App() {
             userData={userData}
             satellites={topSatellites}
             onSatelliteDamaged={handleSatelliteDamaged}
-            initialPosition={userData?.playerSave?.position}
+            initialPosition={userData?.playerSave?.position || getStarbaseSpawnPosition(currentPlanetRadius)}
             initialRotation={userData?.playerSave?.rotation}
             currentPlanetId={currentPlanetId}
             setCurrentPlanetId={setCurrentPlanetId}
@@ -1089,32 +1108,60 @@ export default function App() {
       {/* UI Overlay */}
       {!isShipMode && (
         <div className="absolute top-0 left-0 w-full p-6 pointer-events-none flex justify-between items-start z-40">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-cyan-400">
-              PLANET:US
-            </h1>
-            <p className="text-xs font-semibold text-zinc-400 tracking-widest mt-1 mb-1">
-              EXPLORE, BUILD, TAKE
-            </p>
-            <div className="pointer-events-auto flex items-center gap-2 mt-1 text-[10px]">
-              <span className="text-zinc-500 font-bold uppercase tracking-wider">Made By</span>
-              <a
-                href="https://umbtechnologies.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-cyan-400 hover:text-cyan-300 font-bold tracking-wider hover:underline"
-              >
-                UMB GAMES & TECHNOLOGY LTD
-              </a>
-              <span className="text-zinc-600">•</span>
-              <a
-                href="https://github.com/umbgames/planetus"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-purple-400 hover:text-purple-300 font-bold tracking-wider hover:underline flex items-center gap-1"
-              >
-                <span>OPEN SOURCE</span>
-              </a>
+          <div className="pointer-events-auto">
+            <div className="glass-panel rounded-2xl px-5 py-4 border border-white/10 shadow-2xl backdrop-blur-xl max-w-sm">
+              <h1 className="text-2xl font-black tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-300">
+                PLANET:US
+              </h1>
+              <p className="text-[10px] font-bold text-slate-400 tracking-[0.25em] uppercase mt-0.5">
+                EXPLORE • BUILD • CONQUER
+              </p>
+
+              {/* Orbital sector location badge */}
+              <div className="mt-2.5 flex items-center gap-2">
+                {currentPlanetId === planet1Id ? (
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-[11px] text-emerald-300 font-semibold tracking-wide">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
+                    <span>STARBASE ALPHA // PLANET 1 ORBIT</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="px-3 py-1 rounded-full bg-sky-500/15 border border-sky-400/30 text-[11px] text-sky-300 font-medium tracking-wide flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-sky-400" />
+                      <span>Orbit: {currentPlanetId ? (planetNameMap[currentPlanetId] || currentPlanetId.replace('planet_', 'PLANET-')) : 'Deep Space'}</span>
+                    </div>
+                    {planet1Id && (
+                      <button
+                        onClick={() => setCurrentPlanetId(planet1Id)}
+                        className="glass-pill px-3 py-1 rounded-full text-[11px] text-cyan-300 hover:text-white flex items-center gap-1 font-semibold hover:border-cyan-400/50 transition-all cursor-pointer"
+                      >
+                        <span>↩ Starbase Alpha</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-white/5 text-[10px]">
+                <span className="text-slate-500 font-semibold uppercase tracking-wider">By</span>
+                <a
+                  href="https://umbtechnologies.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-cyan-400 hover:text-cyan-300 font-bold tracking-wider hover:underline"
+                >
+                  UMB GAMES & TECH
+                </a>
+                <span className="text-slate-600">•</span>
+                <a
+                  href="https://github.com/umbgames/planetus"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-indigo-400 hover:text-indigo-300 font-bold tracking-wider hover:underline"
+                >
+                  OPEN SOURCE
+                </a>
+              </div>
             </div>
           </div>
 
@@ -1122,71 +1169,82 @@ export default function App() {
             {!userData ? (
               <button
                 onClick={handleLogin}
-                className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded shadow flex items-center gap-2"
+                className="glass-pill hover:border-sky-400/50 text-white font-bold py-2.5 px-5 rounded-2xl shadow-xl flex items-center gap-2 transition-all hover:scale-105 active:scale-95"
               >
-                <LogIn size={16} />
-                Login to Build
+                <LogIn size={16} className="text-sky-400" />
+                <span>Login to Build</span>
               </button>
             ) : (
-              <div className="bg-zinc-900/80 backdrop-blur border border-zinc-700 rounded-lg p-3 text-right">
-                <div className="text-sm font-bold text-white mb-1">{userData.displayName}</div>
-                <div className="flex gap-4 text-xs">
-                  <div className="text-zinc-300">
-                    Common: <span className="text-white font-mono">{userData.commonResources}</span>
+              <div className="glass-panel rounded-2xl p-4 w-72 text-right shadow-2xl border border-white/10">
+                <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-white/10">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_#34d399]" />
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Commander</span>
                   </div>
-                  <div className="text-fuchsia-400">
-                    Aetherium: <span className="text-white font-mono">{userData.rareResources}</span>
+                  <div className="text-xs font-bold text-white truncate max-w-[150px]">{userData.displayName}</div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="bg-black/40 rounded-xl px-2.5 py-1.5 border border-white/5 text-left">
+                    <div className="text-[9px] uppercase font-semibold text-slate-400 tracking-wider">Common</div>
+                    <div className="text-xs font-mono font-bold text-emerald-400">{userData.commonResources}</div>
+                  </div>
+                  <div className="bg-black/40 rounded-xl px-2.5 py-1.5 border border-white/5 text-left">
+                    <div className="text-[9px] uppercase font-semibold text-slate-400 tracking-wider">Aetherium</div>
+                    <div className="text-xs font-mono font-bold text-fuchsia-400">{userData.rareResources}</div>
                   </div>
                 </div>
 
-                {!userData.hasSatellite && (
+                <div className="space-y-1.5">
+                  {!userData.hasSatellite && (
+                    <button
+                      onClick={handleLaunchSatellite}
+                      disabled={userData.commonResources < 500 || userData.rareResources < 100}
+                      className="w-full glass-pill hover:border-indigo-400/40 text-indigo-300 hover:text-white disabled:opacity-40 disabled:pointer-events-none text-xs font-semibold py-1.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all"
+                    >
+                      <RadioTower size={13} />
+                      <span>Launch Satellite (500C, 100A)</span>
+                    </button>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      onClick={() => setShowShipyardUI(true)}
+                      className="glass-pill hover:border-emerald-400/50 text-emerald-300 hover:text-white text-xs font-semibold py-1.5 px-2 rounded-xl flex items-center justify-center gap-1 transition-all"
+                    >
+                      <Rocket size={12} />
+                      <span>Shipyard</span>
+                    </button>
+                    <button
+                      onClick={() => setShowMarket(true)}
+                      className="glass-pill hover:border-cyan-400/50 text-cyan-300 hover:text-white text-xs font-semibold py-1.5 px-2 rounded-xl flex items-center justify-center gap-1 transition-all"
+                    >
+                      <ArrowRightLeft size={12} />
+                      <span>Market</span>
+                    </button>
+                    <button
+                      onClick={() => setShowClanUI(true)}
+                      className="glass-pill hover:border-blue-400/50 text-sky-300 hover:text-white text-xs font-semibold py-1.5 px-2 rounded-xl flex items-center justify-center gap-1 transition-all"
+                    >
+                      <Users size={12} />
+                      <span>Clans</span>
+                    </button>
+                  </div>
+
                   <button
-                    onClick={handleLaunchSatellite}
-                    disabled={userData.commonResources < 500 || userData.rareResources < 100}
-                    className="mt-2 w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
+                    onClick={() => {
+                      showToast('Watching transmission...');
+                      setTimeout(() => {
+                        gameManager.addCurrency(100);
+                        showToast('+100 Common Resources received!');
+                      }, 2000);
+                    }}
+                    className="w-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-white text-xs font-semibold py-1.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all"
                   >
-                    <RadioTower size={12} />
-                    Launch Satellite (500C, 100A)
+                    <MonitorPlay size={13} />
+                    <span>Transmission (+100C)</span>
                   </button>
-                )}
-
-                <button
-                  onClick={() => setShowMarket(true)}
-                  className="mt-2 w-full bg-cyan-600 hover:bg-cyan-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
-                >
-                  <ArrowRightLeft size={12} />
-                  Market
-                </button>
-
-                <button
-                  onClick={() => setShowClanUI(true)}
-                  className="mt-2 w-full bg-blue-600 hover:bg-blue-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
-                >
-                  <Users size={12} />
-                  Clans
-                </button>
-
-                <button
-                  onClick={() => setShowShipyardUI(true)}
-                  className="mt-2 w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
-                >
-                  <Rocket size={12} />
-                  Shipyard
-                </button>
-
-                <button
-                  onClick={() => {
-                    showToast('Watching ad...');
-                    setTimeout(() => {
-                      gameManager.addCurrency(100);
-                      showToast('Earned 100 Common Resources!');
-                    }, 2000);
-                  }}
-                  className="mt-2 w-full bg-yellow-600 hover:bg-yellow-500 text-white text-xs py-1 px-2 rounded flex items-center justify-center gap-1 transition-colors"
-                >
-                  <MonitorPlay size={12} />
-                  Watch Ad
-                </button>
+                </div>
               </div>
             )}
           </div>
@@ -1521,10 +1579,10 @@ export default function App() {
           >
             <button
               onClick={handleSpawnShip}
-              className="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-6 rounded-full shadow-lg shadow-red-500/50 flex items-center gap-2 transition-all"
+              className="group relative flex items-center gap-3 px-7 py-3.5 rounded-full bg-gradient-to-r from-sky-500/90 via-cyan-500/90 to-blue-600/90 hover:from-sky-400 hover:to-blue-500 text-white font-bold text-sm tracking-wider uppercase shadow-[0_0_25px_rgba(56,189,248,0.5)] hover:shadow-[0_0_35px_rgba(56,189,248,0.8)] border border-cyan-300/40 transition-all hover:scale-105 active:scale-95"
             >
-              <Rocket size={20} />
-              Spawn Ship
+              <Rocket size={18} className="animate-pulse" />
+              <span>Launch From Starbase Alpha</span>
             </button>
           </motion.div>
         )}

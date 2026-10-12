@@ -3,22 +3,34 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 
+const ATMOSPHERE_TINTS: Record<string, string> = {
+  lush_green: '#4ba2ff',
+  rocky: '#7dd3fc',
+  dry_arid: '#f59e0b',
+  desert: '#f59e0b',
+  red: '#f87171',
+  volcanic: '#ea580c',
+  ice: '#a5f3fc',
+  gas_giant: '#cbd5e1',
+};
+
 interface CameraControllerProps {
   trackedSatellite: any | null;
   onInteract: () => void;
   currentPlanetId: string | null;
   planetRadius: number;
+  visualClass?: string;
 }
 
-export function CameraController({ trackedSatellite, onInteract, currentPlanetId, planetRadius }: CameraControllerProps) {
+export function CameraController({ trackedSatellite, onInteract, currentPlanetId, planetRadius, visualClass = 'rocky' }: CameraControllerProps) {
   const { camera, scene } = useThree();
   const controlsRef = useRef<any>(null);
   const R = planetRadius; // Planet radius or Sun radius
   
   const targetPos = useMemo(() => new THREE.Vector3(), []);
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 0, 0), []);
-  const spaceColor = useMemo(() => new THREE.Color('#000000'), []);
-  const skyColor = useMemo(() => new THREE.Color('#cda077'), []);
+  const spaceColor = useMemo(() => new THREE.Color('#02040a'), []);
+  const skyColor = useMemo(() => new THREE.Color(ATMOSPHERE_TINTS[visualClass] || '#4ba2ff'), [visualClass]);
 
   useEffect(() => {
     return () => {
@@ -26,12 +38,12 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
     };
   }, [scene]);
   
-  useFrame((state) => {
+  useFrame((state, delta) => {
     const dist = camera.position.length();
     const altitude = dist - R;
     
     let tiltFactor = 0;
-    const atmosphereHeight = R * 0.5;
+    const atmosphereHeight = R * 0.45;
     if (currentPlanetId && altitude < atmosphereHeight) {
       tiltFactor = 1 - (altitude / atmosphereHeight);
     }
@@ -39,38 +51,39 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
     tiltFactor = tiltFactor * tiltFactor * (3 - 2 * tiltFactor); // smoothstep
 
     // Dynamic FOV
-    const targetFov = THREE.MathUtils.lerp(45, 85, tiltFactor);
+    const targetFov = THREE.MathUtils.lerp(42, 75, tiltFactor);
     const perspectiveCamera = camera as THREE.PerspectiveCamera;
-    if (Math.abs(perspectiveCamera.fov - targetFov) > 0.1) {
-      perspectiveCamera.fov = targetFov;
+    if (Math.abs(perspectiveCamera.fov - targetFov) > 0.05) {
+      perspectiveCamera.fov = THREE.MathUtils.lerp(perspectiveCamera.fov, targetFov, 1 - Math.exp(-8 * delta));
       perspectiveCamera.updateProjectionMatrix();
     }
 
-    // Dynamic Sky Color
+    // Dynamic Sky Color - deep space when away, atmospheric tint when close
     if (!scene.background) {
-      scene.background = new THREE.Color('#000000');
+      scene.background = new THREE.Color('#02040a');
     }
-    (scene.background as THREE.Color).copy(spaceColor).lerp(skyColor, tiltFactor);
+    (scene.background as THREE.Color).copy(spaceColor).lerp(skyColor, tiltFactor * 0.85);
 
-    // Dynamic Fog
-    if (!scene.fog) {
-      scene.fog = new THREE.Fog('#cda077', 100, 200);
+    // Dynamic Fog: only activate inside planetary atmosphere, leave space crystal clear
+    if (currentPlanetId && tiltFactor > 0.03) {
+      if (!scene.fog) {
+        scene.fog = new THREE.Fog(skyColor, 100, 200);
+      }
+      const fog = scene.fog as THREE.Fog;
+      fog.color.copy(skyColor);
+      
+      const minFogFar = Math.max(R * 4.5, 350);
+      const minFogNear = Math.max(R * 0.6, 25);
+      fog.near = THREE.MathUtils.lerp(12000, minFogNear, Math.pow(tiltFactor, 3));
+      fog.far = THREE.MathUtils.lerp(50000, minFogFar, Math.pow(tiltFactor, 3));
+    } else {
+      scene.fog = null;
     }
-    const fog = scene.fog as THREE.Fog;
-    fog.color.copy(skyColor);
-    
-    // Balanced atmosphere fog distances so planets are never blinded or untextured
-    const minFogFar = Math.max(R * 4.0, 300);
-    const minFogNear = Math.max(R * 0.5, 20);
-    const fogNear = THREE.MathUtils.lerp(5000000, minFogNear, Math.pow(tiltFactor, 4));
-    const fogFar = THREE.MathUtils.lerp(10000000, minFogFar, Math.pow(tiltFactor, 4));
-    fog.near = fogNear;
-    fog.far = fogFar;
 
     if (controlsRef.current) {
       // Dynamic Sensitivity
-      controlsRef.current.rotateSpeed = THREE.MathUtils.lerp(1.0, 0.02, tiltFactor);
-      controlsRef.current.zoomSpeed = THREE.MathUtils.lerp(1.0, 0.05, tiltFactor);
+      controlsRef.current.rotateSpeed = THREE.MathUtils.lerp(1.0, 0.08, tiltFactor);
+      controlsRef.current.zoomSpeed = THREE.MathUtils.lerp(1.0, 0.12, tiltFactor);
     }
 
     if (trackedSatellite && currentPlanetId) {
@@ -84,7 +97,7 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
       
       if (controlsRef.current) {
         // Smoothly move target to satellite
-        controlsRef.current.target.lerp(targetPos, 0.05);
+        controlsRef.current.target.lerp(targetPos, 1 - Math.exp(-6 * delta));
         
         // Smoothly zoom in
         const currentDist = camera.position.distanceTo(controlsRef.current.target);
@@ -92,7 +105,7 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
         
         if (currentDist > desiredDist + 0.1) {
           const dir = new THREE.Vector3().subVectors(camera.position, controlsRef.current.target).normalize();
-          const newDist = THREE.MathUtils.lerp(currentDist, desiredDist, 0.05);
+          const newDist = THREE.MathUtils.lerp(currentDist, desiredDist, 1 - Math.exp(-6 * delta));
           camera.position.copy(controlsRef.current.target).add(dir.multiplyScalar(newDist));
         }
         
@@ -120,29 +133,28 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
           
           // Shift target forward to create tilt, bounded by horizon
           const horizonDist = Math.sqrt(Math.max(0, 2 * R * altitude));
-          const maxShift = Math.max(0.001, horizonDist * 0.8);
-          const shiftAmount = Math.min(R * 0.6 * tiltFactor, maxShift);
+          const maxShift = Math.max(0.01, horizonDist * 0.75);
+          const shiftAmount = Math.min(R * 0.5 * tiltFactor, maxShift);
           
           const closeTarget = surfacePoint.clone().add(forward.multiplyScalar(shiftAmount));
-          closeTarget.normalize().multiplyScalar(R); // Ensure target stays on surface
+          closeTarget.normalize().multiplyScalar(R);
           
           targetPos.lerpVectors(defaultTarget, closeTarget, tiltFactor);
         } else {
           targetPos.copy(defaultTarget);
         }
         
-        controls.target.lerp(targetPos, 0.1);
+        controls.target.lerp(targetPos, 1 - Math.exp(-10 * delta));
         
-        // Dynamically adjust minDistance to prevent going inside the planet
-        // while allowing close zooms when tilted
+        // Smooth minDistance prevents clipping or shaking
         const targetDistFromCenter = controls.target.length();
-        controls.minDistance = Math.max(0.0002, R + 0.0002 - targetDistFromCenter);
+        controls.minDistance = Math.max(0.2, R + 0.25 - targetDistFromCenter);
         
         controls.update();
         
-        // Safeguard: prevent camera from going underground
-        if (camera.position.length() < R + 0.0002) {
-          camera.position.normalize().multiplyScalar(R + 0.0002);
+        // Safeguard: prevent camera from snapping underground
+        if (camera.position.length() < R + 0.25) {
+          camera.position.normalize().multiplyScalar(R + 0.25);
         }
       }
     }
@@ -152,8 +164,8 @@ export function CameraController({ trackedSatellite, onInteract, currentPlanetId
     <OrbitControls 
       ref={controlsRef} 
       enablePan={false} 
-      minDistance={R + 0.0002} 
-      maxDistance={10000000} 
+      minDistance={R + 0.25} 
+      maxDistance={2500000} 
       makeDefault
       onStart={() => {
         if (trackedSatellite) {

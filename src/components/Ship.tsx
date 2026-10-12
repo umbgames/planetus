@@ -320,8 +320,8 @@ export function Ship({
   const cameraRigRef = useRef<THREE.Group>(null);
   const shipModelRef = useRef<THREE.Group>(null);
 
-  const spaceColor = useRef(new THREE.Color('#000000'));
-  const skyColor = useRef(new THREE.Color('#cda077'));
+  const spaceColor = useRef(new THREE.Color('#02040a'));
+  const skyColor = useRef(new THREE.Color('#4ba2ff'));
 
   const velocity = useRef(new THREE.Vector3());
   const rotation = useRef(new THREE.Euler(
@@ -757,24 +757,42 @@ export function Ship({
     tiltFactor = THREE.MathUtils.clamp(tiltFactor, 0, 1);
     tiltFactor = tiltFactor * tiltFactor * (3 - 2 * tiltFactor);
 
+    const currentPlanet = solarSystem?.bodies.find(b => b.id === currentPlanetId && b.type === 'planet');
+    const visualClass = (currentPlanet as any)?.visualClass || 'rocky';
+    const ATMOSPHERE_TINTS: Record<string, string> = {
+      lush_green: '#4ba2ff',
+      rocky: '#7dd3fc',
+      dry_arid: '#f59e0b',
+      desert: '#f59e0b',
+      red: '#f87171',
+      volcanic: '#ea580c',
+      ice: '#a5f3fc',
+      gas_giant: '#cbd5e1',
+    };
+    skyColor.current.set(ATMOSPHERE_TINTS[visualClass] || '#4ba2ff');
+    spaceColor.current.set('#02040a');
+
     if (!scene.background) {
-      scene.background = new THREE.Color('#000000');
+      scene.background = new THREE.Color('#02040a');
     }
 
     (scene.background as THREE.Color)
       .copy(spaceColor.current)
-      .lerp(skyColor.current, tiltFactor);
+      .lerp(skyColor.current, tiltFactor * 0.85);
 
-    if (!scene.fog) {
-      scene.fog = new THREE.Fog('#cda077', 100, 200);
+    if (tiltFactor > 0.03) {
+      if (!scene.fog) {
+        scene.fog = new THREE.Fog(skyColor.current, 100, 200);
+      }
+      const fog = scene.fog as THREE.Fog;
+      fog.color.copy(skyColor.current);
+      const minFogFar = Math.max(R * 4.2, 350);
+      const minFogNear = Math.max(R * 0.6, 25);
+      fog.near = THREE.MathUtils.lerp(8000, minFogNear, Math.pow(tiltFactor, 3));
+      fog.far = THREE.MathUtils.lerp(30000, minFogFar, Math.pow(tiltFactor, 3));
+    } else {
+      scene.fog = null;
     }
-
-    const fog = scene.fog as THREE.Fog;
-    fog.color.copy(skyColor.current);
-    const minFogFar = Math.max(R * 4.0, 300);
-    const minFogNear = Math.max(R * 0.5, 20);
-    fog.near = THREE.MathUtils.lerp(8000, minFogNear, Math.pow(tiltFactor, 3));
-    fog.far = THREE.MathUtils.lerp(3000000, minFogFar, Math.pow(tiltFactor, 3));
 
     if (!isLocked && !isLaunching && !isMobile) return;
 

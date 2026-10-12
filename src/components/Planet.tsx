@@ -163,12 +163,13 @@ export const Planet = memo(function Planet({
     return ATMOSPHERE_PALETTE[visualClass];
   }, [visualClass, cloudColor]);
 
-  const cloudTextureSize = isMobile ? 512 : 1024;
+  const cloudTextureWidth = isMobile ? 512 : 1024;
+  const cloudTextureHeight = isMobile ? 256 : 512;
 
-  const createCloudTexture = (size: number, density: number, variant: number) => {
+  const createCloudTexture = (width: number, height: number, density: number, variant: number) => {
     const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext('2d');
 
     if (!ctx) {
@@ -177,11 +178,11 @@ export const Planet = memo(function Planet({
       return fallback;
     }
 
-    ctx.clearRect(0, 0, size, size);
+    ctx.clearRect(0, 0, width, height);
 
     const seedBase = seed
       .split('')
-      .reduce((acc, char, index) => acc + char.charCodeAt(0) * (index + 1 + variant * 7), 0);
+      .reduce((acc, char, index) => acc + char.charCodeAt(0) * (index + 1 + variant * 11), 0);
 
     let randomState = seedBase % 2147483647;
     const rand = () => {
@@ -189,80 +190,67 @@ export const Planet = memo(function Planet({
       return (randomState - 1) / 2147483646;
     };
 
-    const background = ctx.createRadialGradient(size * 0.5, size * 0.5, size * 0.15, size * 0.5, size * 0.5, size * 0.72);
-    background.addColorStop(0, 'rgba(255,255,255,0.02)');
-    background.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = background;
-    ctx.fillRect(0, 0, size, size);
+    // Draw soft, seamless organic cloud whorls with horizontal toroidal wrapping
+    const bandCount = Math.floor((isMobile ? 28 : 55) * density);
+    for (let i = 0; i < bandCount; i++) {
+      const cy = (0.15 + rand() * 0.7) * height;
+      const baseRx = (0.08 + rand() * 0.16) * width;
+      const baseRy = (0.02 + rand() * 0.045) * height;
+      const puffs = 3 + Math.floor(rand() * 4);
+      const cx = rand() * width;
 
-    const clusterCount = Math.floor((isMobile ? 90 : 180) * density * (0.9 + variant * 0.12));
-    for (let i = 0; i < clusterCount; i++) {
-      const x = rand() * size;
-      const y = rand() * size;
-      const clusterRadius = (size * (0.025 + rand() * 0.055)) * (0.85 + variant * 0.08);
-      const puffs = 4 + Math.floor(rand() * 7);
+      // Polar attenuation factor to prevent pole pinching
+      const latFactor = 1 - Math.pow(Math.abs((cy / height) - 0.5) * 2, 3);
+      if (latFactor <= 0.05) continue;
 
       for (let j = 0; j < puffs; j++) {
-        const angle = rand() * Math.PI * 2;
-        const distance = rand() * clusterRadius * 0.85;
-        const px = x + Math.cos(angle) * distance;
-        const py = y + Math.sin(angle) * distance;
-        const r = clusterRadius * (0.28 + rand() * 0.9);
+        const ox = (rand() - 0.5) * baseRx * 1.2;
+        const oy = (rand() - 0.5) * baseRy * 0.8;
+        const px = (cx + ox + width) % width;
+        const py = Math.max(10, Math.min(height - 10, cy + oy));
+        const rx = baseRx * (0.4 + rand() * 0.6);
+        const ry = baseRy * (0.5 + rand() * 0.5);
 
-        const gradient = ctx.createRadialGradient(px, py, 0, px, py, r);
-        const alpha = 0.05 + rand() * 0.15;
-        gradient.addColorStop(0, `rgba(255,255,255,${alpha})`);
-        gradient.addColorStop(0.45, `rgba(255,255,255,${alpha * 0.7})`);
-        gradient.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(px, py, r, 0, Math.PI * 2);
-        ctx.fill();
+        // Draw puff and its wrap-around ghost for zero-seam equirectangular mapping
+        for (const wrapOffset of [0, width, -width]) {
+          const drawX = px + wrapOffset;
+          if (drawX + rx < 0 || drawX - rx > width) continue;
+
+          const grad = ctx.createRadialGradient(drawX, py, 0, drawX, py, rx);
+          const alpha = (0.06 + rand() * 0.12) * latFactor;
+          grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+          grad.addColorStop(0.5, `rgba(255, 255, 255, ${alpha * 0.6})`);
+          grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.ellipse(drawX, py, rx, ry, (rand() - 0.5) * 0.2, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
-    }
-
-    const hazePasses = isMobile ? 2 : 3;
-    for (let i = 0; i < hazePasses; i++) {
-      const x = rand() * size;
-      const y = rand() * size;
-      const r = size * (0.12 + rand() * 0.18);
-      const gradient = ctx.createRadialGradient(x, y, 0, x, y, r);
-      gradient.addColorStop(0, `rgba(255,255,255,${0.025 + rand() * 0.03})`);
-      gradient.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
     }
 
     const cloudTexture = new THREE.CanvasTexture(canvas);
     cloudTexture.wrapS = THREE.RepeatWrapping;
-    cloudTexture.wrapT = THREE.RepeatWrapping;
-    cloudTexture.repeat.set(1 + variant * 0.06, 1 + variant * 0.04);
-    cloudTexture.offset.set(variant * 0.017, variant * 0.011);
+    cloudTexture.wrapT = THREE.ClampToEdgeWrapping;
     cloudTexture.colorSpace = THREE.SRGBColorSpace;
     cloudTexture.generateMipmaps = true;
     cloudTexture.minFilter = THREE.LinearMipmapLinearFilter;
     cloudTexture.magFilter = THREE.LinearFilter;
-    cloudTexture.anisotropy = Math.min(gl.capabilities.getMaxAnisotropy(), isMobile ? 2 : 8);
+    cloudTexture.anisotropy = Math.min(gl.capabilities.getMaxAnisotropy(), isMobile ? 2 : 4);
     cloudTexture.needsUpdate = true;
 
     return cloudTexture;
   };
 
   const cloudTexture1 = useMemo(
-    () => (showClouds ? createCloudTexture(cloudTextureSize, Math.max(0.3, Math.min(1, cloudDensity)), 1) : null),
-    [showClouds, cloudTextureSize, cloudDensity, gl, isMobile, seed]
+    () => (showClouds && visualClass !== 'gas_giant' ? createCloudTexture(cloudTextureWidth, cloudTextureHeight, Math.max(0.3, Math.min(0.9, cloudDensity)), 1) : null),
+    [showClouds, cloudTextureWidth, cloudTextureHeight, cloudDensity, gl, isMobile, seed, visualClass]
   );
 
   const cloudTexture2 = useMemo(
-    () => (showClouds ? createCloudTexture(cloudTextureSize, Math.max(0.28, Math.min(1, cloudDensity * 0.9)), 2) : null),
-    [showClouds, cloudTextureSize, cloudDensity, gl, isMobile, seed]
-  );
-
-  const cloudTexture3 = useMemo(
-    () => (showClouds ? createCloudTexture(cloudTextureSize, Math.max(0.25, Math.min(1, cloudDensity * 0.82)), 3) : null),
-    [showClouds, cloudTextureSize, cloudDensity, gl, isMobile, seed]
+    () => (showClouds && visualClass !== 'gas_giant' ? createCloudTexture(cloudTextureWidth, cloudTextureHeight, Math.max(0.2, Math.min(0.7, cloudDensity * 0.75)), 2) : null),
+    [showClouds, cloudTextureWidth, cloudTextureHeight, cloudDensity, gl, isMobile, seed, visualClass]
   );
 
   useEffect(() => {
@@ -275,7 +263,7 @@ export const Planet = memo(function Planet({
       map.generateMipmaps = true;
       map.minFilter = THREE.LinearMipmapLinearFilter;
       map.magFilter = THREE.LinearFilter;
-      map.anisotropy = Math.min(gl.capabilities.getMaxAnisotropy(), isMobile ? 4 : 12);
+      map.anisotropy = Math.min(gl.capabilities.getMaxAnisotropy(), isMobile ? 4 : 8);
       if (isColorMap) {
         map.colorSpace = THREE.SRGBColorSpace;
       }
@@ -312,60 +300,43 @@ export const Planet = memo(function Planet({
     return () => {
       cloudTexture1?.dispose();
       cloudTexture2?.dispose();
-      cloudTexture3?.dispose();
     };
-  }, [cloudTexture1, cloudTexture2, cloudTexture3]);
+  }, [cloudTexture1, cloudTexture2]);
 
   const displacementScale = useMemo(() => {
-    if (isMoon) return radius * 0.005;
-    // Calibrated natural relief (2.8% of radius) for dramatic yet grounded mountain ranges
-    const base = 0.028;
-    const detailBoost = textureDetail === 'enhanced' ? 1.12 : 1;
-    return radius * base * detailBoost;
-  }, [textureDetail, radius, isMoon]);
+    if (isMoon) return radius * 0.004;
+    if (visualClass === 'gas_giant') return 0;
+    const base = 0.016;
+    return radius * base;
+  }, [radius, isMoon, visualClass]);
 
   const bumpScale = useMemo(() => {
     if (isMoon) return radius * 0.002;
-    const base = 0.005;
-    return radius * base;
-  }, [radius, isMoon]);
-
-  const baseCloudRotation = useMemo(() => serverTime * 0.00006, [serverTime]);
+    if (visualClass === 'gas_giant') return 0;
+    return radius * 0.004;
+  }, [radius, isMoon, visualClass]);
 
   useFrame((state, delta) => {
     const t = state.clock.getElapsedTime();
 
-    if (planetRef.current) {
-      planetRef.current.rotation.y += delta * 0.035;
-    }
+    // Planet rotation is cleanly handled at group level in SolarSystemView to prevent desync with bases
 
     if (atmosphereInnerRef.current) {
-      atmosphereInnerRef.current.rotation.y = t * 0.01;
-      atmosphereInnerRef.current.rotation.z = Math.sin(t * 0.12) * 0.01;
+      atmosphereInnerRef.current.rotation.y = t * 0.006;
     }
 
     if (atmosphereOuterRef.current) {
-      atmosphereOuterRef.current.rotation.y = -t * 0.006;
-      atmosphereOuterRef.current.rotation.x = Math.cos(t * 0.08) * 0.008;
+      atmosphereOuterRef.current.rotation.y = -t * 0.004;
     }
 
     const speedFactor = cloudSpeed * cloudRotationSpeed;
 
     if (cloudLayer1Ref.current) {
-      cloudLayer1Ref.current.rotation.y = baseCloudRotation + t * 0.022 * speedFactor;
-      cloudLayer1Ref.current.rotation.z = Math.sin(t * 0.08) * 0.01;
+      cloudLayer1Ref.current.rotation.y += delta * 0.006 * speedFactor;
     }
 
     if (cloudLayer2Ref.current) {
-      cloudLayer2Ref.current.rotation.y = -baseCloudRotation * 0.65 + t * 0.015 * speedFactor;
-      cloudLayer2Ref.current.rotation.x = 0.06 + Math.cos(t * 0.07) * 0.01;
-      cloudLayer2Ref.current.rotation.z = 0.02;
-    }
-
-    if (cloudLayer3Ref.current) {
-      cloudLayer3Ref.current.rotation.y = baseCloudRotation * 1.2 + t * 0.03 * speedFactor;
-      cloudLayer3Ref.current.rotation.x = -0.045;
-      cloudLayer3Ref.current.rotation.z = Math.sin(t * 0.06) * 0.012;
+      cloudLayer2Ref.current.rotation.y -= delta * 0.004 * speedFactor;
     }
   });
 
@@ -377,12 +348,12 @@ export const Planet = memo(function Planet({
           map={texture}
           displacementMap={displacementMap}
           displacementScale={displacementScale}
-          displacementBias={-displacementScale * 0.15}
+          displacementBias={-displacementScale * 0.12}
           bumpMap={displacementMap}
           bumpScale={bumpScale}
-          roughness={0.78}
-          metalness={0.02}
-          envMapIntensity={0.55}
+          roughness={visualClass === 'gas_giant' ? 0.95 : 0.82}
+          metalness={0.03}
+          envMapIntensity={0.4}
           flatShading={false}
           dithering
           toneMapped
@@ -393,9 +364,9 @@ export const Planet = memo(function Planet({
         <FresnelAtmosphereShell
           radius={radius}
           color={atmosphereColors.inner}
-          opacity={0.38}
-          power={2.9}
-          width={1.065}
+          opacity={0.34}
+          power={3.2}
+          width={1.045}
           segments={atmosphereSegments}
         />
       </group>
@@ -404,73 +375,45 @@ export const Planet = memo(function Planet({
         <FresnelAtmosphereShell
           radius={radius}
           color={atmosphereColors.outer}
-          opacity={0.22}
-          power={3.8}
-          width={1.12}
+          opacity={0.18}
+          power={4.2}
+          width={1.09}
           segments={atmosphereSegments}
         />
       </group>
 
-      <mesh frustumCulled>
-        <sphereGeometry args={[radius * 1.055, atmosphereSegments, atmosphereSegments]} />
-        <meshLambertMaterial
-          color={atmosphereColors.inner}
-          transparent
-          opacity={0.16}
-          side={THREE.FrontSide}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          toneMapped={true}
-        />
-      </mesh>
+      {showClouds && cloudTexture1 && (
+        <mesh ref={cloudLayer1Ref} frustumCulled>
+          <sphereGeometry args={[radius * 1.018, cloudSegments, cloudSegments]} />
+          <meshStandardMaterial
+            map={cloudTexture1}
+            color={cloudColor}
+            transparent
+            opacity={0.48}
+            roughness={0.96}
+            metalness={0}
+            depthWrite={false}
+            blending={THREE.NormalBlending}
+            dithering
+          />
+        </mesh>
+      )}
 
-      {showClouds && cloudTexture1 && cloudTexture2 && cloudTexture3 && (
-        <>
-          <mesh ref={cloudLayer1Ref} frustumCulled>
-            <sphereGeometry args={[radius * 1.032, cloudSegments, cloudSegments]} />
-            <meshStandardMaterial
-              map={cloudTexture1}
-              color={cloudColor}
-              transparent
-              opacity={0.82}
-              roughness={0.95}
-              metalness={0}
-              depthWrite={false}
-              blending={THREE.NormalBlending}
-              dithering
-            />
-          </mesh>
-
-          <mesh ref={cloudLayer2Ref} frustumCulled>
-            <sphereGeometry args={[radius * 1.038, cloudSegments, cloudSegments]} />
-            <meshStandardMaterial
-              map={cloudTexture2}
-              color={cloudColor}
-              transparent
-              opacity={0.62}
-              roughness={0.9}
-              metalness={0}
-              depthWrite={false}
-              blending={THREE.AdditiveBlending}
-              dithering
-            />
-          </mesh>
-
-          <mesh ref={cloudLayer3Ref} frustumCulled>
-            <sphereGeometry args={[radius * 1.044, cloudSegments, cloudSegments]} />
-            <meshStandardMaterial
-              map={cloudTexture3}
-              color={cloudColor}
-              transparent
-              opacity={0.52}
-              roughness={0.92}
-              metalness={0}
-              depthWrite={false}
-              blending={THREE.NormalBlending}
-              dithering
-            />
-          </mesh>
-        </>
+      {showClouds && cloudTexture2 && (
+        <mesh ref={cloudLayer2Ref} frustumCulled>
+          <sphereGeometry args={[radius * 1.028, cloudSegments, cloudSegments]} />
+          <meshStandardMaterial
+            map={cloudTexture2}
+            color={cloudColor}
+            transparent
+            opacity={0.32}
+            roughness={0.92}
+            metalness={0}
+            depthWrite={false}
+            blending={THREE.NormalBlending}
+            dithering
+          />
+        </mesh>
       )}
 
       <BaseManager planetRadius={radius} geographyManager={geographyManager} planetId={id} />
@@ -478,3 +421,4 @@ export const Planet = memo(function Planet({
     </group>
   );
 });
+
